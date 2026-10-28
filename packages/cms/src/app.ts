@@ -1,10 +1,11 @@
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
-import { deliveryRoutes } from './delivery'
+import { apiKey, deliveryRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
 import type { ContentType } from './types'
+import { typesFile } from './typescript'
 import { Hono, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { csrf } from 'hono/csrf'
@@ -113,6 +114,10 @@ export function createApp(db: Kysely<Database>, types = new Map<string, ContentT
   app.route('/api', entryRoutes(db, types))
 
   app.route('/v1', deliveryRoutes(db, types))
+
+  // What the delivery API returns, as TypeScript, for `npx iight types pull`
+  const declarations = typesFile(types)
+  app.get('/types', apiKey(db), (c) => c.text(declarations))
 
   return app
 }

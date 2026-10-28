@@ -196,7 +196,7 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
   app.get('/types/:type/entries', async (c) => {
     const type = typeNamed(c.req.param('type'))
     const query = parseQuery(type, c.req.query())
-    const { data, pagination } = await listEntries(db, type, query, c.req.query('archived') === 'true')
+    const { data, pagination } = await listEntries(db, type, query, { archived: c.req.query('archived') === 'true' })
     return c.json({ data: data.map(toAdminEntry), pagination })
   })
 

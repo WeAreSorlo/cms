@@ -7,6 +7,7 @@ An open-source, schema-driven CMS built on iight core. `PLAN.md` holds the archi
 | Folder         | What it is                                                                          |
 | -------------- | ----------------------------------------------------------------------------------- |
 | `packages/cms` | `@iight/cms`: the Hono server (`src/`), the admin UI (`admin/`) and the `iight` CLI |
+| `packages/sdk` | `@iight/sdk`: the typed client for the delivery API, and `iight types pull`         |
 | `playground`   | A site project for development, with its `iight.config.ts`                          |
 
 ## Getting started
@@ -98,7 +99,7 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 
 ### The delivery API
 
-It's read-only and serves live entries only. It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
+It's read-only, and serves live entries once they've been saved. A singleton's entry is created when it's first opened, but it's served only from its first save, when its required fields are filled in. It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
 
 | Route                              | What it does                                                               |
 | ---------------------------------- | -------------------------------------------------------------------------- |
@@ -106,6 +107,7 @@ It's read-only and serves live entries only. It needs a key from `iight make:api
 | `GET /v1/entries/:type/:id`        | Replies an entry by ID                                                     |
 | `GET /v1/entries/:type/slug/:slug` | Replies a top-level entry by slug                                          |
 | `GET /v1/entries/:type/uri/*`      | Replies a hierarchical page by `uri`, as in `/v1/entries/docs/uri/install` |
+| `GET /types`                       | Replies the TypeScript types of these entries, as text, for the SDK        |
 
 Lists take these query parameters, with `where` and `order` in JSON:
 
@@ -121,6 +123,39 @@ Lists take these query parameters, with `where` and `order` in JSON:
 - `exists` means a value that isn't empty, as core sees it: a missing field, null, empty text and an empty list don't count. A missing field never matches a comparison, `!=` included.
 - A query with a field the type doesn't have, an unknown operator, or a value that doesn't suit it replies 400 with a `{ message }` saying what's wrong.
 
+## The SDK
+
+`@iight/sdk` is the delivery API's client for frontends. Types pulled from the CMS check every query and type every result, and it never imports server code.
+
+```ts
+import { createClient } from '@iight/sdk'
+
+const cms = createClient({ url: process.env.IIGHT_URL!, token: process.env.IIGHT_TOKEN! })
+
+const posts = await cms
+  .entries('blog')
+  .where('values.featured', '=', true)
+  .orWhere('values.title', 'like', 'release')
+  .orderBy('values.published_at', 'desc')
+  .paginate(10) // { data: EntryBlog[], pagination }
+```
+
+- Fields and entry properties go by the API's names, such as `values.featured` and `createdAt`. `where` adds a condition to the current group, and `orWhere` starts a new group.
+- `paginate(perPage = 15, page = 1)` replies `{ data, pagination }`, `first()` the first entry or `null`, and `all()` every entry, fetched 100 at a time.
+- Results are the API's plain JSON. A failed request throws an `IightError` with the HTTP `status`, the API's `message` and the reply's `body`. When the CMS can't be reached, fetch's own error comes through.
+- `createClient` takes a `fetch` to use in place of the global one.
+
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, and registers them with the SDK. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date.
+
+A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key`:
+
+```bash
+cd playground
+export IIGHT_URL=http://localhost:3000 IIGHT_TOKEN=<key>
+npm run types      # pulls src/iight-types.d.ts
+npm run frontend   # runs src/frontend.ts, a typed script
+```
+
 ## Working on core at the same time
 
 Core is linked from `../core` with a `file:` dependency, and its package points at `dist/`. Keep its build running while you change it:
@@ -134,4 +169,4 @@ The admin's Vite config dedupes `react`, `react-dom`, `react-i18next` and `i18ne
 
 ## Checks
 
-`npm test` runs against the `iight_test` database, so start Postgres first. There's also `npm run typecheck`, and `npm run format` (or `format:fix`).
+`npm test` runs against the `iight_test` database, so start Postgres first. It also typechecks the `*.test-d.ts` files, which show the SDK rejecting wrong field names and values. There's also `npm run typecheck` for every package, and `npm run format` (or `format:fix`).

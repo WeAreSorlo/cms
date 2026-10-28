@@ -10,7 +10,7 @@
     "db": "docker compose up -d --wait",
     "dev": "npm run dev --workspace playground",
     "test": "npm test --workspace @iight/cms",
-    "typecheck": "npm run typecheck --workspace @iight/cms",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier packages playground --check",
     "format:fix": "prettier packages playground --write"
   },

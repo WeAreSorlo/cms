@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.5",
+    "@iight/sdk": "*",
     "@vitejs/plugin-react": "^6.1.2",
     "hono": "^4.13.14",
     "i18next": "^24.2.2",

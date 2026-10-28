@@ -1,8 +1,8 @@
 import { Database, isUuid, uuidv7 } from './db'
 import { hashToken } from './passwords'
-import { listEntries, parseQuery, toEntry } from './query'
+import { isSaved, listEntries, parseQuery, toEntry } from './query'
 import type { ContentType } from './types'
-import { Hono } from 'hono'
+import { Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely } from 'kysely'
 import { randomBytes } from 'node:crypto'
@@ -18,17 +18,22 @@ export async function createApiKey(db: Kysely<Database>, name: string) {
   return key
 }
 
-// The read-only delivery API, for clients with an API key. It serves live entries only.
-export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
-  const app = new Hono()
-
-  app.use(async (c, next) => {
+// Lets a request through when it sends a key for the delivery API as Authorization: Bearer <key>
+export const apiKey =
+  (db: Kysely<Database>): MiddlewareHandler =>
+  async (c, next) => {
     const key = c.req.header('authorization')?.match(/^Bearer (\S+)$/)?.[1]
     const found =
       key && (await db.selectFrom('api_keys').select('id').where('token_hash', '=', hashToken(key)).executeTakeFirst())
     if (!found) return c.json({ message: 'Unauthenticated.' }, 401)
     await next()
-  })
+  }
+
+// The read-only delivery API, for clients with an API key. It serves live entries that have been saved.
+export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
+  const app = new Hono()
+
+  app.use(apiKey(db))
 
   const typeNamed = (name: string) => {
     const type = types.get(name)
@@ -43,6 +48,7 @@ export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentT
       .selectAll()
       .where('type', '=', typeNamed(typeName).name)
       .where('archived_at', 'is', null)
+      .where(isSaved)
       .where(column, '=', value)
       .$if(column === 'slug', (qb) => qb.where('parent_id', 'is', null))
       .executeTakeFirst()
@@ -52,7 +58,7 @@ export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentT
 
   app.get('/entries/:type', async (c) => {
     const type = typeNamed(c.req.param('type'))
-    const { data, pagination } = await listEntries(db, type, parseQuery(type, c.req.query()))
+    const { data, pagination } = await listEntries(db, type, parseQuery(type, c.req.query()), { saved: true })
     return c.json({ data: data.map(toEntry), pagination })
   })
 

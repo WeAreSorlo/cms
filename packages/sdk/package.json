@@ -1,0 +1,24 @@
+{
+  "name": "@iight/sdk",
+  "version": "0.0.1",
+  "description": "A typed client for the iight CMS's delivery API, and iight types pull",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./cli": "./src/cli.ts"
+  },
+  "bin": {
+    "iight": "./bin/iight.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

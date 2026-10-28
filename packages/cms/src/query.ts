@@ -178,12 +178,23 @@ function conditionSql(eb: ExpressionBuilder<Database, 'entries'>, type: ContentT
   }
 }
 
+// Whether an entry has been saved, which every save records with a version. Opening a singleton creates its entry
+// without one, and until it's saved its required fields can be empty, so the delivery API serves saved entries only.
+export const isSaved = (eb: ExpressionBuilder<Database, 'entries'>) =>
+  eb.exists(eb.selectFrom('entry_versions').select('entry_id').whereRef('entry_versions.entry_id', '=', 'entries.id'))
+
 // One page of a type's live or archived entries, filtered and sorted by the query
-export async function listEntries(db: Kysely<Database>, type: ContentType, query: EntryQuery, archived = false) {
+export async function listEntries(
+  db: Kysely<Database>,
+  type: ContentType,
+  query: EntryQuery,
+  { archived = false, saved = false } = {},
+) {
   const filtered = db
     .selectFrom('entries')
     .where('type', '=', type.name)
     .where('archived_at', archived ? 'is not' : 'is', null)
+    .$if(saved, (qb) => qb.where(isSaved))
     .$if(query.where.length > 0, (qb) =>
       qb.where((eb) => eb.or(query.where.map((group) => eb.and(group.map((item) => conditionSql(eb, type, item)))))),
     )

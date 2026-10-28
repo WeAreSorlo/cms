@@ -1,4 +1,5 @@
 import { createApp } from '../src/app'
+import { createApiKey } from '../src/delivery'
 import { db } from './database'
 import { setUp, types } from './fixtures'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
@@ -230,4 +231,18 @@ test('a singleton opens its one entry, created the first time', async () => {
   expect(saved.body.data.values).toEqual({ headline: 'Hi', intro: 'Welcome' })
   expect((await send('POST', '/types/home/entries', { values: { headline: 'Hi' } })).status).toBe(409)
   expect((await send('GET', '/types/blog/singleton')).status).toBe(404)
+})
+
+test('the delivery API serves a singleton from its first save', async () => {
+  const key = await createApiKey(db, 'Website')
+  const deliver = (path = '') => app.request(`/v1/entries/home${path}`, { headers: { authorization: `Bearer ${key}` } })
+
+  // Opening it creates its entry without the headline that the generated types say is always there
+  const { id } = (await send('GET', '/types/home/singleton')).body.data
+  expect((await (await deliver()).json()).data).toEqual([])
+  expect((await deliver(`/${id}`)).status).toBe(404)
+
+  await send('PUT', `/entries/${id}`, { values: { headline: 'Hi' } })
+  expect((await (await deliver()).json()).data).toMatchObject([{ id, values: { headline: 'Hi' } }])
+  expect((await deliver(`/${id}`)).status).toBe(200)
 })

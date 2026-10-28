@@ -16,6 +16,8 @@ const insert = async (name: string, type: string, values: Record<string, any>, c
     .insertInto('entries')
     .values({ id: ids[name], type, values, slug: values.slug, ...columns })
     .execute()
+  // The version a save writes, since the delivery API serves saved entries only
+  await db.insertInto('entry_versions').values({ entry_id: ids[name], number: 1, values }).execute()
 }
 
 beforeAll(async () => {

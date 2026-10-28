@@ -4,4 +4,13 @@ import { createRequire } from 'node:module'
 // server loads core's CommonJS build until core imports lodash/<fn> instead (PLAN.md section 12, change 5)
 const core: typeof import('iight') = createRequire(import.meta.url)('iight')
 
-export const { flattenValidationReport, inputs, isEmptyValue, pickValues, validateServerValues, validationError } = core
+export const {
+  flattenValidationReport,
+  inputs,
+  isEmptyValue,
+  normaliseConditions,
+  pickValues,
+  schemaToTypeScript,
+  validateServerValues,
+  validationError,
+} = core
