@@ -1,6 +1,7 @@
 import { Database, isUuid, uuidv7 } from './db'
+import { findMedia, origin, toMedia } from './media'
 import { hashToken } from './passwords'
-import { isSaved, listEntries, parseQuery, toEntry } from './query'
+import { isSaved, listEntries, listMedia, parseMediaQuery, parseQuery, toEntry } from './query'
 import type { ContentType } from './types'
 import { Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
@@ -29,7 +30,7 @@ export const apiKey =
     await next()
   }
 
-// The read-only delivery API, for clients with an API key. It serves live entries that have been saved.
+// The read-only delivery API, for clients with an API key. It serves live entries that have been saved, and media.
 export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
   const app = new Hono()
 
@@ -71,6 +72,14 @@ export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentT
     if (!isUuid(id)) throw new HTTPException(404)
     return c.json(await one(c.req.param('type'), 'id', id))
   })
+
+  app.get('/media', async (c) => {
+    const { data, pagination } = await listMedia(db, parseMediaQuery(c.req.query()))
+    const base = origin(c)
+    return c.json({ data: data.map((row) => toMedia(row, base)), pagination })
+  })
+
+  app.get('/media/:id', async (c) => c.json({ data: toMedia(await findMedia(db, c.req.param('id')), origin(c)) }))
 
   return app
 }

@@ -21,12 +21,14 @@ export interface Entry {
 
 export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
-// Call the admin API. A validation report comes back with its 422, and any other failure throws its message.
+// Call the admin API with JSON, or with FormData for an upload. A validation report comes back with its 422, and any
+// other failure throws its message.
 export async function api(method: string, path: string, body?: unknown) {
+  const sendsJson = body !== undefined && !(body instanceof FormData)
   const response = await fetch(`/api${path}`, {
     method,
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: sendsJson ? { 'content-type': 'application/json' } : {},
+    body: sendsJson ? JSON.stringify(body) : (body as FormData | undefined),
   })
 
   const json = response.status === 204 ? null : await response.json().catch(() => null)

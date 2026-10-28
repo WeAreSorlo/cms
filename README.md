@@ -111,6 +111,44 @@ export const down: ContentMigration = ({ entries }) => {
 - While a content migration hasn't run, saving an entry replies 409, since the types already have its change and the entries don't yet.
 - `iight migrate --check` leaves out entries that were never saved, such as a singleton that has only been opened.
 
+## Media
+
+The admin's Media page holds the site's files, in a grid with a type filter and a search on names, where each file's name, alt text and caption are edited. The files are kept on a FlyDrive disk, set up as `storage` in `iight.config.ts`. It takes FlyDrive's `DriveManager` options as they are, so another FlyDrive driver can take the local one's place, and each file's row records the disk it went to. `media` is optional, and sets what the library takes and how its files are served.
+
+```ts
+import { defaultMediaTypes, defineConfig } from '@iight/cms'
+import { FSDriver } from 'flydrive/drivers/fs'
+
+export default defineConfig({
+  database: { url: process.env.DATABASE_URL! },
+  storage: {
+    default: 'local',
+    services: {
+      local: () => new FSDriver({ location: new URL('./storage/', import.meta.url), visibility: 'public' }),
+    },
+  },
+  media: {
+    types: [...defaultMediaTypes, 'application/zip'],
+    maxFileSize: 100 * 1024 * 1024,
+    cacheControl: 'public, max-age=86400',
+  },
+})
+```
+
+| Setting        | What it holds                                                                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types`        | The MIME types uploads may have, with wildcards such as `image/*`. `defaultMediaTypes` is `image/*`, `video/*`, `audio/*` and `application/pdf` |
+| `maxFileSize`  | The largest file in bytes, 50 MB if not given. Each upload is held in memory while it's checked, so a big limit needs memory to match           |
+| `cacheControl` | The `Cache-Control` header of served files, `public, max-age=3600` if not given                                                                 |
+
+- An upload's type is read from its content by [file-type](https://github.com/sindresorhus/file-type), never from its name or the type the browser sends. It knows about 180 formats, such as MOV, HEIC, Office files and ZIP archives. SVGs, which are XML text, are known by their `svg` root element.
+- A type with no signature in its content, such as CSV or plain text, can't be allowed, so `iight dev` won't start with one in `types`.
+- An image's `width` and `height` are read on upload by sharp, as it shows after EXIF rotation. They're null for other files, and for images sharp can't read, such as BMP.
+- A file is stored as `<id>.<extension>`, so its name never reaches the disk. Names lose folders and control, invisible and reserved characters, and end in an extension of the file's real type, so a PNG named `evil.html` becomes `evil.html.png`.
+- Files are public at `/media/<id>/<name>`, since `<img>` can't send an API key. They're found by ID, so a URL can't reach outside the disk, and any name after the ID serves the same file, so renaming breaks no links. They're served with `nosniff`, and in ranges of bytes for video and audio players.
+- Pictures, video, audio and PDFs open in the browser's own viewers. Every other file, such as an SVG or an XML file, is served with `Content-Security-Policy: sandbox`, so a script in it can't run, even when its URL is opened on its own. A frontend that puts an SVG's markup into its own page loses that, so show SVGs with `<img>`.
+- Deleting a file removes it from its disk too.
+
 ## The API
 
 Row IDs are UUIDv7s. Records come back in `data`, and lists as `{ data, pagination: { page, perPage, total, lastPage } }`. A failed validation replies 422 with core's report, and every other error replies `{ message }`, as Laravel does.
@@ -131,9 +169,27 @@ An entry keeps its field values in `values`. `uri` is a hierarchical page's path
 }
 ```
 
+A media file has the `url` that serves it, on the address the request came to, which is `https` behind a proxy that sends `X-Forwarded-Proto: https`. `width` and `height` are null for files that aren't images, and `alt` and `caption` are null until they're written.
+
+```json
+{
+  "id": "0192f0c4-…",
+  "name": "team-photo.jpg",
+  "mime": "image/jpeg",
+  "size": 482113,
+  "width": 1600,
+  "height": 1067,
+  "alt": "Twelve people on a beach, waving",
+  "caption": "The team at the offsite",
+  "url": "http://localhost:3000/media/0192f0c4-…/team-photo.jpg",
+  "createdAt": "2026-10-28T12:00:00.000Z",
+  "updatedAt": "2026-10-28T12:00:00.000Z"
+}
+```
+
 ### The admin API
 
-The admin uses it with the session cookie, which every route but `/api/session` needs. Its entries also have `archivedAt`, `createdBy` and `updatedBy`.
+The admin uses it with the session cookie, which every route but `/api/session` needs. Its entries also have `archivedAt`, `createdBy` and `updatedBy`, and its media `createdBy`.
 
 | Route                                   | What it does                                                                                                                                      |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -155,12 +211,16 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions                                                                             |
 | `GET /api/entries/:id/versions`         | Lists the entry's versions, newest first. Every save writes one                                                                                   |
 | `GET /api/entries/:id/versions/:number` | Replies a version, with its values brought up to date by the content migrations that ran since. Restoring it means saving those values again      |
+| `GET /api/media`                        | Lists media, taking the delivery API's query parameters                                                                                           |
+| `POST /api/media`                       | Uploads one file, sent as the multipart field `file`. Replies 201 with `{ data: media }`, or 422 with core's report on `file` saying what's wrong |
+| `PUT /api/media/:id`                    | Saves `{ name, alt, caption }`, or replies 422 with core's report                                                                                 |
+| `DELETE /api/media/:id`                 | Deletes a file from its disk, with its record                                                                                                     |
 
 The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
 ### The delivery API
 
-It's read-only, and serves live entries once they've been saved. A singleton's entry is created when it's first opened, but it's served only from its first save, when its required fields are filled in. It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
+It's read-only, and serves media and live entries once they've been saved. A singleton's entry is created when it's first opened, but it's served only from its first save, when its required fields are filled in. It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
 
 | Route                              | What it does                                                               |
 | ---------------------------------- | -------------------------------------------------------------------------- |
@@ -168,6 +228,8 @@ It's read-only, and serves live entries once they've been saved. A singleton's e
 | `GET /v1/entries/:type/:id`        | Replies an entry by ID                                                     |
 | `GET /v1/entries/:type/slug/:slug` | Replies a top-level entry by slug                                          |
 | `GET /v1/entries/:type/uri/*`      | Replies a hierarchical page by `uri`, as in `/v1/entries/docs/uri/install` |
+| `GET /v1/media`                    | Lists media                                                                |
+| `GET /v1/media/:id`                | Replies a media file by ID                                                 |
 | `GET /types`                       | Replies the TypeScript types of these entries, as text, for the SDK        |
 
 Lists take these query parameters, with `where` and `order` in JSON:
@@ -179,6 +241,7 @@ Lists take these query parameters, with `where` and `order` in JSON:
 | `page`, `perPage` | The page from 1, and from 1 to 100 entries a page, 15 if not given                                                                                                                         |
 
 - A field is `values.<name>` for a top-level field of the type, or an entry property: `id`, `slug`, `uri`, `parentId`, `position`, `createdAt` or `updatedAt`.
+- For media, a field is one of their properties: `id`, `name`, `mime`, `size`, `width`, `height`, `alt`, `caption`, `createdAt` or `updatedAt`. `[[{"field":"mime","op":"like","value":"image/"}]]` finds images.
 - The operators are `=`, `!=`, `>`, `>=`, `<`, `<=`, `like`, `not like`, `in`, `not in`, `between`, `not between`, `exists` and `not exists`.
 - Field values compare as JSON, so `10` is more than `7`, and ISO dates compare as text. `like` ignores case and matches anywhere in the text. `in` takes a list, and `between` a list of two.
 - `exists` means a value that isn't empty, as core sees it: a missing field, null, empty text and an empty list don't count. A missing field never matches a comparison, `!=` included.

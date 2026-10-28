@@ -123,7 +123,12 @@ async function dev(db: Kysely<Database>) {
     configFile: fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url)),
     server: { middlewareMode: true, hmr: { server } },
   })
-  const app = createApp(db, types, { migrations: () => loadContentMigrations(dirs.migrations), editor: dirs })
+  const app = createApp(db, types, {
+    migrations: () => loadContentMigrations(dirs.migrations),
+    editor: dirs,
+    storage: config.storage,
+    media: config.media,
+  })
   const api = getRequestListener(app.fetch)
 
   // Vite serves the admin under /admin, and Hono everything else

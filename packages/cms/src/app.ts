@@ -1,8 +1,10 @@
+import type { MediaOptions, Storage } from '.'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
 import { apiKey, deliveryRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
+import { mediaRoutes } from './media'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
 import { EditorDirs, typeRoutes } from './typeEditor'
@@ -25,12 +27,16 @@ export interface AppOptions {
   migrations?: () => Promise<Record<string, ContentMigrationFile>>
   // Its folders, where the type editor writes types and migrations, as in iight dev
   editor?: EditorDirs
+  // Its storage for media, from iight.config.ts. The media library and its files need it.
+  storage?: Storage
+  // What the media library takes, and how it serves files
+  media?: MediaOptions
 }
 
 export function createApp(
   db: Kysely<Database>,
   types = new Map<string, ContentType>(),
-  { migrations = async () => ({}), editor }: AppOptions = {},
+  { migrations = async () => ({}), editor, storage, media }: AppOptions = {},
 ) {
   const app = new Hono<AdminEnv>()
 
@@ -125,8 +131,10 @@ export function createApp(
   }
   app.use('/api/types/*', signedIn)
   app.use('/api/entries/*', signedIn)
+  app.use('/api/media/*', signedIn)
   app.route('/api', typeRoutes(types, editor))
   app.route('/api', entryRoutes(db, types, migrations))
+  if (storage) app.route('/', mediaRoutes(db, storage, media))
 
   app.route('/v1', deliveryRoutes(db, types))
 

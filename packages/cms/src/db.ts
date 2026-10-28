@@ -48,6 +48,22 @@ export interface Database {
     token_hash: string
     created_at: Generated<Date>
   }
+  media: {
+    id: string
+    // The FlyDrive service that stores the file, and the file's key there
+    disk: string
+    path: string
+    name: string
+    mime: string
+    size: number
+    width: number | null
+    height: number | null
+    alt: string | null
+    caption: string | null
+    created_by: string | null
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
   // Both kinds of migration that have run, made by migrator.ts
   migrations: {
     id: Generated<number>

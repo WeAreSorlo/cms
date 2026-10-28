@@ -18,6 +18,8 @@
     "@hono/node-server": "^2.1.5",
     "@iight/sdk": "*",
     "@vitejs/plugin-react": "^6.1.2",
+    "file-type": "^22.2.0",
+    "flydrive": "^2.2.0",
     "hono": "^4.13.14",
     "i18next": "^24.2.2",
     "iight": "file:../../../core",
@@ -27,6 +29,7 @@
     "react-dom": "^19.0.0",
     "react-i18next": "^15.4.0",
     "sass": "^1.106.1",
+    "sharp": "^0.35.5",
     "tsx": "^4.23.15",
     "vite": "^8.3.5"
   },

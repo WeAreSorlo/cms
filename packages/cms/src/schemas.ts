@@ -16,6 +16,25 @@ export const userSchema: Array<FieldSchema> = [
 // Asked for by iight make:api-key
 export const apiKeySchema: Array<FieldSchema> = [{ name: 'name', label: 'Name', type: 'text', required: true }]
 
+// A media file's details, edited in the admin's media library and checked by PUT /api/media/:id
+export const mediaSchema: Array<FieldSchema> = [
+  { name: 'name', label: 'Name', type: 'text', required: true, options: { maxLength: 200 } },
+  {
+    name: 'alt',
+    label: 'Alt text',
+    type: 'textarea',
+    instructions: "Describes the file for people who can't see or hear it.",
+    options: { rows: 3, maxLength: 1000 },
+  },
+  {
+    name: 'caption',
+    label: 'Caption',
+    type: 'textarea',
+    instructions: 'Shown with the file, such as under a photo.',
+    options: { rows: 2, maxLength: 1000 },
+  },
+]
+
 // A content type's settings, rendered by the admin's type editor and checked by its routes. The choices come from the
 // type's top-level fields, and checkType in types.ts checks the fields themselves.
 export function typeSchema(fields: Array<FieldSchema>): Array<FieldSchema> {

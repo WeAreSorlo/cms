@@ -1,6 +1,7 @@
 import { signInSchema } from '../src/schemas'
 import { ContentType, api } from './api'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
+import { MediaLibrary } from './media'
 import { TypeEditor, TypeList } from './types'
 import Form, { FormHandle } from 'iight'
 import 'iight/styles/base.scss'
@@ -59,7 +60,7 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
-// The page for the URL's hash, such as #/types/blog, #/entries/<id> or #/schema/blog in the type editor
+// The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media or #/schema/blog in the type editor
 function Page({
   types,
   editable,
@@ -84,6 +85,7 @@ function Page({
     return <TypeEditor key={name} type={types.get(name)} editable={editable} onSaved={reloadTypes} />
   }
   if (section === 'schema') return <TypeList types={types} editable={editable} />
+  if (section === 'media') return <MediaLibrary />
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
@@ -132,6 +134,7 @@ function App() {
             {type.label}
           </a>
         ))}
+        <a href='#/media'>Media</a>
         <a href='#/schema'>Content types</a>
         <p>
           Signed in as {user.name}.{' '}
