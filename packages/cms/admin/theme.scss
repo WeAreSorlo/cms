@@ -1,0 +1,231 @@
+/*
+ * The admin's theme for iight core. It sets core's whole token contract (see themes/default.scss in core) from a
+ * palette, and adds --cms-* tokens for the admin's own styles. It sits on <html>, where the OS picks light or dark
+ * unless data-theme says which.
+ */
+
+// What dark mode changes, for both ways of choosing it below
+@mixin dark {
+  color-scheme: dark;
+  --cms-page: #0f1115;
+  --cms-surface: #16191f;
+  --cms-subtle: #1f232b;
+  --cms-rule: #2a2f38;
+  --cms-border: #767e8a;
+  --cms-text: #e5e7eb;
+  --cms-muted: #9ca3af;
+  --cms-on-accent: #0f1115;
+  --cms-accent-tint: #262f0f;
+  --cms-accent-strong: #bfff00;
+  --cms-danger: #f87171;
+  --cms-on-danger: #0f1115;
+  --cms-danger-tint: #2b1416;
+  --cms-success: #4ade80;
+  --cms-success-tint: #10251a;
+  --cms-warning: #fbbf24;
+  --cms-warning-tint: #2a2110;
+  --cms-backdrop: rgb(0 0 0 / 0.6);
+  --cms-shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --cms-shadow-2: 0 10px 25px rgb(0 0 0 / 0.5);
+}
+
+.iight-theme-admin {
+  color-scheme: light;
+
+  /* The palette. Lime is 1.2:1 on white, so it's only ever a fill behind --cms-on-accent */
+  --cms-page: #f9fafb;
+  --cms-surface: #ffffff;
+  --cms-subtle: #f3f4f6;
+  --cms-rule: #e5e7eb;
+  --cms-border: #858d98;
+  --cms-text: #111827;
+  --cms-muted: #5b6472;
+  --cms-accent: #bfff00;
+  --cms-accent-hover: #a8e600;
+  --cms-on-accent: #111827;
+  --cms-accent-tint: #f4ffd6;
+  --cms-accent-strong: #4d6600;
+  --cms-danger: #b91c1c;
+  --cms-on-danger: #ffffff;
+  --cms-danger-tint: #fef2f2;
+  --cms-success: #15803d;
+  --cms-success-tint: #f0fdf4;
+  --cms-warning: #b45309;
+  --cms-warning-tint: #fffbeb;
+  --cms-backdrop: rgb(17 24 39 / 0.5);
+  // The squares behind images, light in both modes, so dark and light artwork both show against them
+  --cms-checker: #f3f4f6;
+  --cms-checker-alt: #d1d5db;
+  --cms-shadow-1: 0 1px 2px rgb(0 0 0 / 0.06);
+  --cms-shadow-2: 0 10px 25px rgb(0 0 0 / 0.15);
+
+  /* Type */
+  --cms-font: system-ui, sans-serif;
+  --cms-font-mono: ui-monospace, monospace;
+  --cms-text-xs: 0.75rem;
+  --cms-leading-xs: 1rem;
+  --cms-text-sm: 0.8125rem;
+  --cms-leading-sm: 1.125rem;
+  --cms-text-base: 0.875rem;
+  --cms-leading-base: 1.25rem;
+  --cms-text-lg: 1rem;
+  --cms-leading-lg: 1.5rem;
+  --cms-text-xl: 1.25rem;
+  --cms-leading-xl: 1.75rem;
+
+  /* Sizes, alongside core's --iight-size-* */
+  --cms-size-6: 1.5rem;
+  --cms-size-8: 2rem;
+  --cms-row: 2rem;
+  --cms-control: 1.75rem;
+  --cms-sidebar: 14rem;
+  --cms-column: 48rem;
+  --cms-page-max: 80rem;
+  --cms-radius-pill: 999px;
+  --cms-duration: 150ms;
+
+  /* Core's contract */
+  --iight-font-family: inherit;
+  --iight-font-size: var(--cms-text-base);
+  --iight-line-height: var(--cms-leading-base);
+  --iight-form-color: var(--cms-text);
+  --iight-form-background: transparent;
+
+  --iight-size-px: 1px;
+  --iight-size-1: 0.25rem;
+  --iight-size-2: 0.5rem;
+  --iight-size-3: 0.75rem;
+  --iight-size-4: 1rem;
+
+  --iight-font-weight-normal: 400;
+  --iight-font-weight-bold: 600;
+
+  --iight-color-base: var(--cms-text);
+  --iight-color-muted: var(--cms-muted);
+  --iight-color-background: var(--cms-surface);
+  --iight-color-background-subtle: var(--cms-subtle);
+  --iight-color-border: var(--cms-border);
+  --iight-color-focus: var(--cms-accent-strong);
+  --iight-color-error: var(--cms-danger);
+  --iight-color-success: var(--cms-success);
+  --iight-color-accent: var(--cms-accent);
+
+  --iight-focus-outline: 2px solid var(--iight-color-focus);
+  --iight-focus-outline-offset: 2px;
+  --iight-disabled-opacity: 0.5;
+  --iight-required-color: var(--iight-color-error);
+
+  --iight-fieldset-gap: var(--iight-size-2);
+  --iight-field-gap: var(--iight-size-1);
+  --iight-choice-gap: var(--iight-size-2);
+
+  --iight-field-font-family: inherit;
+  --iight-field-font-size: inherit;
+  --iight-field-font-weight: inherit;
+  --iight-field-line-height: inherit;
+  --iight-field-color: inherit;
+  --iight-field-background: transparent;
+  --iight-field-border: none;
+  --iight-field-border-radius: 0;
+  --iight-field-padding: 0;
+  --iight-field-margin: 0;
+
+  --iight-label-font-family: inherit;
+  --iight-label-font-size: var(--cms-text-sm);
+  --iight-label-font-weight: var(--iight-font-weight-bold);
+  --iight-label-line-height: var(--cms-leading-sm);
+  --iight-label-color: inherit;
+
+  --iight-instructions-font-family: inherit;
+  --iight-instructions-font-size: var(--cms-text-sm);
+  --iight-instructions-font-weight: inherit;
+  --iight-instructions-line-height: var(--cms-leading-sm);
+  --iight-instructions-color: var(--iight-color-muted);
+
+  /* Controls are 28px tall: the 20px line, 3px above and below, and the borders */
+  --iight-input-font-family: inherit;
+  --iight-input-font-size: var(--cms-text-base);
+  --iight-input-font-weight: inherit;
+  --iight-input-line-height: var(--cms-leading-base);
+  --iight-input-color: inherit;
+  --iight-input-background: var(--iight-color-background);
+  --iight-input-border: var(--iight-size-px) solid var(--iight-color-border);
+  --iight-input-border-radius: var(--iight-size-1);
+  --iight-input-padding: 0.1875rem var(--iight-size-2);
+  --iight-input-margin: 0;
+  --iight-input-border-color-invalid: var(--iight-color-error);
+  --iight-input-border-color-valid: var(--iight-color-border);
+  --iight-input-color-disabled: var(--iight-color-muted);
+  --iight-input-background-disabled: var(--iight-color-background-subtle);
+
+  --iight-button-font-family: inherit;
+  --iight-button-font-size: var(--cms-text-base);
+  --iight-button-font-weight: var(--iight-font-weight-normal);
+  --iight-button-line-height: var(--cms-leading-base);
+  --iight-button-color: inherit;
+  --iight-button-background: var(--iight-color-background-subtle);
+  --iight-button-border: var(--iight-size-px) solid var(--iight-color-border);
+  --iight-button-border-radius: var(--iight-size-1);
+  --iight-button-padding: 0.1875rem var(--iight-size-2);
+  --iight-button-color-hover: inherit;
+  --iight-button-background-hover: var(--cms-rule);
+
+  --iight-button-primary-color: var(--cms-on-accent);
+  --iight-button-primary-background: var(--cms-accent);
+  --iight-button-primary-border-color: var(--cms-accent);
+  --iight-button-primary-color-hover: var(--cms-on-accent);
+  --iight-button-primary-background-hover: var(--cms-accent-hover);
+  --iight-button-danger-color: var(--cms-danger);
+  --iight-button-danger-background: var(--iight-button-background);
+  --iight-button-danger-border-color: var(--iight-color-border);
+  --iight-button-danger-color-hover: var(--cms-on-danger);
+  --iight-button-danger-background-hover: var(--cms-danger);
+
+  --iight-messages-font-family: inherit;
+  --iight-messages-font-size: var(--cms-text-sm);
+  --iight-messages-font-weight: inherit;
+  --iight-messages-line-height: var(--cms-leading-sm);
+  --iight-messages-color: var(--iight-color-base);
+  --iight-messages-background: transparent;
+  --iight-messages-border: none;
+  --iight-messages-border-radius: var(--iight-size-1);
+  --iight-messages-padding: 0 0 0 1.25em;
+  --iight-messages-margin: 0;
+
+  --iight-content-font-size: var(--cms-text-sm);
+  --iight-content-color: var(--iight-color-muted);
+
+  --iight-matrix-cell-padding: var(--iight-size-1);
+  --iight-matrix-border: var(--iight-size-px) solid var(--cms-rule);
+  --iight-matrix-header-background: var(--iight-color-background-subtle);
+  --iight-matrix-header-color: inherit;
+
+  --iight-modal-color: var(--iight-color-base);
+  --iight-modal-background: var(--iight-color-background);
+  --iight-modal-border: var(--iight-size-px) solid var(--cms-rule);
+  --iight-modal-border-radius: var(--iight-size-2);
+  --iight-modal-padding: var(--iight-size-4);
+  --iight-modal-shadow: var(--cms-shadow-2);
+  --iight-modal-backdrop: var(--cms-backdrop);
+}
+
+.iight-theme-admin[data-theme='dark'] {
+  @include dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  .iight-theme-admin:not([data-theme='light']) {
+    @include dark;
+  }
+}
+
+/* Touch screens get 40px controls and rows, and 16px inputs, which iOS doesn't zoom into */
+@media (pointer: coarse) {
+  .iight-theme-admin {
+    --cms-row: 2.5rem;
+    --cms-control: 2.5rem;
+    --iight-input-font-size: 1rem;
+    --iight-input-padding: 0.5625rem var(--iight-size-2);
+    --iight-button-padding: 0.5625rem var(--iight-size-2);
+  }
+}

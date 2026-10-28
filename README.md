@@ -26,6 +26,8 @@ npm run dev         # the admin is at http://localhost:3000/admin/
 
 `npm run db` also creates an `iight_test` database for the tests, but only when it first creates the Postgres volume.
 
+In `iight dev`, `/admin/#/design` shows the admin's design system: its tokens, their contrast in the current theme, and every core input. `DESIGN.md` has the plan.
+
 ## The iight CLI
 
 Run it from a site project, where it reads `iight.config.ts`.

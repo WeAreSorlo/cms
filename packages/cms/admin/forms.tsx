@@ -2,7 +2,31 @@ import { isEmpty, showValue } from '../src/fields'
 import { formSchema } from '../src/schemas'
 import { api, date, errorMessage } from './api'
 import { FormAutomations } from './automations'
+import {
+  Badge,
+  EmptyState,
+  Loading,
+  Notice,
+  PageHeader,
+  Pages,
+  Pagination,
+  RouteTabs,
+  focusInvalid,
+  useToast,
+} from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
+import {
+  Archive,
+  ArchiveRestore,
+  CircleAlert,
+  ClipboardList,
+  Copy,
+  Inbox as InboxIcon,
+  Pencil,
+  Plus,
+  ShieldAlert,
+  ShieldCheck,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // A form as the admin API returns it
@@ -46,41 +70,53 @@ export function FormList() {
       .catch((error) => setError(errorMessage(error)))
   }, [])
 
+  const newForm = (
+    <a className='iight-button iight-button--primary' href='#/forms/new'>
+      <Plus /> New form
+    </a>
+  )
+
   return (
-    <>
-      <header>
-        <h1>Forms</h1>
-        <a href='#/forms/new'>New form</a>
-      </header>
-      {error && <p role='alert'>{error}</p>}
-      {forms?.length === 0 && <p>No forms yet.</p>}
-      {!!forms?.length && (
-        <table>
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>Name</th>
-              <th>Version</th>
-              <th>Submissions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {forms.map((form) => (
-              <tr key={form.id}>
-                <td>
-                  <a href={`#/forms/${form.id}`}>{form.label}</a>
-                </td>
-                <td>{form.name}</td>
-                <td>{form.version}</td>
-                <td>
-                  <a href={`#/forms/${form.id}/inbox`}>Inbox</a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className='cms-page'>
+      <PageHeader title='Forms' actions={newForm} />
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!forms && !error && <Loading />}
+      {forms?.length === 0 && (
+        <EmptyState icon={<ClipboardList />} action={newForm}>
+          No forms yet.
+        </EmptyState>
       )}
-    </>
+      {!!forms?.length && (
+        <div className='cms-table-wrap'>
+          <table className='cms-table'>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Name</th>
+                <th className='cms-table__number'>Version</th>
+                <th>Submissions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {forms.map((form) => (
+                <tr key={form.id}>
+                  <td>
+                    <a href={`#/forms/${form.id}`}>{form.label}</a>
+                  </td>
+                  <td>
+                    <code>{form.name}</code>
+                  </td>
+                  <td className='cms-table__number'>{form.version}</td>
+                  <td>
+                    <a href={`#/forms/${form.id}/inbox`}>Inbox</a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -89,18 +125,24 @@ export function FormList() {
 export function FormEditor({ form: loaded }: { form?: FormRecord }) {
   const settingsForm = useRef<FormHandle>(null)
   const fieldsForm = useRef<FormHandle>(null)
+  // Around both forms, for finding the fields that stop a save
+  const forms = useRef<HTMLDivElement>(null)
+  const toast = useToast()
   const [form, setForm] = useState(loaded)
   const [settings, setSettings] = useState<Record<string, any>>({ label: loaded?.label, name: loaded?.name })
   const [shown] = useState(settings)
   const [fields, setFields] = useState<Array<FieldSchema>>(loaded?.fields ?? [])
   const [shownFields] = useState({ fields })
-  const [message, setMessage] = useState('')
+  const [problem, setProblem] = useState('')
+  const [copyProblem, setCopyProblem] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // The button stays enabled while it saves, so it keeps focus, and a second click is ignored here instead
   const save = async () => {
-    if (busy || !settingsForm.current?.validate().isValid) return
+    if (busy) return
+    setProblem('')
+    if (!settingsForm.current?.validate().isValid) return focusInvalid(forms.current).then(setProblem)
     setBusy(true)
-    setMessage('')
     try {
       const body = { ...settings, fields }
       const { status, body: reply } = form
@@ -110,54 +152,72 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
       if (status === 422) {
         settingsForm.current.applyReport(reply)
         fieldsForm.current?.applyReport(reply)
-        return setMessage('The form has problems, shown with its settings and fields.')
+        return focusInvalid(forms.current).then(setProblem)
       }
-      if (!form) return void (location.hash = `#/forms/${reply.data.id}`)
+      if (!form) {
+        toast('Saved')
+        return void (location.hash = `#/forms/${reply.data.id}`)
+      }
 
       const { version } = reply.data
-      setMessage(
-        version > form.version ? `Saved as version ${version}, which new submissions are checked against.` : 'Saved.',
-      )
+      toast(version > form.version ? `Saved as version ${version}, which new submissions are checked against` : 'Saved')
       setForm(reply.data)
     } catch (error) {
-      setMessage(errorMessage(error))
+      setProblem(errorMessage(error))
     } finally {
       setBusy(false)
     }
   }
 
-  const copy = () =>
+  const copy = () => {
+    setCopyProblem('')
     navigator.clipboard.writeText(form!.embed).then(
-      () => setMessage('Copied the HTML.'),
-      () => setMessage("Couldn't copy the HTML. Select it and copy it instead."),
+      () => toast('Copied the HTML'),
+      () => setCopyProblem("Couldn't copy the HTML. Select it and copy it instead."),
     )
+  }
 
   return (
-    <>
-      <header>
-        <a href='#/forms'>Forms</a>
-        <h1>{form ? form.label : 'New form'}</h1>
-        {form && <a href={`#/forms/${form.id}/inbox`}>Inbox</a>}
-      </header>
-
-      {form && <p>Version {form.version}</p>}
-      <Form ref={settingsForm} schema={formSchema} values={shown} onValuesChange={setSettings} />
-      <Form
-        ref={fieldsForm}
-        schema={fieldsSchema}
-        values={shownFields}
-        onValuesChange={(next) => setFields(next.fields ?? [])}
+    <div className='cms-page cms-editor'>
+      <PageHeader
+        back={{ href: '#/forms', label: 'Forms' }}
+        title={form ? form.label : 'New form'}
+        meta={form && <Badge>Version {form.version}</Badge>}
+        actions={
+          form && (
+            <a className='iight-button' href={`#/forms/${form.id}/inbox`}>
+              <InboxIcon /> Inbox
+            </a>
+          )
+        }
       />
 
-      {message && <p role='status'>{message}</p>}
-      <div className='actions'>
-        <button type='button' className='iight-button' disabled={busy} onClick={save}>
-          Save
-        </button>
+      {/* The action bar sticks while these forms are in view, and lets go before the embed code */}
+      <div>
+        <div ref={forms} className='cms-editor__form'>
+          <Form ref={settingsForm} schema={formSchema} values={shown} onValuesChange={setSettings} />
+          <Form
+            ref={fieldsForm}
+            schema={fieldsSchema}
+            values={shownFields}
+            onValuesChange={(next) => setFields(next.fields ?? [])}
+          />
+        </div>
+
+        <div className='cms-action-bar'>
+          <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={save}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+          {problem && (
+            <p className='cms-problem' role='alert'>
+              <CircleAlert /> {problem}
+            </p>
+          )}
+        </div>
       </div>
 
       {form && (
-        <section>
+        <section className='cms-editor__form cms-section'>
           <h2>Embed</h2>
           <p>
             Paste this HTML into any page. It posts to the form without JavaScript, takes the page's own styles, and
@@ -167,14 +227,23 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
           <textarea className='embed' aria-label='HTML to embed' readOnly rows={12} value={form.embed} />
           <div className='actions'>
             <button type='button' className='iight-button' onClick={copy}>
-              Copy
+              <Copy /> Copy
             </button>
+            {copyProblem && (
+              <p className='cms-problem' role='alert'>
+                <CircleAlert /> {copyProblem}
+              </p>
+            )}
           </div>
         </section>
       )}
 
-      {form && <FormAutomations formId={form.id} />}
-    </>
+      {form && (
+        <div className='cms-editor__form cms-section'>
+          <FormAutomations formId={form.id} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -189,8 +258,8 @@ export function FormPage({ id }: { id: string }) {
       .catch((error) => setError(errorMessage(error)))
   }, [id])
 
-  if (error) return <p role='alert'>{error}</p>
-  return form ? <FormEditor form={form} /> : null
+  if (error) return <Notice tone='danger'>{error}</Notice>
+  return form ? <FormEditor form={form} /> : <Loading />
 }
 
 // What the inbox calls a submission: its first email address or text, as legacy's did
@@ -200,17 +269,25 @@ function summary(fields: Array<FieldSchema>, values: Record<string, any>) {
   return field ? String(values[field.name]) : 'Submission'
 }
 
-// A form's inbox, spam or archive, newest first. A submission opens with the fields of the version it was checked
-// against.
+const emptyViews = { inbox: 'No submissions yet.', spam: 'No spam.', archive: 'Nothing is archived.' }
+
+// What each action says once it's done, since each takes the submission out of the view
+const done = { archive: 'Archived', restore: 'Restored', spam: 'Marked as spam', 'not-spam': 'Moved to the inbox' }
+
+// A form's inbox, spam or archive, newest first, with the submission that's open beside the list when there's room. A
+// submission opens with the fields of the version it was checked against.
 export function Inbox({ id, view }: { id: string; view: View }) {
   const [form, setForm] = useState<FormRecord>()
-  const [list, setList] = useState<{ data: Array<Submission>; pagination: { lastPage: number } }>()
+  const [list, setList] = useState<{ data: Array<Submission>; pagination: Pagination }>()
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState<Submission>()
   // Each version's fields by its number, loaded as submissions open
   const [versions, setVersions] = useState<Record<number, Array<FieldSchema>>>({})
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const detail = useRef<HTMLHeadingElement>(null)
+  const listArea = useRef<HTMLDivElement>(null)
+  const toast = useToast()
 
   useEffect(() => {
     api('GET', `/forms/${id}`)
@@ -229,8 +306,10 @@ export function Inbox({ id, view }: { id: string; view: View }) {
     load().catch((error) => setError(errorMessage(error)))
   }, [load])
 
+  // Focus follows the submission into its panel, which is under the list on narrow screens
   const openSubmission = async (submission: Submission) => {
     setOpen(submission)
+    setTimeout(() => detail.current?.focus())
     if (versions[submission.version]) return
     const { body } = await api('GET', `/forms/${id}/versions/${submission.version}`).catch((error) => {
       setError(errorMessage(error))
@@ -239,14 +318,17 @@ export function Inbox({ id, view }: { id: string; view: View }) {
     if (body) setVersions((all) => ({ ...all, [submission.version]: body.data.fields }))
   }
 
-  // Archive, restore, or mark as spam or not, each of which takes the submission out of this view
-  const act = async (action: 'archive' | 'restore' | 'spam' | 'not-spam') => {
+  // Archive, restore, or mark as spam or not, each of which takes the submission out of this view. Focus goes back to
+  // the list, since the panel closes.
+  const act = async (action: keyof typeof done) => {
     if (busy || !open) return
     setBusy(true)
     try {
       await api('POST', `/submissions/${open.id}/${action}`)
       setOpen(undefined)
+      toast(done[action])
       await load()
+      listArea.current?.querySelector('button')?.focus()
     } catch (error) {
       setError(errorMessage(error))
     } finally {
@@ -257,133 +339,127 @@ export function Inbox({ id, view }: { id: string; view: View }) {
   const fields = open && versions[open.version]
 
   return (
-    <>
-      <header>
-        <a href='#/forms'>Forms</a>
-        <h1>{form ? `${form.label}: ${views[view].toLowerCase()}` : views[view]}</h1>
-        {form && <a href={`#/forms/${id}`}>Edit the form</a>}
-      </header>
-      <nav className='actions' aria-label='Submissions'>
-        {Object.entries(views).map(([key, label]) =>
-          key === view ? (
-            <strong key={key} aria-current='page'>
-              {label}
-            </strong>
-          ) : (
-            <a key={key} href={`#/forms/${id}/${key}`}>
-              {label}
+    <div className='cms-page'>
+      <PageHeader
+        back={{ href: '#/forms', label: 'Forms' }}
+        title={form ? `${form.label}: ${views[view].toLowerCase()}` : views[view]}
+        actions={
+          form && (
+            <a className='iight-button' href={`#/forms/${id}`}>
+              <Pencil /> Edit the form
             </a>
-          ),
-        )}
-      </nav>
+          )
+        }
+      />
+      <RouteTabs
+        label='Submissions'
+        current={view}
+        tabs={Object.entries(views).map(([key, label]) => ({ key, href: `#/forms/${id}/${key}`, label }))}
+      />
 
-      {error && <p role='alert'>{error}</p>}
-      {list?.data.length === 0 && <p>Nothing here.</p>}
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!list && !error && <Loading />}
+      {list?.data.length === 0 && <EmptyState icon={<InboxIcon />}>{emptyViews[view]}</EmptyState>}
+
       {!!list?.data.length && (
-        <table>
-          <thead>
-            <tr>
-              <th>From</th>
-              <th>Received</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data.map((submission) => (
-              <tr key={submission.id}>
-                <td>
-                  <button
-                    type='button'
-                    className='link'
-                    aria-current={submission.id === open?.id}
-                    onClick={() => openSubmission(submission)}
-                  >
-                    {summary(form?.fields ?? [], submission.values)}
-                  </button>
-                </td>
-                <td>{date(submission.createdAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {list && list.pagination.lastPage > 1 && (
-        <nav className='actions' aria-label='Pages'>
-          <button type='button' className='iight-button' disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          <span>
-            Page {page} of {list.pagination.lastPage}
-          </span>
-          <button
-            type='button'
-            className='iight-button'
-            disabled={page === list.pagination.lastPage}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </button>
-        </nav>
-      )}
-
-      {open && (
-        <section aria-label='Submission'>
-          <h2>{summary(fields ?? form?.fields ?? [], open.values)}</h2>
-          <p>
-            Received {date(open.createdAt)}, checked against version {open.version}
-            {open.archivedAt ? `, archived ${date(open.archivedAt)}` : ''}.
-          </p>
-          {fields ? (
-            <dl className='submission'>
-              {fields
-                .filter((field) => field.type !== 'content')
-                .map((field) => (
-                  <div key={field.id ?? field.name}>
-                    <dt>{field.label ?? field.name}</dt>
-                    <dd>{showValue(field, open.values[field.name])}</dd>
-                  </div>
-                ))}
-            </dl>
-          ) : (
-            <p>Loading…</p>
-          )}
-          <dl className='submission'>
-            <div>
-              <dt>IP address</dt>
-              <dd>{open.ip ?? '–'}</dd>
+        <div className='cms-split'>
+          <div ref={listArea} className='cms-split__list'>
+            <div className='cms-table-wrap'>
+              <table className='cms-table'>
+                <thead>
+                  <tr>
+                    <th>From</th>
+                    <th>Received</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.data.map((submission) => (
+                    <tr key={submission.id} className={submission.id === open?.id ? 'cms-table__selected' : undefined}>
+                      <td>
+                        <button
+                          type='button'
+                          className='link'
+                          aria-current={submission.id === open?.id}
+                          onClick={() => openSubmission(submission)}
+                        >
+                          {summary(form?.fields ?? [], submission.values)}
+                        </button>
+                      </td>
+                      <td>{date(submission.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div>
-              <dt>Browser</dt>
-              <dd>{open.userAgent ?? '–'}</dd>
-            </div>
-            <div>
-              <dt>Sent from</dt>
-              <dd>{open.referer ?? '–'}</dd>
-            </div>
-          </dl>
-          <div className='actions'>
-            {view === 'inbox' && (
-              <button type='button' className='iight-button' disabled={busy} onClick={() => act('archive')}>
-                Archive
-              </button>
-            )}
-            {view === 'archive' && (
-              <button type='button' className='iight-button' disabled={busy} onClick={() => act('restore')}>
-                Restore
-              </button>
-            )}
-            {open.spam ? (
-              <button type='button' className='iight-button' disabled={busy} onClick={() => act('not-spam')}>
-                Not spam
-              </button>
-            ) : (
-              <button type='button' className='iight-button' disabled={busy} onClick={() => act('spam')}>
-                Mark as spam
-              </button>
-            )}
+            {!!list.pagination.total && <Pages pagination={list.pagination} onPage={setPage} />}
           </div>
-        </section>
+
+          <section className='cms-split__detail' aria-label='Submission'>
+            {open ? (
+              <>
+                <h2 ref={detail} tabIndex={-1}>
+                  {summary(fields ?? form?.fields ?? [], open.values)}
+                </h2>
+                <p className='cms-muted'>
+                  Received {date(open.createdAt)}, checked against version {open.version}
+                  {open.archivedAt ? `, archived ${date(open.archivedAt)}` : ''}.
+                </p>
+                {fields ? (
+                  <dl className='submission'>
+                    {fields
+                      .filter((field) => field.type !== 'content')
+                      .map((field) => (
+                        <div key={field.id ?? field.name}>
+                          <dt>{field.label ?? field.name}</dt>
+                          <dd>{showValue(field, open.values[field.name])}</dd>
+                        </div>
+                      ))}
+                  </dl>
+                ) : (
+                  <Loading />
+                )}
+                <dl className='submission'>
+                  <div>
+                    <dt>IP address</dt>
+                    <dd>{open.ip ?? '–'}</dd>
+                  </div>
+                  <div>
+                    <dt>Browser</dt>
+                    <dd>{open.userAgent ?? '–'}</dd>
+                  </div>
+                  <div>
+                    <dt>Sent from</dt>
+                    <dd>{open.referer ?? '–'}</dd>
+                  </div>
+                </dl>
+                <div className='actions'>
+                  {view === 'inbox' && (
+                    <button type='button' className='iight-button' onClick={() => act('archive')}>
+                      <Archive /> Archive
+                    </button>
+                  )}
+                  {view === 'archive' && (
+                    <button type='button' className='iight-button' onClick={() => act('restore')}>
+                      <ArchiveRestore /> Restore
+                    </button>
+                  )}
+                  {open.spam ? (
+                    <button type='button' className='iight-button' onClick={() => act('not-spam')}>
+                      <ShieldCheck /> Not spam
+                    </button>
+                  ) : (
+                    <button type='button' className='iight-button' onClick={() => act('spam')}>
+                      <ShieldAlert /> Mark as spam
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className='cms-muted'>Choose a submission to read it.</p>
+            )}
+          </section>
+        </div>
       )}
-    </>
+    </div>
   )
 }

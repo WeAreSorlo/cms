@@ -1,18 +1,18 @@
 import { holdsOne, idsOf, media, relationship, relationshipOptions } from '../src/fields'
 import { ContentType, Entry, TypesContext, api, errorMessage, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
+import { Badge, DialogClose, EmptyState, IconButton, Loading, Notice } from './ui'
 import Form, { FieldSchema, Input, Modal, useFieldContext } from 'iight'
+import { Search, X } from 'lucide-react'
 import { ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-// A dialog outside the form it's opened from, since it holds a form of its own, in the admin's theme
+// A dialog outside the form it's opened from, since it holds a form of its own. The theme on <html> still reaches it
 const Dialog = ({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) =>
   createPortal(
-    <div className='iight-theme-default'>
-      <Modal open header={<h2>{title}</h2>} closeButton onClose={onClose}>
-        {children}
-      </Modal>
-    </div>,
+    <Modal open header={<h2>{title}</h2>} closeButton={<DialogClose />} onClose={onClose}>
+      {children}
+    </Modal>,
     document.body,
   )
 
@@ -70,21 +70,16 @@ function RelationshipPicker() {
   }
 
   return (
-    <div className='iight-input__relationship'>
+    <div className='iight-input__relationship cms-picker'>
       {links.ids.length > 0 && (
-        <ul className='links'>
+        <ul className='cms-picked'>
           {links.ids.map((linked) => (
             <li key={linked}>
               <span>{title(linked)}</span>
               {!links.locked && (
-                <button
-                  type='button'
-                  className='iight-button'
-                  aria-label={`Remove ${title(linked)}`}
-                  onClick={() => links.remove(linked)}
-                >
-                  Remove
-                </button>
+                <IconButton label={`Remove ${title(linked)}`} onClick={() => links.remove(linked)}>
+                  <X />
+                </IconButton>
               )}
             </li>
           ))}
@@ -151,26 +146,27 @@ function EntrySearch({
     }
   }, [type, query.search])
 
-  if (!type) return <p>There are no content types this field can link to.</p>
+  if (!type) return <Notice>There are no content types this field can link to.</Notice>
   return (
     <>
       <Form schema={schema} values={shown} onValuesChange={setQuery} />
-      {error && <p role='alert'>{error}</p>}
-      {found?.length === 0 && <p>{query.search ? 'Nothing matches.' : 'Nothing here yet.'}</p>}
-      <ul className='links'>
-        {found?.map((entry) => (
-          <li key={entry.id}>
-            <button
-              type='button'
-              className='iight-button'
-              disabled={chosen.includes(entry.id)}
-              onClick={() => onPick(entry)}
-            >
-              {titleOf(type, entry)}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!found && !error && <Loading />}
+      {found?.length === 0 && (
+        <EmptyState icon={<Search />}>{query.search ? 'Nothing matches.' : 'Nothing here yet.'}</EmptyState>
+      )}
+      {!!found?.length && (
+        <ul className='cms-pick-list'>
+          {found.map((entry) => (
+            <li key={entry.id}>
+              <button type='button' disabled={chosen.includes(entry.id)} onClick={() => onPick(entry)}>
+                {titleOf(type, entry)}
+                {chosen.includes(entry.id) && <Badge tone='accent'>Chosen</Badge>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   )
 }
@@ -186,9 +182,9 @@ function MediaPicker() {
   })
 
   return (
-    <div className='iight-input__media'>
+    <div className='iight-input__media cms-picker'>
       {links.ids.length > 0 && (
-        <ul className='links'>
+        <ul className='cms-picked'>
           {links.ids.map((linked) => {
             const file = links.records[linked]
             return (
@@ -196,14 +192,9 @@ function MediaPicker() {
                 {file && <Thumbnail media={file} />}
                 <span>{file === undefined ? 'Loading…' : (file?.name ?? 'A deleted file')}</span>
                 {!links.locked && (
-                  <button
-                    type='button'
-                    className='iight-button'
-                    aria-label={`Remove ${file?.name ?? 'the file'}`}
-                    onClick={() => links.remove(linked)}
-                  >
-                    Remove
-                  </button>
+                  <IconButton label={`Remove ${file?.name ?? 'the file'}`} onClick={() => links.remove(linked)}>
+                    <X />
+                  </IconButton>
                 )}
               </li>
             )

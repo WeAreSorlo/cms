@@ -1,7 +1,9 @@
 import { typeSchema } from '../src/schemas'
 import { ContentType, api, errorMessage } from './api'
 import { useInputs } from './fields'
+import { Badge, EmptyState, Notice, PageHeader, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
+import { Blocks, CircleAlert, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 
 // The builder is a form of its own, so a new choice in the settings never resets an editor open in it
@@ -14,36 +16,54 @@ let flash: { message: string; notes: Array<string> } | undefined
 
 // Every content type, each opening in the type editor
 export function TypeList({ types, editable }: { types: Map<string, ContentType>; editable: boolean }) {
+  const newType = editable && (
+    <a className='iight-button iight-button--primary' href='#/schema/new'>
+      <Plus /> New content type
+    </a>
+  )
+
   return (
-    <>
-      <header>
-        <h1>Content types</h1>
-        {editable && <a href='#/schema/new'>New content type</a>}
-      </header>
-      {!editable && <p role='status'>{readOnly}</p>}
-      <table>
-        <thead>
-          <tr>
-            <th>Label</th>
-            <th>Name</th>
-            <th>Structure</th>
-            <th>Fields</th>
-          </tr>
-        </thead>
-        <tbody>
-          {[...types.values()].map((type) => (
-            <tr key={type.name}>
-              <td>
-                <a href={`#/schema/${type.name}`}>{type.label}</a>
-              </td>
-              <td>{type.name}</td>
-              <td>{type.structure}</td>
-              <td>{type.fields.length}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
+    <div className='cms-page'>
+      <PageHeader title='Content types' actions={newType} />
+      {!editable && <Notice>{readOnly}</Notice>}
+      {types.size === 0 ? (
+        <EmptyState icon={<Blocks />} action={newType}>
+          {editable ? 'No content types yet.' : 'No content types yet. Add one to schema/types to get started.'}
+        </EmptyState>
+      ) : (
+        <div className='cms-table-wrap'>
+          <table className='cms-table'>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Name</th>
+                <th>Structure</th>
+                <th className='cms-table__number'>Fields</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...types.values()].map((type) => (
+                <tr key={type.name}>
+                  <td>
+                    <a className='cms-type-link' href={`#/schema/${type.name}`}>
+                      <TypeIcon name={type.icon} />
+                      {type.label}
+                    </a>
+                  </td>
+                  <td>
+                    <code>{type.name}</code>
+                  </td>
+                  <td>
+                    <Badge>{type.structure}</Badge>
+                  </td>
+                  <td className='cms-table__number'>{type.fields.length}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -60,7 +80,11 @@ export function TypeEditor({
 }) {
   const settingsForm = useRef<FormHandle>(null)
   const fieldsForm = useRef<FormHandle>(null)
+  // Around both forms, for finding the fields that stop a save
+  const forms = useRef<HTMLDivElement>(null)
   const inputs = useInputs()
+  const confirm = useConfirm()
+  const toast = useToast()
   const [settings, setSettings] = useState<Record<string, any>>(() => {
     const { fields, id, ...rest } = type ?? { structure: 'collection' }
     return rest
@@ -76,7 +100,9 @@ export function TypeEditor({
     flash = undefined
     return saved
   })
-  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState('')
+  // The action under way, such as save
+  const [busy, setBusy] = useState<string>()
 
   // Settings that name a field follow it when the builder renames it, and let it go when it's removed
   const changeFields = (next: Array<FieldSchema> = []) => {
@@ -100,23 +126,27 @@ export function TypeEditor({
     setFields(next)
   }
 
-  // Run an action, showing what went wrong if it fails
-  const act = async (action: () => Promise<unknown>) => {
+  // Run an action, showing what went wrong if it fails. The buttons stay enabled, so the focused one keeps focus, and
+  // a second click is ignored here instead.
+  const act = async (name: string, action: () => Promise<unknown>) => {
     if (busy) return
-    setBusy(true)
-    setResult(undefined)
+    setBusy(name)
+    setProblem('')
     try {
       await action()
     } catch (error) {
-      setResult({ message: errorMessage(error), notes: [] })
+      setProblem(errorMessage(error))
     } finally {
-      setBusy(false)
+      setBusy(undefined)
     }
   }
 
+  // Once the forms have shown their messages
+  const showInvalid = () => focusInvalid(forms.current).then(setProblem)
+
   const save = () =>
-    act(async () => {
-      if (!settingsForm.current?.validate().isValid) return
+    act('save', async () => {
+      if (!settingsForm.current?.validate().isValid) return showInvalid()
       const body = { ...settings, fields }
       const { status, body: reply } = type
         ? await api('PUT', `/types/${type.name}`, body)
@@ -125,69 +155,112 @@ export function TypeEditor({
       if (status === 422) {
         settingsForm.current.applyReport(reply)
         fieldsForm.current?.applyReport(reply)
-        return setResult({ message: 'The type has problems, shown with its settings and fields.', notes: [] })
+        return showInvalid()
       }
 
+      // The migration it wrote stays on the page, since it names a file to check and may have TODOs
       const { file, notes } = reply.migration
       const saved = file
         ? { message: `Saved, with the migration migrations/${file}. Run iight migrate to update the entries.`, notes }
         : { message: 'Saved. No entries need a migration.', notes }
+      toast('Saved')
       await onSaved()
       if (reply.data.name === type?.name) return setResult(saved)
       flash = saved
       location.hash = `#/schema/${reply.data.name}`
     })
 
-  const remove = () =>
-    act(async () => {
-      const question = `Delete the content type ${type!.label}? Its entries stay until you delete them, and iight migrate --check lists them.`
-      if (!confirm(question)) return
+  // It asks before the action starts, so the question's dialog hands focus back to Delete
+  const remove = async () => {
+    const sure = await confirm({
+      title: `Delete the content type ${type!.label}?`,
+      body: 'Its entries stay until you delete them, and iight migrate --check lists them.',
+      action: 'Delete',
+      danger: true,
+    })
+    if (!sure) return
+    act('delete', async () => {
       await api('DELETE', `/types/${type!.name}`)
+      toast('Deleted')
       await onSaved()
       location.hash = '#/schema'
     })
+  }
 
   return (
-    <>
-      <header>
-        <a href='#/schema'>Content types</a>
-        <h1>{type ? type.label : 'New content type'}</h1>
-      </header>
-
-      {!editable && <p role='status'>{readOnly}</p>}
-      <Form ref={settingsForm} schema={schema} values={shown} onValuesChange={setSettings} />
-      <Form
-        ref={fieldsForm}
-        schema={fieldsSchema}
-        inputs={inputs}
-        values={shownFields}
-        onValuesChange={(next) => changeFields(next.fields)}
+    <div className='cms-page cms-editor'>
+      <PageHeader
+        back={{ href: '#/schema', label: 'Content types' }}
+        title={type ? type.label : 'New content type'}
+        meta={type && <Badge>{type.structure}</Badge>}
       />
 
-      {result && (
-        <div role='status'>
-          <p>{result.message}</p>
-          {result.notes.length > 0 && (
-            <ul>
-              {result.notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
+      <div className='cms-editor__body'>
+        <div ref={forms} className='cms-editor__form'>
+          {!editable && <Notice>{readOnly}</Notice>}
+          {result && (
+            <Notice tone='success'>
+              {result.message}
+              {result.notes.length > 0 && (
+                <ul>
+                  {result.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </Notice>
           )}
+          <Form ref={settingsForm} schema={schema} values={shown} onValuesChange={setSettings} />
+          <Form
+            ref={fieldsForm}
+            schema={fieldsSchema}
+            inputs={inputs}
+            values={shownFields}
+            onValuesChange={(next) => changeFields(next.fields)}
+          />
         </div>
-      )}
+
+        {/* How the menu will show the type, following the settings as they're typed */}
+        <aside className='cms-editor__aside' aria-label='Preview'>
+          <section>
+            <h2>In the menu</h2>
+            <p className='cms-type-preview'>
+              <TypeIcon name={settings.icon} />
+              {settings.label || 'Untitled'}
+            </p>
+            <p className='cms-muted'>
+              The icon can be any of{' '}
+              <a href='https://lucide.dev/icons' target='_blank' rel='noreferrer'>
+                Lucide's icons
+              </a>
+              , named as they are there, such as newspaper. A name it doesn't know shows a page.
+            </p>
+          </section>
+        </aside>
+      </div>
+
       {editable && (
-        <div className='actions'>
-          <button type='button' className='iight-button' disabled={busy} onClick={save}>
-            Save
+        <div className='cms-action-bar'>
+          <button
+            type='button'
+            className='iight-button iight-button--primary'
+            aria-busy={busy === 'save'}
+            onClick={save}
+          >
+            {busy === 'save' ? 'Saving…' : 'Save'}
           </button>
+          {problem && (
+            <p className='cms-problem' role='alert'>
+              <CircleAlert /> {problem}
+            </p>
+          )}
           {type && (
-            <button type='button' className='iight-button' disabled={busy} onClick={remove}>
-              Delete
+            <button type='button' className='iight-button iight-button--danger cms-action-bar__end' onClick={remove}>
+              <Trash2 /> Delete
             </button>
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }

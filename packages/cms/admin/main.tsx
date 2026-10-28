@@ -1,16 +1,22 @@
 import { signInSchema } from '../src/schemas'
+import './admin.scss'
 import { ContentType, TypesContext, api } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { MediaLibrary } from './media'
+import { Shell } from './shell'
+import './theme.scss'
 import { TypeEditor, TypeList } from './types'
+import { Notice, focusInvalid } from './ui'
 import Form, { FormHandle } from 'iight'
 import 'iight/styles/base.scss'
 import 'iight/styles/layout.scss'
-import 'iight/styles/themes/default.scss'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+
+// The design system's reference page, at #/design. Only iight dev has it, so the built admin leaves it out.
+const Design = import.meta.env.DEV ? lazy(() => import('./design')) : undefined
 
 interface User {
   id: string
@@ -20,12 +26,22 @@ interface User {
 
 function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   const form = useRef<FormHandle>(null)
+  // Around the form, for finding the fields that stop it
+  const area = useRef<HTMLDivElement>(null)
   const [values, setValues] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => {
+    document.title = 'Sign in · iight'
+  }, [])
 
+  // Moves focus to the first field to fix, once the form has shown its messages
+  const showInvalid = () => focusInvalid(area.current)
+
+  // The button stays enabled while it signs in, so it keeps focus, and a second go is ignored here instead
   const submit = async () => {
-    if (submitting || !form.current?.validate().isValid) return
+    if (submitting) return
+    if (!form.current?.validate().isValid) return showInvalid()
     setSubmitting(true)
     setError('')
 
@@ -37,8 +53,10 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
       })
 
       if (response.ok) onSignIn((await response.json()).data)
-      else if (response.status === 422) form.current?.applyReport(await response.json())
-      else throw new Error(response.statusText)
+      else if (response.status === 422) {
+        form.current?.applyReport(await response.json())
+        showInvalid()
+      } else throw new Error(response.statusText)
     } catch {
       setError("Couldn't sign in. Try again in a moment.")
     } finally {
@@ -49,15 +67,18 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   return (
     // Core's form has no submit button, so Enter in a field submits from here
     <main
-      className='iight-theme-default sign-in'
+      className='cms-sign-in'
       onKeyDown={(event) => event.key === 'Enter' && event.target instanceof HTMLInputElement && submit()}
     >
-      <h1>Sign in</h1>
-      <Form ref={form} schema={signInSchema} onValuesChange={setValues} />
-      {error && <p role='alert'>{error}</p>}
-      <button type='button' className='iight-button' disabled={submitting} onClick={submit}>
-        Sign in
-      </button>
+      <p className='cms-sign-in__mark'>iight</p>
+      <div className='cms-sign-in__card' ref={area}>
+        <h1>Sign in</h1>
+        {error && <Notice tone='danger'>{error}</Notice>}
+        <Form ref={form} schema={signInSchema} onValuesChange={setValues} />
+        <button type='button' className='iight-button iight-button--primary' aria-busy={submitting} onClick={submit}>
+          {submitting ? 'Signing in…' : 'Sign in'}
+        </button>
+      </div>
     </main>
   )
 }
@@ -65,24 +86,26 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 // The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media, #/forms/<id>/inbox,
 // #/automations/<id>/runs or #/schema/blog in the type editor
 function Page({
+  hash,
   types,
   editable,
   reloadTypes,
 }: {
+  hash: string
   types: Map<string, ContentType>
   editable: boolean
   reloadTypes: () => Promise<void>
 }) {
-  const [hash, setHash] = useState(location.hash)
-  useEffect(() => {
-    const update = () => setHash(location.hash)
-    addEventListener('hashchange', update)
-    return () => removeEventListener('hashchange', update)
-  }, [])
-
   const [section, name, action] = hash.replace(/^#\/?/, '').split('/')
   const type = section === 'types' ? types.get(name) : undefined
 
+  if (Design && section === 'design') {
+    return (
+      <Suspense>
+        <Design />
+      </Suspense>
+    )
+  }
   if (section === 'schema' && name === 'new') return <TypeEditor key='new' editable={editable} onSaved={reloadTypes} />
   if (section === 'schema' && types.has(name)) {
     return <TypeEditor key={name} type={types.get(name)} editable={editable} onSaved={reloadTypes} />
@@ -109,6 +132,14 @@ function App() {
   const [user, setUser] = useState<null | User>()
   const [types, setTypes] = useState<Map<string, ContentType>>()
   const [editable, setEditable] = useState(false)
+
+  // The one copy of the URL's hash, so the shell and the page see each change in the same render
+  const [hash, setHash] = useState(location.hash)
+  useEffect(() => {
+    const update = () => setHash(location.hash)
+    addEventListener('hashchange', update)
+    return () => removeEventListener('hashchange', update)
+  }, [])
 
   useEffect(() => {
     fetch('/api/session')
@@ -137,31 +168,11 @@ function App() {
   if (!types) return null
 
   return (
-    <div className='iight-theme-default admin'>
-      <nav>
-        <strong>iight</strong>
-        {[...types.values()].map((type) => (
-          <a key={type.name} href={`#/types/${type.name}`}>
-            {type.label}
-          </a>
-        ))}
-        <a href='#/media'>Media</a>
-        <a href='#/forms'>Forms</a>
-        <a href='#/automations'>Automations</a>
-        <a href='#/schema'>Content types</a>
-        <p>
-          Signed in as {user.name}.{' '}
-          <button type='button' className='iight-button' onClick={signOut}>
-            Sign out
-          </button>
-        </p>
-      </nav>
-      <main>
-        <TypesContext.Provider value={types}>
-          <Page types={types} editable={editable} reloadTypes={reloadTypes} />
-        </TypesContext.Provider>
-      </main>
-    </div>
+    <Shell hash={hash} types={types} user={user} onSignOut={signOut}>
+      <TypesContext.Provider value={types}>
+        <Page hash={hash} types={types} editable={editable} reloadTypes={reloadTypes} />
+      </TypesContext.Provider>
+    </Shell>
   )
 }
 

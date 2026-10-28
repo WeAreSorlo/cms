@@ -1,0 +1,997 @@
+/*
+ * The admin's own styles, built from the tokens in theme.scss. Core's layout.scss and base.scss style the forms.
+ * Where a rule here touches one of core's classes, it only sets what core leaves unset, so the order the files load in
+ * never matters.
+ */
+
+$phone: 40rem;
+
+// Room for the sticky bars, so a focused field never hides behind them
+html {
+  scroll-padding-block: 4rem;
+}
+
+body {
+  margin: 0;
+  font-family: var(--cms-font);
+  font-size: var(--cms-text-base);
+  line-height: var(--cms-leading-base);
+  color: var(--cms-text);
+  background: var(--cms-page);
+}
+
+h1,
+h2 {
+  font-weight: var(--iight-font-weight-bold);
+}
+
+h1 {
+  font-size: var(--cms-text-xl);
+  line-height: var(--cms-leading-xl);
+}
+
+h2 {
+  font-size: var(--cms-text-lg);
+  line-height: var(--cms-leading-lg);
+}
+
+a {
+  color: var(--cms-accent-strong);
+}
+
+code,
+pre {
+  font-family: var(--cms-font-mono);
+}
+
+:focus-visible {
+  outline: var(--iight-focus-outline);
+  outline-offset: var(--iight-focus-outline-offset);
+}
+
+.cms-sign-in {
+  max-width: 22rem;
+  margin: 15vh auto;
+  padding: 0 var(--iight-size-4);
+}
+
+// The name in text until there's a wordmark
+.cms-sign-in__mark {
+  margin: 0 0 var(--iight-size-4);
+  font-size: var(--cms-text-xl);
+  line-height: var(--cms-leading-xl);
+  font-weight: var(--iight-font-weight-bold);
+  text-align: center;
+}
+
+.cms-sign-in__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-4);
+  padding: var(--cms-size-6);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+  box-shadow: var(--cms-shadow-1);
+
+  h1 {
+    margin: 0;
+  }
+
+  .cms-notice {
+    margin: 0;
+  }
+}
+
+/* Lucide's icons, centred on the text beside them */
+.lucide {
+  flex: none;
+  vertical-align: -0.1875em;
+}
+
+/* Holds an icon's place while it loads */
+.cms-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.admin {
+  display: flex;
+  min-height: 100vh;
+
+  > main {
+    flex: 1;
+    min-width: 0;
+    max-width: var(--cms-column);
+    padding: var(--iight-size-4) var(--cms-size-8);
+
+    // Focus lands here from the skip link only when a page has no heading
+    &:focus {
+      outline: none;
+    }
+  }
+}
+
+/* Off screen until it has focus */
+.cms-skip {
+  position: absolute;
+  top: var(--iight-size-2);
+  left: var(--iight-size-2);
+  z-index: 1;
+
+  &:not(:focus) {
+    transform: translateY(-200%);
+  }
+}
+
+/* The phone's top bar, holding the menu button */
+.cms-bar {
+  display: none;
+}
+
+.cms-nav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--iight-size-4);
+  box-sizing: border-box;
+  width: var(--cms-sidebar);
+  height: 100vh;
+  overflow-y: auto;
+  padding: var(--iight-size-4) var(--iight-size-3);
+  background: var(--cms-surface);
+  border-right: var(--iight-size-px) solid var(--cms-rule);
+
+  ul {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  ul + ul {
+    padding-top: var(--iight-size-4);
+    border-top: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  // As tall as a button, so touch screens get 40px rows too
+  a {
+    display: flex;
+    align-items: center;
+    gap: var(--iight-size-2);
+    padding: var(--iight-button-padding);
+    color: var(--cms-text);
+    text-decoration: none;
+    border: var(--iight-size-px) solid transparent;
+    border-radius: var(--iight-size-1);
+
+    &:hover {
+      background: var(--cms-subtle);
+    }
+
+    &[aria-current='page'] {
+      font-weight: var(--iight-font-weight-bold);
+      color: var(--cms-on-accent);
+      background: var(--cms-accent);
+    }
+  }
+}
+
+.cms-nav__mark {
+  padding: 0 var(--iight-size-2);
+  font-size: var(--cms-text-lg);
+  line-height: var(--cms-leading-lg);
+}
+
+.cms-nav__user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--iight-size-3);
+  margin-top: auto;
+  padding: var(--iight-size-4) var(--iight-size-2) 0;
+  border-top: var(--iight-size-px) solid var(--cms-rule);
+
+  p {
+    margin: 0;
+    color: var(--cms-muted);
+  }
+}
+
+// A row of buttons in the flow of a page, such as Copy under the embed code
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-4);
+  margin: var(--iight-size-4) 0;
+}
+
+.cms-table {
+  width: 100%;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  border-collapse: collapse;
+
+  th,
+  td {
+    box-sizing: border-box;
+    height: var(--cms-row);
+    padding: var(--iight-size-1) var(--iight-size-2);
+    text-align: left;
+    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  th {
+    font-size: var(--cms-text-xs);
+    line-height: var(--cms-leading-xs);
+    font-weight: var(--iight-font-weight-bold);
+    color: var(--cms-muted);
+  }
+
+  tbody tr:hover {
+    background: var(--cms-subtle);
+  }
+
+  .cms-table__number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// Wide tables scroll on their own, rather than the page
+.cms-table-wrap {
+  overflow-x: auto;
+}
+
+.cms-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--iight-size-1);
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+/* Pages built from the design system's pieces set their own widths */
+.admin > main:has(> .cms-page) {
+  max-width: var(--cms-page-max);
+}
+
+.cms-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--iight-size-3);
+  margin-bottom: var(--iight-size-4);
+
+  h1 {
+    margin: 0;
+  }
+}
+
+.cms-header__back {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-1);
+  width: fit-content;
+  margin-bottom: var(--iight-size-1);
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  color: var(--cms-muted);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--cms-text);
+    text-decoration: underline;
+  }
+}
+
+.cms-header__meta,
+.cms-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-2);
+}
+
+.cms-header__meta {
+  margin-top: var(--iight-size-1);
+}
+
+// Core's buttons on links, such as New blog post
+a.iight-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.cms-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--cms-control);
+  height: var(--cms-control);
+  padding: 0;
+  color: var(--cms-text);
+  cursor: pointer;
+  background: transparent;
+  border: var(--iight-size-px) solid transparent;
+  border-radius: var(--iight-size-1);
+
+  &:hover:not(:disabled) {
+    background: var(--cms-subtle);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: var(--iight-disabled-opacity);
+  }
+}
+
+.cms-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--iight-size-2);
+  margin-bottom: var(--iight-size-3);
+  padding: var(--iight-size-2) var(--iight-size-3);
+  background: var(--cms-subtle);
+  border-radius: var(--iight-size-2);
+
+  // Level with the first line of text
+  > .lucide {
+    margin-top: 0.125rem;
+  }
+}
+
+@each $tone in danger, success, warning {
+  .cms-notice--#{$tone} {
+    background: var(--cms-#{$tone}-tint);
+
+    > .lucide {
+      color: var(--cms-#{$tone});
+    }
+  }
+}
+
+.cms-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--iight-size-2);
+  font-size: var(--cms-text-xs);
+  line-height: var(--cms-leading-xs);
+  font-weight: var(--iight-font-weight-bold);
+  color: var(--cms-muted);
+  background: var(--cms-subtle);
+  border-radius: var(--cms-radius-pill);
+}
+
+.cms-badge--accent {
+  color: var(--cms-on-accent);
+  background: var(--cms-accent);
+}
+
+@each $tone in danger, success, warning {
+  .cms-badge--#{$tone} {
+    color: var(--cms-#{$tone});
+    background: var(--cms-#{$tone}-tint);
+  }
+}
+
+.cms-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--iight-size-3);
+  padding: var(--cms-size-8) var(--iight-size-4);
+  color: var(--cms-muted);
+  text-align: center;
+  border: var(--iight-size-px) dashed var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  p {
+    margin: 0;
+  }
+}
+
+// Hidden for its first 300ms, so a quick load never flashes it
+.cms-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-2);
+  color: var(--cms-muted);
+  animation: cms-appear 0s 300ms both;
+}
+
+@keyframes cms-appear {
+  from {
+    visibility: hidden;
+  }
+}
+
+.cms-spin {
+  animation: cms-spin 1s linear infinite;
+}
+
+@keyframes cms-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cms-spin {
+    animation: none;
+  }
+}
+
+.cms-pages {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--iight-size-1);
+  margin-top: var(--iight-size-2);
+  font-size: var(--cms-text-sm);
+  color: var(--cms-muted);
+
+  span {
+    margin-right: var(--iight-size-2);
+  }
+}
+
+.cms-toasts {
+  position: fixed;
+  right: var(--iight-size-4);
+  bottom: var(--iight-size-4);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+}
+
+.cms-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-2);
+  padding: var(--iight-size-1) var(--iight-size-1) var(--iight-size-1) var(--iight-size-3);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+  box-shadow: var(--cms-shadow-2);
+
+  > .lucide {
+    color: var(--cms-success);
+  }
+}
+
+.cms-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--iight-size-2);
+  margin-top: var(--iight-size-4);
+}
+
+// A destructive action, kept apart on the left
+.cms-dialog-actions__start {
+  margin-right: auto;
+}
+
+.cms-editor__body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--cms-size-6) var(--cms-size-8);
+}
+
+.cms-editor__form {
+  flex: 1 1 30rem;
+  min-width: 0;
+  max-width: var(--cms-column);
+}
+
+// Beside the form when there's room, and under it when there isn't
+.cms-editor__aside {
+  display: flex;
+  flex: 1 1 15rem;
+  flex-direction: column;
+  gap: var(--cms-size-6);
+  max-width: 20rem;
+
+  h2 {
+    margin: 0 0 var(--iight-size-2);
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+    color: var(--cms-muted);
+  }
+
+  ul {
+    margin: 0;
+  }
+}
+
+.cms-versions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--iight-size-2);
+    min-height: var(--cms-control);
+  }
+}
+
+// Sticks to the bottom of the window while the form is longer than it
+.cms-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-2);
+  margin-top: var(--cms-size-6);
+  padding: var(--iight-size-3) 0;
+  background: var(--cms-page);
+  border-top: var(--iight-size-px) solid var(--cms-rule);
+}
+
+.cms-action-bar__end {
+  margin-left: auto;
+}
+
+.cms-problem {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-1);
+  margin: 0;
+  color: var(--cms-danger);
+}
+
+.cms-muted {
+  color: var(--cms-muted);
+}
+
+.cms-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.cms-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--iight-size-2);
+  margin-bottom: var(--iight-size-3);
+}
+
+// A picture fills the space without cropping. Its squares show where it's transparent, and the file's kind shows
+// for everything else.
+.cms-thumbnail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--iight-size-1);
+  overflow: hidden;
+  font-size: var(--cms-text-xs);
+  font-weight: var(--iight-font-weight-bold);
+  color: var(--cms-muted);
+  background: var(--cms-subtle);
+  border-radius: var(--iight-size-1);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: repeating-conic-gradient(var(--cms-checker) 0 25%, var(--cms-checker-alt) 0 50%) 0 0 / 1rem 1rem;
+  }
+}
+
+.cms-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: var(--iight-size-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cms-media-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-1);
+  width: 100%;
+  height: 100%;
+  padding: var(--iight-size-2);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  &:hover:not(:disabled) {
+    border-color: var(--cms-border);
+    box-shadow: var(--cms-shadow-1);
+  }
+
+  // Already in the field the picker is for
+  &:disabled {
+    cursor: default;
+    border-color: var(--cms-accent-strong);
+  }
+
+  .cms-thumbnail {
+    aspect-ratio: 1;
+    margin-bottom: var(--iight-size-1);
+
+    .lucide {
+      width: 2rem;
+      height: 2rem;
+    }
+  }
+}
+
+.cms-media-card__name {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.cms-media-card__details {
+  font-size: var(--cms-text-xs);
+  line-height: var(--cms-leading-xs);
+  color: var(--cms-muted);
+}
+
+.cms-media-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--iight-size-1);
+}
+
+// Shows where files will land while they're dragged over it
+.cms-dropzone {
+  border-radius: var(--iight-size-2);
+
+  &[data-dragging] {
+    background: var(--cms-accent-tint);
+    outline: 2px dashed var(--cms-accent-strong);
+    outline-offset: var(--iight-size-1);
+  }
+}
+
+.cms-media-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+  margin-bottom: var(--iight-size-4);
+
+  .cms-thumbnail {
+    height: min(40vh, 18rem);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--cms-text-sm);
+    color: var(--cms-muted);
+  }
+}
+
+.cms-used-by li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-2);
+}
+
+// A relationship or media field: what it holds, each removable, and the button that chooses more
+.cms-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-2);
+}
+
+.cms-picked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: var(--iight-size-2);
+    padding: var(--iight-size-1) var(--iight-size-1) var(--iight-size-1) var(--iight-size-2);
+    overflow-wrap: anywhere;
+    background: var(--cms-surface);
+    border: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: var(--iight-size-1);
+  }
+
+  .cms-thumbnail {
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    font-size: 0.5rem;
+
+    .lucide {
+      display: none;
+    }
+  }
+}
+
+// A picker's search results, each a button that chooses it
+.cms-pick-list {
+  margin: var(--iight-size-3) 0 0;
+  padding: 0;
+  list-style: none;
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--iight-size-2);
+    width: 100%;
+    min-height: var(--cms-row);
+    padding: var(--iight-size-1) var(--iight-size-3);
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    background: none;
+    border: 0;
+  }
+
+  li + li button {
+    border-top: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--cms-subtle);
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+}
+
+/* Core's dialogs keep their title and buttons in view while a long body scrolls */
+.iight-modal[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 4rem);
+}
+
+// Padded out and pulled back in, so its fields' focus rings aren't clipped by the scrolling
+.iight-modal__body {
+  min-height: 0;
+  margin: calc(-1 * var(--iight-size-1));
+  padding: var(--iight-size-1);
+  overflow-y: auto;
+}
+
+.iight-modal__header h2 {
+  margin: 0 0 var(--iight-size-3);
+  overflow-wrap: anywhere;
+}
+
+// Code to copy, dressed as core's inputs are
+.embed {
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--iight-size-2);
+  font: var(--cms-text-sm) / var(--cms-leading-sm) var(--cms-font-mono);
+  color: var(--cms-text);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-border);
+  border-radius: var(--iight-size-1);
+}
+
+// A part of a page below its form, such as a form's embed code
+.cms-section {
+  margin-top: var(--cms-size-8);
+
+  h2 {
+    margin-top: 0;
+  }
+}
+
+.cms-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--iight-size-4);
+  margin-bottom: var(--iight-size-4);
+  border-bottom: var(--iight-size-px) solid var(--cms-rule);
+
+  // The current one is bold as well as underlined in the accent
+  a {
+    margin-bottom: calc(-1 * var(--iight-size-px));
+    padding: var(--iight-size-2) 0;
+    color: var(--cms-muted);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+
+    &:hover {
+      color: var(--cms-text);
+    }
+
+    &[aria-current='page'] {
+      font-weight: var(--iight-font-weight-bold);
+      color: var(--cms-text);
+      border-bottom-color: var(--cms-accent-strong);
+    }
+  }
+}
+
+// A list with what's open in it beside it when there's room, and under it when there isn't
+.cms-split {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--cms-size-6);
+}
+
+.cms-split__list {
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.cms-split__detail {
+  flex: 1 1 26rem;
+  min-width: 0;
+  padding: var(--iight-size-4);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  h2 {
+    margin: 0 0 var(--iight-size-1);
+    overflow-wrap: anywhere;
+  }
+}
+
+.cms-table tbody tr.cms-table__selected {
+  background: var(--cms-accent-tint);
+}
+
+.link {
+  padding: 0;
+  font: inherit;
+  color: var(--cms-accent-strong);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: 0;
+
+  &[aria-current='true'] {
+    font-weight: var(--iight-font-weight-bold);
+  }
+}
+
+.submission {
+  > div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) 3fr;
+    gap: var(--iight-size-4);
+    padding: var(--iight-size-2) 0;
+    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  dt {
+    font-weight: var(--iight-font-weight-bold);
+  }
+
+  dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.response {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--cms-text-sm);
+}
+
+// A run's status badge, with when it's due or when it ended
+.cms-status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-1) var(--iight-size-2);
+}
+
+.cms-run-error {
+  margin: 0 0 var(--iight-size-1);
+  color: var(--cms-danger);
+}
+
+// A content type's icon beside its label, as the menu shows it
+.cms-type-link,
+.cms-type-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--iight-size-2);
+}
+
+.cms-type-preview {
+  margin: 0 0 var(--iight-size-2);
+  padding: var(--iight-button-padding);
+  background: var(--cms-subtle);
+  border-radius: var(--iight-size-1);
+}
+
+@media (max-width: $phone) {
+  .admin {
+    flex-direction: column;
+
+    > main {
+      padding: var(--iight-size-4);
+    }
+  }
+
+  .cms-bar {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--iight-size-2) var(--iight-size-4);
+    background: var(--cms-surface);
+    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  // The menu button shows and hides the nav, which then sits under the bar
+  .cms-nav {
+    position: static;
+    width: auto;
+    height: auto;
+    border-right: 0;
+    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+
+    &:not([data-open]) {
+      display: none;
+    }
+  }
+
+  .cms-nav__mark {
+    display: none;
+  }
+
+  .cms-toasts {
+    left: var(--iight-size-4);
+  }
+}

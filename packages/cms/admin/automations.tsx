@@ -1,6 +1,19 @@
 import { actionLayouts, automationSchema, events } from '../src/schemas'
 import { api, date, errorMessage } from './api'
+import {
+  Badge,
+  EmptyState,
+  Loading,
+  Notice,
+  PageHeader,
+  Pages,
+  Pagination,
+  focusInvalid,
+  useConfirm,
+  useToast,
+} from './ui'
 import Form, { FormHandle, baseInputSchemaFields } from 'iight'
+import { CircleAlert, History, Mail, Pencil, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // An automation as the admin API returns it
@@ -38,30 +51,32 @@ const actionLabel = (automation: Automation, index: number) =>
 // Automations, with what triggers them and what they do, each opening in the automation editor
 function AutomationTable({ automations }: { automations: Array<Automation> }) {
   return (
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>When</th>
-          <th>Then</th>
-          <th>Runs</th>
-        </tr>
-      </thead>
-      <tbody>
-        {automations.map((automation) => (
-          <tr key={automation.id}>
-            <td>
-              <a href={`#/automations/${automation.id}`}>{automation.name}</a>
-            </td>
-            <td>{automation.triggers.map(eventLabel).join(', ')}</td>
-            <td>{automation.actions.map((_, index) => actionLabel(automation, index)).join(', ')}</td>
-            <td>
-              <a href={`#/automations/${automation.id}/runs`}>Runs</a>
-            </td>
+    <div className='cms-table-wrap'>
+      <table className='cms-table'>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>When</th>
+            <th>Then</th>
+            <th>Runs</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {automations.map((automation) => (
+            <tr key={automation.id}>
+              <td>
+                <a href={`#/automations/${automation.id}`}>{automation.name}</a>
+              </td>
+              <td>{automation.triggers.map(eventLabel).join(', ')}</td>
+              <td>{automation.actions.map((_, index) => actionLabel(automation, index)).join(', ')}</td>
+              <td>
+                <a href={`#/automations/${automation.id}/runs`}>Runs</a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
@@ -75,16 +90,24 @@ export function AutomationList() {
       .catch((error) => setError(errorMessage(error)))
   }, [])
 
+  const newAutomation = (
+    <a className='iight-button iight-button--primary' href='#/automations/new'>
+      <Plus /> New automation
+    </a>
+  )
+
   return (
-    <>
-      <header>
-        <h1>Automations</h1>
-        <a href='#/automations/new'>New automation</a>
-      </header>
-      {error && <p role='alert'>{error}</p>}
-      {automations?.length === 0 && <p>No automations yet.</p>}
+    <div className='cms-page'>
+      <PageHeader title='Automations' actions={newAutomation} />
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!automations && !error && <Loading />}
+      {automations?.length === 0 && (
+        <EmptyState icon={<Workflow />} action={newAutomation}>
+          No automations yet.
+        </EmptyState>
+      )}
       {!!automations?.length && <AutomationTable automations={automations} />}
-    </>
+    </div>
   )
 }
 
@@ -103,11 +126,14 @@ export function FormAutomations({ formId }: { formId: string }) {
     <section>
       <h2>Automations</h2>
       <p>Each submission runs the automations whose conditions it meets.</p>
-      {error && <p role='alert'>{error}</p>}
-      {automations?.length === 0 && <p>None yet.</p>}
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!automations && !error && <Loading />}
+      {automations?.length === 0 && <p className='cms-muted'>None yet.</p>}
       {!!automations?.length && <AutomationTable automations={automations} />}
       <div className='actions'>
-        <a href={`#/automations/new/${formId}`}>Email new submissions</a>
+        <a className='iight-button' href={`#/automations/new/${formId}`}>
+          <Mail /> Email new submissions
+        </a>
       </div>
     </section>
   )
@@ -117,73 +143,106 @@ export function FormAutomations({ formId }: { formId: string }) {
 // actions it runs in order
 function AutomationEditor({ automation: loaded, initial }: { automation?: Automation; initial?: object }) {
   const form = useRef<FormHandle>(null)
+  // Around the form, for finding the fields that stop a save
+  const area = useRef<HTMLDivElement>(null)
+  const confirm = useConfirm()
+  const toast = useToast()
   const [automation, setAutomation] = useState(loaded)
   const [shown, setShown] = useState<Record<string, any>>(loaded ? settingsOf(loaded) : (initial ?? {}))
   const [values, setValues] = useState(shown)
-  const [message, setMessage] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState('')
+  // The action under way, such as save
+  const [busy, setBusy] = useState<string>()
 
-  const save = async () => {
-    if (busy || !form.current?.validate().isValid) return
-    setBusy(true)
-    setMessage('')
+  // Run an action, showing what went wrong if it fails. The buttons stay enabled, so the focused one keeps focus, and
+  // a second click is ignored here instead.
+  const act = async (name: string, action: () => Promise<unknown>) => {
+    if (busy) return
+    setBusy(name)
+    setProblem('')
     try {
+      await action()
+    } catch (error) {
+      setProblem(errorMessage(error))
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
+  // Once the form has shown its messages
+  const showInvalid = () => focusInvalid(area.current).then(setProblem)
+
+  const save = () =>
+    act('save', async () => {
+      if (!form.current?.validate().isValid) return showInvalid()
       const { status, body } = automation
         ? await api('PUT', `/automations/${automation.id}`, values)
         : await api('POST', '/automations', values)
 
       if (status === 422) {
         form.current.applyReport(body)
-        return setMessage('The automation has problems, shown with its settings.')
+        return showInvalid()
       }
+      toast('Saved')
       if (!automation) return void (location.hash = `#/automations/${body.data.id}`)
 
       // Saving makes a new webhook's secret, so show the settings as they were saved
       setAutomation(body.data)
       setShown(settingsOf(body.data))
       setValues(settingsOf(body.data))
-      setMessage('Saved.')
-    } catch (error) {
-      setMessage(errorMessage(error))
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
 
+  // It asks before the action starts, so the question's dialog hands focus back to Delete
   const remove = async () => {
-    if (busy || !automation || !confirm(`Delete ${automation.name}? Its runs go too, and any still to come.`)) return
-    setBusy(true)
-    try {
+    if (!automation) return
+    const sure = await confirm({
+      title: `Delete ${automation.name}?`,
+      body: 'Its runs go too, and any still to come.',
+      action: 'Delete',
+      danger: true,
+    })
+    if (!sure) return
+    act('delete', async () => {
       await api('DELETE', `/automations/${automation.id}`)
+      toast('Deleted')
       location.hash = '#/automations'
-    } catch (error) {
-      setMessage(errorMessage(error))
-      setBusy(false)
-    }
+    })
   }
 
   return (
-    <>
-      <header>
-        <a href='#/automations'>Automations</a>
-        <h1>{automation ? automation.name : 'New automation'}</h1>
-        {automation && <a href={`#/automations/${automation.id}/runs`}>Runs</a>}
-      </header>
+    <div className='cms-page cms-editor'>
+      <PageHeader
+        back={{ href: '#/automations', label: 'Automations' }}
+        title={automation ? automation.name : 'New automation'}
+        actions={
+          automation && (
+            <a className='iight-button' href={`#/automations/${automation.id}/runs`}>
+              <History /> Runs
+            </a>
+          )
+        }
+      />
 
-      <Form ref={form} schema={schema} values={shown} onValuesChange={setValues} />
+      <div ref={area} className='cms-editor__form'>
+        <Form ref={form} schema={schema} values={shown} onValuesChange={setValues} />
+      </div>
 
-      {message && <p role='status'>{message}</p>}
-      <div className='actions'>
-        <button type='button' className='iight-button' disabled={busy} onClick={save}>
-          Save
+      <div className='cms-action-bar'>
+        <button type='button' className='iight-button iight-button--primary' aria-busy={busy === 'save'} onClick={save}>
+          {busy === 'save' ? 'Saving…' : 'Save'}
         </button>
+        {problem && (
+          <p className='cms-problem' role='alert'>
+            <CircleAlert /> {problem}
+          </p>
+        )}
         {automation && (
-          <button type='button' className='iight-button' disabled={busy} onClick={remove}>
-            Delete
+          <button type='button' className='iight-button iight-button--danger cms-action-bar__end' onClick={remove}>
+            <Trash2 /> Delete
           </button>
         )}
       </div>
-    </>
+    </div>
   )
 }
 
@@ -198,8 +257,8 @@ export function AutomationPage({ id }: { id: string }) {
       .catch((error) => setError(errorMessage(error)))
   }, [id])
 
-  if (error) return <p role='alert'>{error}</p>
-  return automation ? <AutomationEditor automation={automation} /> : null
+  if (error) return <Notice tone='danger'>{error}</Notice>
+  return automation ? <AutomationEditor automation={automation} /> : <Loading />
 }
 
 // A new automation, or with a form's ID, one that emails the form's submissions, leaving out spam
@@ -228,20 +287,32 @@ export function NewAutomation({ formId }: { formId?: string }) {
       .catch((error) => setError(errorMessage(error)))
   }, [formId])
 
-  if (error) return <p role='alert'>{error}</p>
-  return initial ? <AutomationEditor initial={initial} /> : null
+  if (error) return <Notice tone='danger'>{error}</Notice>
+  return initial ? <AutomationEditor initial={initial} /> : <Loading />
 }
 
-// When a pending try is due, or when a try finished
-const when = (run: Run) =>
-  run.status === 'pending'
-    ? `Due ${date(run.runAt)}`
-    : `${run.status === 'succeeded' ? 'Succeeded' : 'Failed'} ${date(run.finishedAt!)}`
+// A try's status as a badge, with when a pending try is due or when a finished one ended
+function Status({ run }: { run: Run }) {
+  if (run.status === 'pending') {
+    return (
+      <span className='cms-status'>
+        <Badge>Due</Badge>
+        <span className='cms-muted'>{date(run.runAt)}</span>
+      </span>
+    )
+  }
+  return (
+    <span className='cms-status'>
+      {run.status === 'succeeded' ? <Badge tone='success'>Succeeded</Badge> : <Badge tone='danger'>Failed</Badge>}
+      <span className='cms-muted'>{date(run.finishedAt!)}</span>
+    </span>
+  )
+}
 
 // An automation's runs, newest first: each try of each of its actions, with what came back or why it failed
 export function Runs({ id }: { id: string }) {
   const [automation, setAutomation] = useState<Automation>()
-  const [list, setList] = useState<{ data: Array<Run>; pagination: { lastPage: number } }>()
+  const [list, setList] = useState<{ data: Array<Run>; pagination: Pagination }>()
   const [page, setPage] = useState(1)
   const [error, setError] = useState('')
 
@@ -260,68 +331,66 @@ export function Runs({ id }: { id: string }) {
   useEffect(() => void refresh(), [refresh])
 
   return (
-    <>
-      <header>
-        <a href='#/automations'>Automations</a>
-        <h1>{automation ? `${automation.name}: runs` : 'Runs'}</h1>
-        {automation && <a href={`#/automations/${id}`}>Edit the automation</a>}
-        <button type='button' className='iight-button' onClick={refresh}>
-          Refresh
-        </button>
-      </header>
+    <div className='cms-page'>
+      <PageHeader
+        back={{ href: '#/automations', label: 'Automations' }}
+        title={automation ? `${automation.name}: runs` : 'Runs'}
+        actions={
+          <>
+            {automation && (
+              <a className='iight-button' href={`#/automations/${id}`}>
+                <Pencil /> Edit the automation
+              </a>
+            )}
+            <button type='button' className='iight-button' onClick={refresh}>
+              <RefreshCw /> Refresh
+            </button>
+          </>
+        }
+      />
 
-      {error && <p role='alert'>{error}</p>}
-      {list?.data.length === 0 && <p>No runs yet. Each try of each action shows here.</p>}
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!list && !error && <Loading />}
+      {list?.data.length === 0 && (
+        <EmptyState icon={<History />}>No runs yet. Each try of each action shows here.</EmptyState>
+      )}
       {!!list?.data.length && (
-        <table>
-          <thead>
-            <tr>
-              <th>Event</th>
-              <th>Action</th>
-              <th>Try</th>
-              <th>Status</th>
-              <th>What came back</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data.map((run) => (
-              <tr key={run.id}>
-                <td>
-                  {eventLabel(run.event.name)}
-                  <br />
-                  <small>{date(run.event.createdAt)}</small>
-                </td>
-                <td>{automation ? `${run.action + 1}. ${actionLabel(automation, run.action)}` : run.action + 1}</td>
-                <td>{run.attempt}</td>
-                <td>{when(run)}</td>
-                <td>
-                  {run.error && <p>{run.error}</p>}
-                  {run.response && <pre className='response'>{run.response}</pre>}
-                </td>
+        <div className='cms-table-wrap'>
+          <table className='cms-table'>
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Action</th>
+                <th className='cms-table__number'>Try</th>
+                <th>Status</th>
+                <th>What came back</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {list.data.map((run) => (
+                <tr key={run.id}>
+                  <td>
+                    {eventLabel(run.event.name)}
+                    <br />
+                    <small className='cms-muted'>{date(run.event.createdAt)}</small>
+                  </td>
+                  <td>{automation ? `${run.action + 1}. ${actionLabel(automation, run.action)}` : run.action + 1}</td>
+                  <td className='cms-table__number'>{run.attempt}</td>
+                  <td>
+                    <Status run={run} />
+                  </td>
+                  <td>
+                    {run.error && <p className='cms-run-error'>{run.error}</p>}
+                    {run.response && <pre className='response'>{run.response}</pre>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      {list && list.pagination.lastPage > 1 && (
-        <nav className='actions' aria-label='Pages'>
-          <button type='button' className='iight-button' disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          <span>
-            Page {page} of {list.pagination.lastPage}
-          </span>
-          <button
-            type='button'
-            className='iight-button'
-            disabled={page === list.pagination.lastPage}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </button>
-        </nav>
-      )}
-    </>
+      {!!list?.pagination.total && <Pages pagination={list.pagination} onPage={setPage} />}
+    </div>
   )
 }
