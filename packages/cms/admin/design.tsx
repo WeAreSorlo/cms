@@ -1,5 +1,6 @@
 import { contrast, pairs } from './contrast'
 import './design.scss'
+import { iconInput, useInputs } from './fields'
 import { Media, MediaCard } from './media'
 import {
   Badge,
@@ -118,6 +119,14 @@ const stateSchema: Array<FieldSchema> = [
   },
 ]
 
+// The CMS's pickers: entries up to a maximum, so Choose goes once it's full, any number of files, and an icon
+const pickerFields = (state: string): Array<FieldSchema> =>
+  [
+    { type: 'relationship', name: 'entries', label: 'Entries', instructions: 'Up to two.', options: { maximum: 2 } },
+    { type: 'media', name: 'files', label: 'Files', instructions: 'Any number.' },
+    { type: 'icon', name: 'icon', label: 'Icon', defaultValue: 'newspaper' },
+  ].map((field) => ({ ...field, readonly: state === 'readonly', disabled: state === 'disabled' }))
+
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 // The design system's tokens and components in the current theme, for checking changes to them. iight dev serves it at
@@ -139,6 +148,9 @@ export default function Design() {
 
   const [state, setState] = useState('editable')
   const schema = useMemo(() => everyInput(state), [state])
+  const cmsInputs = useInputs()
+  const pickerInputs = useMemo(() => ({ ...cmsInputs, icon: iconInput }), [cmsInputs])
+  const pickerSchema = useMemo(() => pickerFields(state), [state])
   const form = useRef<FormHandle>(null)
   const toast = useToast()
   const confirm = useConfirm()
@@ -321,6 +333,9 @@ export default function Design() {
         </button>
       </div>
       <Form key={state} ref={form} schema={schema} />
+
+      <h2>Pickers</h2>
+      <Form key={`pickers ${state}`} schema={pickerSchema} inputs={pickerInputs} />
     </div>
   )
 }

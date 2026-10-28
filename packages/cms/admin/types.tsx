@@ -1,6 +1,6 @@
 import { typeSchema } from '../src/schemas'
 import { ContentType, api, errorMessage } from './api'
-import { useInputs } from './fields'
+import { iconInput, useInputs } from './fields'
 import { Badge, EmptyState, Notice, PageHeader, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
 import { Blocks, CircleAlert, Plus, Trash2 } from 'lucide-react'
@@ -8,6 +8,8 @@ import { useMemo, useRef, useState } from 'react'
 
 // The builder is a form of its own, so a new choice in the settings never resets an editor open in it
 const fieldsSchema: Array<FieldSchema> = [{ name: 'fields', label: 'Fields', type: 'schemabuilder' }]
+
+const settingsInputs = { icon: iconInput }
 
 const readOnly = 'Content types can only be changed in development, with iight dev. Their changes ship through git.'
 
@@ -210,7 +212,13 @@ export function TypeEditor({
               )}
             </Notice>
           )}
-          <Form ref={settingsForm} schema={schema} values={shown} onValuesChange={setSettings} />
+          <Form
+            ref={settingsForm}
+            schema={schema}
+            inputs={settingsInputs}
+            values={shown}
+            onValuesChange={setSettings}
+          />
           <Form
             ref={fieldsForm}
             schema={fieldsSchema}
@@ -227,13 +235,6 @@ export function TypeEditor({
             <p className='cms-type-preview'>
               <TypeIcon name={settings.icon} />
               {settings.label || 'Untitled'}
-            </p>
-            <p className='cms-muted'>
-              The icon can be any of{' '}
-              <a href='https://lucide.dev/icons' target='_blank' rel='noreferrer'>
-                Lucide's icons
-              </a>
-              , named as they are there, such as newspaper. A name it doesn't know shows a page.
             </p>
           </section>
         </aside>

@@ -91,10 +91,16 @@ const detailsOf = (media: Media) =>
     .filter(Boolean)
     .join(' · ')
 
-// A file in the grid. In a picker, the files the field already holds can't be chosen again.
+// A file in the grid. In a picker, the files the field already holds can't be chosen again, though they stay
+// focusable, so focus stays on the one just picked while the dialog takes more.
 export function MediaCard({ media, chosen, onClick }: { media: Media; chosen?: boolean; onClick: () => void }) {
   return (
-    <button type='button' className='cms-media-card' disabled={chosen} onClick={onClick}>
+    <button
+      type='button'
+      className='cms-media-card'
+      aria-disabled={chosen || undefined}
+      onClick={chosen ? undefined : onClick}
+    >
       <Thumbnail media={media} />
       <span className='cms-media-card__name' title={media.name}>
         {media.name}

@@ -81,10 +81,10 @@ test('creates a type, writing its file with a new id', async () => {
 })
 
 test('problems reply 422 with a report on the settings, and on the fields for the rest', async () => {
-  const bad = await send('POST', '/types', { name: 'not ok', structure: 'list', fields: [] })
+  const bad = await send('POST', '/types', { name: 'not ok', structure: 'list', icon: 7, fields: [] })
   expect(bad.status).toBe(422)
   expect(bad.body.isValid).toBe(false)
-  for (const key of ['label', 'name', 'structure']) expect(bad.body.fields[key].isValid).toBe(false)
+  for (const key of ['label', 'name', 'structure', 'icon']) expect(bad.body.fields[key].isValid).toBe(false)
 
   const fields = [{ type: 'text', name: 'title' }]
   const taken = await send('POST', '/types', { ...events, name: 'blog', titleField: undefined, fields })

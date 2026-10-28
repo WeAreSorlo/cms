@@ -16,6 +16,9 @@ export interface EditorDirs {
   migrations: string
 }
 
+// The settings' icon is text here, and a picker in the admin
+const settingsInputs = { ...inputs, icon: inputs.text }
+
 // A new type's id, in the form core gives fields, such as typ_k3x9q2mz
 const createTypeId = () => `typ_${Array.from(randomBytes(8), (byte) => (byte % 36).toString(36)).join('')}`
 
@@ -64,8 +67,8 @@ export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
     const body = await c.req.json().catch(() => ({}))
     const fields = Array.isArray(body?.fields) ? body.fields : []
     const schema = typeSchema(fields)
-    const settings = pickValues(schema, body ?? {}, inputs)
-    const report = await validateServerValues(schema, settings, inputs)
+    const settings = pickValues(schema, body ?? {}, settingsInputs)
+    const report = await validateServerValues(schema, settings, settingsInputs)
 
     // In the order the type files have them, leaving out empty settings
     const type: ContentType = JSON.parse(

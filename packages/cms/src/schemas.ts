@@ -151,7 +151,8 @@ export function automationSchema(baseFields: Array<FieldSchema>): Array<FieldSch
 }
 
 // A content type's settings, rendered by the admin's type editor and checked by its routes. The choices come from the
-// type's top-level fields, and checkType in types.ts checks the fields themselves.
+// type's top-level fields, and checkType in types.ts checks the fields themselves. The icon is text to the routes,
+// and a picker of Lucide's icons in the admin.
 export function typeSchema(fields: Array<FieldSchema>): Array<FieldSchema> {
   const choices = (list: Array<FieldSchema>) =>
     list.map((field) => ({ value: field.name, label: field.label ?? field.name }))
@@ -187,6 +188,6 @@ export function typeSchema(fields: Array<FieldSchema>): Array<FieldSchema> {
       options: { placeholder: 'None', choices: choices(fields.filter((field) => field.type === 'identifier')) },
     },
     { name: 'listColumns', label: 'List columns', type: 'checkbox', options: { choices: choices(fields) } },
-    { name: 'icon', label: 'Icon', type: 'text', options: { placeholder: 'newspaper' } },
+    { name: 'icon', label: 'Icon', type: 'icon' },
   ]
 }

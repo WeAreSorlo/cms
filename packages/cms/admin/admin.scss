@@ -630,13 +630,13 @@ a.iight-button {
   border: var(--iight-size-px) solid var(--cms-rule);
   border-radius: var(--iight-size-2);
 
-  &:hover:not(:disabled) {
+  &:hover:not([aria-disabled]) {
     border-color: var(--cms-border);
     box-shadow: var(--cms-shadow-1);
   }
 
   // Already in the field the picker is for
-  &:disabled {
+  &[aria-disabled] {
     cursor: default;
     border-color: var(--cms-accent-strong);
   }
@@ -775,12 +775,58 @@ a.iight-button {
     border-top: var(--iight-size-px) solid var(--cms-rule);
   }
 
-  button:hover:not(:disabled) {
+  button:hover:not([aria-disabled]) {
     background: var(--cms-subtle);
   }
 
-  button:disabled {
+  button[aria-disabled] {
     cursor: default;
+  }
+}
+
+// The icon picker's search results, each icon over its name
+.cms-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: var(--iight-size-1);
+  margin: var(--iight-size-3) 0;
+  padding: 0;
+  list-style: none;
+
+  button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--iight-size-1);
+    width: 100%;
+    height: 100%;
+    padding: var(--iight-size-2) var(--iight-size-1);
+    font: inherit;
+    font-size: var(--cms-text-xs);
+    line-height: var(--cms-leading-xs);
+    color: inherit;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    background: var(--cms-surface);
+    border: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: var(--iight-size-1);
+
+    &:hover {
+      background: var(--cms-subtle);
+      border-color: var(--cms-border);
+    }
+
+    // The icon the field holds
+    &[aria-current] {
+      background: var(--cms-accent-tint);
+      border-color: var(--cms-accent-strong);
+    }
+  }
+
+  // Holds a 24px icon's place while it loads
+  .cms-icon {
+    width: 1.5rem;
+    height: 1.5rem;
   }
 }
 
