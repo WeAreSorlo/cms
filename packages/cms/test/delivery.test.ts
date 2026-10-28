@@ -145,8 +145,8 @@ test("rejects a query it can't check against the type", async () => {
       'Unknown field "title". Use values.<name> for one of blog\'s fields, ' +
       'or one of id, slug, uri, parentId, position, createdAt, updatedAt.',
   })
-  expect(await rejects(where({ field: 'values.author', op: '=', value: 'Ada' }))).toEqual({
-    message: expect.stringContaining('Unknown field "values.author".'),
+  expect(await rejects(where({ field: 'values.editor', op: '=', value: 'Ada' }))).toEqual({
+    message: expect.stringContaining('Unknown field "values.editor".'),
   })
   expect(await rejects(where({ field: 'values.title', op: '~', value: 'Hi' }))).toEqual({
     message: expect.stringContaining('Unknown operator "~".'),

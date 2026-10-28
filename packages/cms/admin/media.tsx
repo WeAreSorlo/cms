@@ -1,10 +1,10 @@
 import { mediaSchema } from '../src/schemas'
-import { api, date, errorMessage } from './api'
+import { ContentType, Entry, TypesContext, api, date, errorMessage, titleOf } from './api'
 import Form, { FieldSchema, FormHandle, Modal } from 'iight'
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 
 // A media file as the admin API returns it
-interface Media {
+export interface Media {
   id: string
   name: string
   mime: string
@@ -41,7 +41,7 @@ const isImage = (media: Media) => media.mime.startsWith('image/')
 const extension = (media: Media) => media.name.split('.').pop()!.toUpperCase()
 
 // A file's picture, or its type for other files and for images the browser can't show, such as HEIC outside Safari
-function Thumbnail({ media }: { media: Media }) {
+export function Thumbnail({ media }: { media: Media }) {
   const [shows, setShows] = useState(isImage(media))
   return shows ? (
     <img src={media.url} alt='' loading='lazy' onError={() => setShows(false)} />
@@ -57,8 +57,16 @@ function formatSize(bytes: number) {
   return new Intl.NumberFormat(undefined, { style: 'unit', unit, maximumFractionDigits: 1 }).format(size)
 }
 
-// The media library: every file in a grid, newest first, with a type filter and a search on names
-export function MediaLibrary() {
+// Choosing files for a media field: the MIME types it takes, the files it holds, and what happens to the one chosen
+interface Pick {
+  types?: Array<string>
+  chosen: Array<string>
+  onPick: (media: Media) => void
+}
+
+// The media library: every file in a grid, newest first, with a type filter and a search on names. Given a field to
+// pick for, it shows only the types the field takes, and a click picks the file rather than editing it.
+export function MediaLibrary({ pick }: { pick?: Pick }) {
   const [filters, setFilters] = useState<Record<string, any>>({})
   const [page, setPage] = useState(1)
   const [list, setList] = useState<{ data: Array<Media>; pagination: { lastPage: number } }>()
@@ -74,7 +82,11 @@ export function MediaLibrary() {
       filters.search && { field: 'name', op: 'like', value: filters.search },
     ].filter(Boolean)
     const params = new URLSearchParams({ order: '{"createdAt":"desc"}', page: String(page), perPage: '24' })
-    if (where.length) params.set('where', JSON.stringify([where]))
+    // Any of the types, each with the filters, since groups join with OR
+    const groups = pick?.types?.length
+      ? pick.types.map((type) => [{ field: 'mime', op: 'like', value: type.replace(/\*$/, '') }, ...where])
+      : [where]
+    if (groups.some((group) => group.length)) params.set('where', JSON.stringify(groups))
 
     // A slow reply to an earlier search mustn't replace a newer one
     let current = true
@@ -84,7 +96,7 @@ export function MediaLibrary() {
     return () => {
       current = false
     }
-  }, [filters, page, reloads])
+  }, [filters, page, reloads, pick?.types?.join()])
 
   // Each file goes up on its own, so one that's turned away doesn't stop the others
   const upload = async (files: Array<File>) => {
@@ -114,7 +126,7 @@ export function MediaLibrary() {
   return (
     <>
       <header>
-        <h1>Media</h1>
+        {!pick && <h1>Media</h1>}
         {/* A button opens the hidden file input, which keyboards can't reach */}
         <button type='button' className='iight-button' disabled={uploading} onClick={() => picker.current?.click()}>
           {uploading ? 'Uploading…' : 'Upload files'}
@@ -124,6 +136,7 @@ export function MediaLibrary() {
           type='file'
           multiple
           hidden
+          accept={pick?.types?.join(',')}
           onChange={(event) => {
             // Copied, since clearing the input empties its list, so choosing the same file again uploads it again
             upload([...(event.target.files ?? [])])
@@ -133,7 +146,8 @@ export function MediaLibrary() {
       </header>
 
       <Form
-        schema={filterSchema}
+        // A picker for a field that takes some types has nothing to filter by type
+        schema={pick?.types?.length ? filterSchema.slice(1) : filterSchema}
         onValuesChange={(next) => {
           setFilters(next)
           setPage(1)
@@ -152,7 +166,11 @@ export function MediaLibrary() {
         <ul className='media-grid'>
           {list.data.map((media) => (
             <li key={media.id}>
-              <button type='button' onClick={() => setEditing(media)}>
+              <button
+                type='button'
+                disabled={pick?.chosen.includes(media.id)}
+                onClick={() => (pick ? pick.onPick(media) : setEditing(media))}
+              >
                 <Thumbnail media={media} />
                 <span>{media.name}</span>
                 {!media.alt && <small>No alt text</small>}
@@ -198,6 +216,14 @@ function MediaEditor({ media: loaded, onClose }: { media: Media; onClose: () => 
   const [values, setValues] = useState<Record<string, any>>(shown)
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [usedBy, setUsedBy] = useState<Array<Entry>>([])
+  const types = useContext(TypesContext)
+
+  useEffect(() => {
+    api('GET', `/media/${loaded.id}/used-by`)
+      .then(({ body }) => setUsedBy(body.data))
+      .catch((error) => setMessage(errorMessage(error)))
+  }, [loaded.id])
 
   // Run an action, showing what went wrong if it fails
   const act = async (action: () => Promise<unknown>) => {
@@ -270,6 +296,28 @@ function MediaEditor({ media: loaded, onClose }: { media: Media; onClose: () => 
       </p>
       <Form ref={form} schema={mediaSchema} values={shown} onValuesChange={setValues} />
       {message && <p role='status'>{message}</p>}
+      <UsedBy entries={usedBy} types={types} />
     </Modal>
+  )
+}
+
+// The entries that link to a file or an entry, each opening in its editor
+export function UsedBy({ entries, types }: { entries: Array<Entry>; types: Map<string, ContentType> }) {
+  if (!entries.length) return null
+  return (
+    <section>
+      <h2>Used by</h2>
+      <ul>
+        {entries.map((entry) => {
+          const type = types.get(entry.type)
+          return (
+            <li key={entry.id}>
+              <a href={`#/entries/${entry.id}`}>{type ? titleOf(type, entry) : entry.type}</a>
+              {entry.archivedAt ? ' (archived)' : ''}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }

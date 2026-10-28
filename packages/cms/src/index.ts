@@ -8,6 +8,7 @@ export interface Config {
   // Where uploaded media is stored: FlyDrive's DriveManager options, whose services are the disks
   storage: Storage
   media?: MediaOptions
+  delivery?: DeliveryOptions
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>
@@ -20,6 +21,15 @@ export interface MediaOptions {
   maxFileSize?: number
   // The Cache-Control header of served files, public, max-age=3600 if not given
   cacheControl?: string
+}
+
+// How deep the delivery API's with resolves links: the fields it names are the first level, and the links of what they
+// hold are the next
+export interface DeliveryOptions {
+  // The levels a request gets when it doesn't send depth, 2 if not given
+  depth?: number
+  // The most levels a request can ask for, 5 if not given. Each level can multiply the entries a reply holds.
+  maxDepth?: number
 }
 
 // Every format of image, video and audio that a file's content can show, and PDFs

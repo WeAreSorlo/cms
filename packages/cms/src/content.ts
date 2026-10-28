@@ -1,7 +1,8 @@
-import { flattenValidationReport, inputs, validateServerValues } from './core'
+import { flattenValidationReport, validateServerValues } from './core'
 import type { Database } from './db'
 import { type Migrations, loadMigrations } from './migrator'
 import { type EntryRow, isSaved } from './query'
+import { serverInputs } from './relations'
 import type { ContentType } from './types'
 import { Kysely, sql } from 'kysely'
 
@@ -244,6 +245,7 @@ export async function catchUp(type: string, values: Values, migrations: Array<Co
 // A singleton that's been opened but never saved can still lack required values, as it always did.
 export async function checkEntries(db: Kysely<Database>, types: Map<string, ContentType>) {
   const failures: Array<{ entry: EntryRow; messages: Record<string, Array<string>> }> = []
+  const inputs = serverInputs(db, types)
   let after: string | undefined
   for (;;) {
     const rows = await db

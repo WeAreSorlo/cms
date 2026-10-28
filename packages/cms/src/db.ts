@@ -42,6 +42,12 @@ export interface Database {
     created_by: string | null
     created_at: Generated<Date>
   }
+  // What each entry's relationship and media fields link to, rebuilt on every save
+  entry_relations: {
+    entry_id: string
+    field_id: string
+    target_id: string
+  }
   api_keys: {
     id: string
     name: string

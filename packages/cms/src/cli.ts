@@ -7,6 +7,7 @@ import { createApiKey } from './delivery'
 import { makeMigration } from './makeMigration'
 import { loadMigrations, migrate, migrationsDir, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
+import { rebuildRelations } from './relations'
 import { apiKeySchema, userSchema } from './schemas'
 import { loadTypes } from './types'
 import type { FieldSchema } from 'iight'
@@ -29,6 +30,7 @@ const commands: Record<string, Command> = {
       const { cms, content } = await loadAllMigrations()
       const names = await migrate(db, cms, contentMigrations(content))
       console.log(names.length ? names.map((name) => `Migrated ${name}`).join('\n') : 'Nothing to migrate.')
+      await afterContentMigrations(db, names, content)
     },
   },
   'migrate:rollback': {
@@ -37,6 +39,8 @@ const commands: Record<string, Command> = {
       const { cms, content } = await loadAllMigrations()
       const names = await rollback(db, { ...cms, ...contentMigrations(content) })
       console.log(names.length ? names.map((name) => `Rolled back ${name}`).join('\n') : 'Nothing to roll back.')
+      // Rolling back the CMS's own migrations can drop entry_relations
+      if (!names.some((name) => Object.hasOwn(cms, name))) await afterContentMigrations(db, names, content)
     },
   },
   'migrate:status': {
@@ -92,6 +96,11 @@ async function loadAllMigrations() {
   return { cms, content }
 }
 
+// Content migrations change entries' values, so their links in entry_relations are rebuilt from the types
+async function afterContentMigrations(db: Kysely<Database>, names: Array<string>, content: object) {
+  if (names.some((name) => Object.hasOwn(content, name))) await rebuildRelations(db, await loadProjectTypes())
+}
+
 // List every entry whose values no longer pass, such as after a field's choices narrowed, failing if there are any
 async function check(db: Kysely<Database>) {
   const types = await loadProjectTypes()
@@ -128,6 +137,7 @@ async function dev(db: Kysely<Database>) {
     editor: dirs,
     storage: config.storage,
     media: config.media,
+    delivery: config.delivery,
   })
   const api = getRequestListener(app.fetch)
 

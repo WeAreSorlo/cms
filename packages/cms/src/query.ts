@@ -22,6 +22,14 @@ export const toEntry = (row: EntryRow) => ({
   updatedAt: row.updated_at,
 })
 
+// An entry as the admin API returns it
+export const toAdminEntry = (row: EntryRow) => ({
+  ...toEntry(row),
+  archivedAt: row.archived_at,
+  createdBy: row.created_by,
+  updatedBy: row.updated_by,
+})
+
 type Kind = 'uuid' | 'text' | 'integer' | 'timestamp'
 
 // What filters and sorts can name: properties, with their columns and the values they hold, and for entries, the
@@ -218,6 +226,16 @@ function conditionSql(eb: ExpressionBuilder<any, any>, subject: Subject, { field
 // without one, and until it's saved its required fields can be empty, so the delivery API serves saved entries only.
 export const isSaved = (eb: ExpressionBuilder<Database, 'entries'>) =>
   eb.exists(eb.selectFrom('entry_versions').select('entry_id').whereRef('entry_versions.entry_id', '=', 'entries.id'))
+
+// The entries whose relationship or media fields link to an entry or media file, archived ones included
+// shortcut: every one of them, page it when sites link one file from thousands of entries
+export const usedBy = (db: Kysely<Database>, id: string) =>
+  db
+    .selectFrom('entries')
+    .selectAll()
+    .where('id', 'in', db.selectFrom('entry_relations').select('entry_id').where('target_id', '=', id))
+    .orderBy('updated_at', 'desc')
+    .execute()
 
 // One page of the rows a select finds, filtered and sorted by the query
 async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Subject, query: Query) {

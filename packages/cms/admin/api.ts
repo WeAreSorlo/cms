@@ -1,7 +1,12 @@
+import { media, relationship } from '../src/fields'
 import type { ContentType } from '../src/types'
 import { Input, inputs } from 'iight'
+import { createContext } from 'react'
 
 export type { ContentType }
+
+// The site's content types, for the pickers and the pages that show entries' titles
+export const TypesContext = createContext(new Map<string, ContentType>())
 
 // An entry as the admin API returns it
 export interface Entry {
@@ -51,7 +56,8 @@ export async function allEntries(type: ContentType) {
 // A field's value as text, formatted by its input
 export function formatField(type: ContentType, name: string | undefined, entry: Entry) {
   const field = type.fields.find((field) => field.name === name)
-  const format = field && (inputs as Record<string, Input>)[field.type]?.formatValue
+  const format =
+    field && ({ ...inputs, relationship, media } as Record<string, Partial<Input>>)[field.type]?.formatValue
   const value = entry.values[name ?? '']
   return (format ? format(value, field) : value?.toString()) ?? ''
 }

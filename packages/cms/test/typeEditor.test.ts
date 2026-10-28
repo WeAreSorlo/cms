@@ -2,7 +2,7 @@ import { createApp } from '../src/app'
 import { makeMigration } from '../src/makeMigration'
 import { loadTypes } from '../src/types'
 import { db } from './database'
-import { blog, setUp, types as fixtures } from './fixtures'
+import { authors, blog, setUp, types as fixtures } from './fixtures'
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,12 +15,13 @@ let app: ReturnType<typeof createApp>
 beforeAll(async () => ({ cookie } = await setUp()))
 afterAll(() => db.destroy())
 
-// A site project with the blog type and a snapshot of it, served with the type editor
+// A site project with the blog and authors types and a snapshot of them, served with the type editor
 beforeEach(async () => {
   const root = await mkdtemp(join(tmpdir(), 'iight-site-'))
   dirs = { types: join(root, 'schema/types'), migrations: join(root, 'migrations') }
   await mkdir(dirs.types, { recursive: true })
   await writeFile(join(dirs.types, 'blog.json'), JSON.stringify(blog))
+  await writeFile(join(dirs.types, 'authors.json'), JSON.stringify(authors))
   const types = await loadTypes(dirs.types)
   await makeMigration(dirs.migrations, types)
   app = createApp(db, types, { editor: dirs })
@@ -47,7 +48,7 @@ test('types are read-only without the site project folders, as outside iight dev
   const readOnly = createApp(db, fixtures)
   const list = await send('GET', '/types', undefined, readOnly)
   expect(list.body.editable).toBe(false)
-  expect(list.body.data.map((type: { name: string }) => type.name)).toEqual(['blog', 'docs', 'home'])
+  expect(list.body.data.map((type: { name: string }) => type.name)).toEqual(['blog', 'docs', 'home', 'authors'])
 
   for (const [method, path] of [
     ['POST', '/types'],
@@ -72,7 +73,11 @@ test('creates a type, writing its file with a new id', async () => {
   const file = await typeFile('events')
   expect(Object.keys(file)).toEqual(['id', 'name', 'label', 'structure', 'titleField', 'listColumns', 'fields'])
   expect(file).toEqual(body.data)
-  expect((await send('GET', '/types')).body.data.map((type: { name: string }) => type.name)).toEqual(['blog', 'events'])
+  expect((await send('GET', '/types')).body.data.map((type: { name: string }) => type.name)).toEqual([
+    'authors',
+    'blog',
+    'events',
+  ])
 })
 
 test('problems reply 422 with a report on the settings, and on the fields for the rest', async () => {
@@ -88,7 +93,7 @@ test('problems reply 422 with a report on the settings, and on the fields for th
     isValid: false,
     messages: ['Field "title" needs an "id", such as fld_k3x9q2mz.'],
   })
-  expect(await readdir(dirs.types)).toEqual(['blog.json'])
+  expect(await readdir(dirs.types)).toEqual(['authors.json', 'blog.json'])
 })
 
 test('changes a type, writing its file and a migration for the change', async () => {
@@ -107,18 +112,25 @@ test('changes a type, writing its file and a migration for the change', async ()
     "entries.renameField('blog', 'title', 'headline')",
   )
   expect(await typeFile('blog')).toEqual({ ...blog, titleField: 'headline', listColumns: ['headline'], fields })
-  expect((await send('GET', '/types')).body.data[0].titleField).toBe('headline')
+  expect((await send('GET', '/types')).body.data[1].titleField).toBe('headline')
 })
 
 test('renaming a type renames its file, and deleting one removes it and flags its entries', async () => {
   const renamed = await send('PUT', '/types/blog', { ...blog, name: 'posts' })
   expect(renamed.status).toBe(200)
-  expect(await readdir(dirs.types)).toEqual(['posts.json'])
+  expect(await readdir(dirs.types)).toEqual(['authors.json', 'posts.json'])
   expect(await readFile(join(dirs.migrations, renamed.body.migration.file), 'utf8')).toContain(
     "entries.renameType('blog', 'posts')",
   )
 
   expect((await send('PUT', '/types/blog', blog)).status).toBe(404)
+
+  // Relationship fields name types by id, so the rename kept the link, which stops authors from being deleted
+  expect(await send('DELETE', '/types/authors')).toEqual({
+    status: 409,
+    body: { message: 'Relationship fields in Blog posts link to Authors. Take it out of them first.' },
+  })
+
   const deleted = await send('DELETE', '/types/posts')
   expect(deleted).toEqual({
     status: 200,
@@ -131,5 +143,5 @@ test('renaming a type renames its file, and deleting one removes it and flags it
       },
     },
   })
-  expect(await readdir(dirs.types)).toEqual([])
+  expect(await readdir(dirs.types)).toEqual(['authors.json'])
 })

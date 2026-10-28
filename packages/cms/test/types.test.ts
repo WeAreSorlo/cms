@@ -1,5 +1,5 @@
 import { checkType, loadTypes } from '../src/types'
-import { blog, docs, home } from './fixtures'
+import { authors, blog, docs, home } from './fixtures'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,17 +19,28 @@ const write = (files: Record<string, unknown>) =>
   )
 
 test('loads every type in the folder by name, and none from a missing folder', async () => {
-  await write({ 'blog.json': blog, 'docs.json': docs, 'home.json': home, 'notes.txt': 'not a type' })
+  await write({
+    'authors.json': authors,
+    'blog.json': blog,
+    'docs.json': docs,
+    'home.json': home,
+    'notes.txt': 'not a type',
+  })
 
   const types = await loadTypes(dir)
-  expect([...types.keys()]).toEqual(['blog', 'docs', 'home'])
+  expect([...types.keys()]).toEqual(['authors', 'blog', 'docs', 'home'])
   expect(types.get('blog')).toEqual(blog)
 
   expect((await loadTypes(join(dir, 'missing'))).size).toBe(0)
 })
 
 test('lists the problems in every file at once', async () => {
-  await write({ 'broken.json': '{ "id": ', 'blog.json': blog, 'news.json': { ...blog, name: 'news' } })
+  await write({
+    'authors.json': authors,
+    'broken.json': '{ "id": ',
+    'blog.json': blog,
+    'news.json': { ...blog, name: 'news' },
+  })
 
   await expect(loadTypes(dir)).rejects.toThrow(
     [
@@ -51,7 +62,7 @@ test('checks the settings', () => {
         titleFeild: 'title',
         titleField: 'heading',
         slugField: 'title',
-        listColumns: ['title', 'author'],
+        listColumns: ['title', 'editor'],
         fields: blog.fields,
       },
       'blog posts',
@@ -126,5 +137,24 @@ test('checks default values with their inputs, at any depth', () => {
   ).toEqual([
     'Field "email" has an invalid default value. A valid email address required.',
     'Field "links.url" has an invalid default value. A valid URL required.',
+  ])
+})
+
+test('takes relationship and media fields, whose links name content types by id', () => {
+  const fields = [
+    { id: 'fld_author', type: 'relationship', name: 'author', options: { types: ['typ_authors'], maximum: 1 } },
+    { id: 'fld_editor', type: 'relationship', name: 'editor', options: { types: ['authors'] } },
+    { id: 'fld_cover', type: 'media', name: 'cover', defaultValue: 'photo.png', options: { types: ['image/*'] } },
+  ]
+
+  expect(
+    checkType(
+      { ...blog, titleField: undefined, slugField: undefined, listColumns: undefined, fields },
+      'blog',
+      new Set(['typ_blog', 'typ_authors']),
+    ),
+  ).toEqual([
+    'Field "editor" must list the ids of content types in "options.types".',
+    'Field "cover" has an invalid default value. Invalid value.',
   ])
 })

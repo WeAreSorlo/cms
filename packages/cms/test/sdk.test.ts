@@ -6,6 +6,7 @@ import { db } from './database'
 import { blog, setUp, types } from './fixtures'
 import { serve } from '@hono/node-server'
 import { IightError, createClient } from '@iight/sdk'
+import { sql } from 'kysely'
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import type { AddressInfo } from 'node:net'
@@ -122,6 +123,33 @@ test('first() finds the first match or null, and all() fetches every page', asyn
   expect(all).toHaveLength(103)
   expect(new Set(all.map((entry) => entry.id)).size).toBe(103)
   expect(slugs(await cms.entries('blog').where('values.featured', '=', true).all())).toEqual(['release-1'])
+})
+
+test('with() and depth() send the fields and levels to resolve, and the reply holds what they link to', async () => {
+  const requests: Array<URL> = []
+  const cms = createClient({
+    url,
+    token: key,
+    fetch: (input, init) => {
+      requests.push(new URL(String(input)))
+      return fetch(input, init)
+    },
+  })
+
+  // An author linked from one post, both written without a save, as the posts above are
+  const author = { id: uuidv7(), type: 'authors', values: { name: 'Ada' } }
+  await db.insertInto('entries').values(author).execute()
+  await db.insertInto('entry_versions').values({ entry_id: author.id, number: 1, values: author.values }).execute()
+  await db
+    .updateTable('entries')
+    .set({ values: sql`"values" || ${JSON.stringify({ author: author.id })}::jsonb` })
+    .where('slug', '=', 'release-1')
+    .execute()
+
+  const post = await cms.entries('blog').where('slug', '=', 'release-1').with('author').depth(1).first()
+  expect(Object.fromEntries(requests[0].searchParams)).toMatchObject({ with: '["author"]', depth: '1' })
+  expect(post?.values.author).toMatchObject({ id: author.id, type: 'authors', values: { name: 'Ada' } })
+  expect((await cms.entries('blog').where('slug', '=', 'release-1').first())?.values.author).toBe(author.id)
 })
 
 test("a failed request throws an IightError with the status and the API's message", async () => {

@@ -31,9 +31,53 @@ export const blog: ContentType = {
             name: 'text',
             fields: [{ id: 'fld_body', type: 'textarea', name: 'body', required: true }],
           },
+          {
+            id: 'lay_gallery',
+            name: 'gallery',
+            fields: [{ id: 'fld_images', type: 'media', name: 'images', required: true, options: { minimum: 1 } }],
+          },
         ],
       },
     },
+    {
+      id: 'fld_author',
+      type: 'relationship',
+      name: 'author',
+      label: 'Author',
+      options: { types: ['typ_authors'], maximum: 1 },
+    },
+    { id: 'fld_cover', type: 'media', name: 'cover', label: 'Cover', options: { types: ['image/*'], maximum: 1 } },
+    { id: 'fld_related', type: 'relationship', name: 'related', options: { types: ['typ_blog'], maximum: 3 } },
+    {
+      id: 'fld_credits',
+      type: 'repeater',
+      name: 'credits',
+      options: {
+        fields: [
+          {
+            id: 'fld_person',
+            type: 'relationship',
+            name: 'person',
+            required: true,
+            options: { types: ['typ_authors'], maximum: 1 },
+          },
+          { id: 'fld_role', type: 'text', name: 'role' },
+        ],
+      },
+    },
+  ],
+}
+
+// Linked from blog posts
+export const authors: ContentType = {
+  id: 'typ_authors',
+  name: 'authors',
+  label: 'Authors',
+  structure: 'collection',
+  titleField: 'name',
+  fields: [
+    { id: 'fld_name', type: 'text', name: 'name', label: 'Name', required: true },
+    { id: 'fld_avatar', type: 'media', name: 'avatar', options: { types: ['image/*'], maximum: 1 } },
   ],
 }
 
@@ -61,7 +105,7 @@ export const home: ContentType = {
   ],
 }
 
-export const types = new Map([blog, docs, home].map((type) => [type.name, type]))
+export const types = new Map([blog, docs, home, authors].map((type) => [type.name, type]))
 
 // A migrated database with a signed-in user, returning the user's ID and session cookie
 export async function setUp() {

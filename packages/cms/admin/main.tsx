@@ -1,5 +1,5 @@
 import { signInSchema } from '../src/schemas'
-import { ContentType, api } from './api'
+import { ContentType, TypesContext, api } from './api'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import { MediaLibrary } from './media'
 import { TypeEditor, TypeList } from './types'
@@ -144,7 +144,9 @@ function App() {
         </p>
       </nav>
       <main>
-        <Page types={types} editable={editable} reloadTypes={reloadTypes} />
+        <TypesContext.Provider value={types}>
+          <Page types={types} editable={editable} reloadTypes={reloadTypes} />
+        </TypesContext.Provider>
       </main>
     </div>
   )

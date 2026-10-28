@@ -13,11 +13,66 @@ export interface Entry {
   updatedAt: string
 }
 
+// A file in the media library, as the delivery API returns it and with() resolves a media field
+export interface Media {
+  id: string
+  name: string
+  mime: string
+  size: number
+  width: number | null
+  height: number | null
+  alt: string | null
+  caption: string | null
+  url: string
+  createdAt: string
+  updatedAt: string
+}
+
 // Each content type's entry, by type name, filled in by the pulled file through module augmentation
 export interface EntryTypes {}
 
+// Each content type's fields that with() can name, typed as it returns them with links resolved Depth levels deep.
+// The pulled file fills it in.
+export interface ResolvedTypes<Depth extends number> {}
+
+// The CMS's settings that types depend on, such as the depth with() resolves to when a query doesn't say. The pulled
+// file fills it in.
+export interface DeliverySettings {}
+
 // Without pulled types, any type name works and values are unknown
 type Registered = [keyof EntryTypes] extends [never] ? Record<string, Entry> : EntryTypes
+
+type DefaultDepth = DeliverySettings extends { depth: infer D extends number } ? D : 2
+
+// The depths a query can ask for, and each one's level less
+// shortcut: typed to 10 levels, lengthen both when sites resolve deeper
+export type Depth = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
+type Less = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+// The fields of an entry's values that with() resolves, Depth levels deep
+type ResolvedOf<E extends Entry, D extends number> = E['type'] extends keyof ResolvedTypes<D>
+  ? ResolvedTypes<D>[E['type']]
+  : {}
+
+// An entry with some of its values typed as R has them, or the entry itself when R has none
+type Merge<E extends Entry, R> = [keyof R] extends [never]
+  ? E
+  : { [P in keyof E]: P extends 'values' ? { [F in keyof E[P]]: F extends keyof R ? R[F] : E[P][F] } : E[P] }
+
+// An entry that a link resolved D levels deep holds, with every link of its own resolved a level less
+export type Linked<E extends Entry, D extends number> = E extends Entry
+  ? Less[D] extends 0
+    ? E
+    : Merge<E, ResolvedOf<E, Less[D]>>
+  : never
+
+// An entry with the fields K resolved, as with() returns them, D levels deep
+export type With<E extends Entry, K extends PropertyKey, D extends number = DefaultDepth> = [K] extends [never]
+  ? E
+  : Merge<E, Pick<ResolvedOf<E, D>, K & keyof ResolvedOf<E, D>>>
+
+// The fields with() can name: those that hold links, or any without pulled types
+type Linkable<E extends Entry> = [keyof ResolvedTypes<1>] extends [never] ? string : keyof ResolvedOf<E, 1> & string
 
 export interface Paginated<E> {
   data: Array<E>
@@ -82,14 +137,16 @@ interface Condition {
   value?: unknown
 }
 
-// A chainable query for one content type's entries
-class EntriesQuery<E extends Entry> {
-  #request: (params: URLSearchParams) => Promise<Paginated<E>>
+// A chainable query for one content type's entries, returning them with the fields K resolved, D levels deep
+class EntriesQuery<E extends Entry, K extends PropertyKey = never, D extends number = DefaultDepth> {
+  #request: (params: URLSearchParams) => Promise<any>
   // Groups joined by OR, each a list of conditions that must all match, as the API takes them
   #where: Array<Array<Condition>> = []
   #order: Record<string, 'asc' | 'desc'> = {}
+  #with = new Set<string>()
+  #depth?: number
 
-  constructor(request: (params: URLSearchParams) => Promise<Paginated<E>>) {
+  constructor(request: (params: URLSearchParams) => Promise<any>) {
     this.#request = request
   }
 
@@ -119,22 +176,37 @@ class EntriesQuery<E extends Entry> {
     return this
   }
 
+  // Relationship and media fields, or fields that hold them, to come with what they link to rather than IDs. The
+  // entries they link to come with their own links too, down to the depth.
+  with<F extends Linkable<E> = never>(...fields: Array<F>) {
+    for (const field of fields) this.#with.add(field)
+    return this as unknown as EntriesQuery<E, K | F, D>
+  }
+
+  // How many levels of links with() resolves, the CMS's delivery.depth if not given
+  depth<N extends Depth>(depth: N) {
+    this.#depth = depth
+    return this as unknown as EntriesQuery<E, K, N>
+  }
+
   // One page of entries, with { data, pagination }
-  paginate(perPage = 15, page = 1) {
+  paginate(perPage = 15, page = 1): Promise<Paginated<With<E, K, D>>> {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
     if (this.#where.length) params.set('where', JSON.stringify(this.#where))
     if (Object.keys(this.#order).length) params.set('order', JSON.stringify(this.#order))
+    if (this.#with.size) params.set('with', JSON.stringify([...this.#with]))
+    if (this.#depth !== undefined) params.set('depth', String(this.#depth))
     return this.#request(params)
   }
 
   // The first matching entry, or null
-  async first(): Promise<E | null> {
+  async first(): Promise<With<E, K, D> | null> {
     return (await this.paginate(1)).data[0] ?? null
   }
 
   // Every matching entry, fetching the pages in turn
   async all() {
-    const entries: Array<E> = []
+    const entries: Array<With<E, K, D>> = []
     for (let page = 1, lastPage = 1; page <= lastPage; page++) {
       const { data, pagination } = await this.paginate(100, page)
       entries.push(...data)

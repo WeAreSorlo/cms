@@ -1,5 +1,6 @@
 import { inputs, pickValues, validateServerValues } from './core'
 import type { AdminEnv } from './entries'
+import { someField } from './fields'
 import { makeMigration } from './makeMigration'
 import { typeSchema } from './schemas'
 import { ContentType, checkType, loadTypes } from './types'
@@ -86,7 +87,8 @@ export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
     const problems: Record<string, Array<string>> = {}
     const add = (key: string, message: string) => (problems[key] = [...(problems[key] ?? []), message])
     if (report.isValid) {
-      for (const problem of checkType(type, type.name)) {
+      const typeIds = new Set([...[...types.values()].map((other) => other.id), type.id])
+      for (const problem of checkType(type, type.name, typeIds)) {
         const key = problem.match(/^(?:It needs an? )?"(\w+)"/)?.[1]
         add(key && schema.some((field) => field.name === key) ? key : 'fields', problem)
       }
@@ -113,6 +115,17 @@ export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
   // The type's entries stay, and the migration flags them
   app.delete('/types/:type', editable, async (c) => {
     const type = named(c.req.param('type'))
+    const linking = [...types.values()].filter(
+      (other) =>
+        other.id !== type.id &&
+        someField(other.fields, (field) => field.type === 'relationship' && field.options?.types?.includes(type.id)),
+    )
+    if (linking.length) {
+      const labels = linking.map((other) => other.label).join(', ')
+      throw new HTTPException(409, {
+        message: `Relationship fields in ${labels} link to ${type.label}. Take it out of them first.`,
+      })
+    }
     return c.json({ migration: await commit(() => rm(join(dirs!.types, `${type.name}.json`))) })
   })
 

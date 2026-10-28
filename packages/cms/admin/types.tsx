@@ -1,5 +1,6 @@
 import { typeSchema } from '../src/schemas'
 import { ContentType, api, errorMessage } from './api'
+import { useInputs } from './fields'
 import Form, { FieldSchema, FormHandle } from 'iight'
 import { useMemo, useRef, useState } from 'react'
 
@@ -59,6 +60,7 @@ export function TypeEditor({
 }) {
   const settingsForm = useRef<FormHandle>(null)
   const fieldsForm = useRef<FormHandle>(null)
+  const inputs = useInputs()
   const [settings, setSettings] = useState<Record<string, any>>(() => {
     const { fields, id, ...rest } = type ?? { structure: 'collection' }
     return rest
@@ -157,6 +159,7 @@ export function TypeEditor({
       <Form
         ref={fieldsForm}
         schema={fieldsSchema}
+        inputs={inputs}
         values={shownFields}
         onValuesChange={(next) => changeFields(next.fields)}
       />

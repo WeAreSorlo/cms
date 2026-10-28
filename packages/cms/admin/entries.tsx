@@ -1,6 +1,19 @@
-import { ContentType, Entry, allEntries, api, date, errorMessage, formatField, titleOf, tree } from './api'
+import {
+  ContentType,
+  Entry,
+  TypesContext,
+  allEntries,
+  api,
+  date,
+  errorMessage,
+  formatField,
+  titleOf,
+  tree,
+} from './api'
+import { useInputs } from './fields'
+import { UsedBy } from './media'
 import Form, { FieldSchema, FormHandle } from 'iight'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 // A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive
 export function EntryList({ type, archived = false }: { type: ContentType; archived?: boolean }) {
@@ -119,9 +132,11 @@ interface Version {
   createdAt: string
 }
 
-// Create or edit an entry with its type's fields, and see and restore its versions
+// Create or edit an entry with its type's fields, see the entries that link to it, and see and restore its versions
 export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?: Entry }) {
   const form = useRef<FormHandle>(null)
+  const inputs = useInputs()
+  const types = useContext(TypesContext)
   const [entry, setEntry] = useState(loaded)
   // A new entry starts from its fields' defaults, as core's new flexible blocks do, so conditions can see them
   const [values, setValues] = useState<Record<string, any>>(
@@ -134,6 +149,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   const [shownParent] = useState({ parentId: parentId ?? '' })
   const [parents, setParents] = useState<ReturnType<typeof tree>>([])
   const [versions, setVersions] = useState<Array<Version>>([])
+  const [usedBy, setUsedBy] = useState<Array<Entry>>([])
   const [restoring, setRestoring] = useState<Version>()
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -146,6 +162,13 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   useEffect(() => {
     loadVersions().catch((error) => setMessage(errorMessage(error)))
   }, [loadVersions])
+
+  useEffect(() => {
+    if (!entry) return
+    api('GET', `/entries/${entry.id}/used-by`)
+      .then(({ body }) => setUsedBy(body.data))
+      .catch((error) => setMessage(errorMessage(error)))
+  }, [entry?.id])
 
   // A page can't sit under itself or its own descendants
   useEffect(() => {
@@ -214,7 +237,12 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   }
 
   const archive = (action: 'archive' | 'restore') =>
-    act(async () => setEntry((await api('POST', `/entries/${entry!.id}/${action}`)).body.data))
+    act(async () => {
+      const count = usedBy.length
+      const question = `${count === 1 ? 'An entry links' : `${count} entries link`} to ${titleOf(type, entry!)}. Archive it anyway? Their links leave it out until it's restored, and it can't be deleted while they're there.`
+      if (action === 'archive' && count && !confirm(question)) return
+      setEntry((await api('POST', `/entries/${entry!.id}/${action}`)).body.data)
+    })
 
   const remove = () =>
     act(async () => {
@@ -249,7 +277,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
           onValuesChange={(next) => setParentId(next.parentId || null)}
         />
       )}
-      <Form ref={form} schema={type.fields} values={shown} onValuesChange={setValues} />
+      <Form ref={form} schema={type.fields} inputs={inputs} values={shown} onValuesChange={setValues} />
 
       {message && <p role='status'>{message}</p>}
       <div className='actions'>
@@ -274,6 +302,8 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
           </>
         )}
       </div>
+
+      <UsedBy entries={usedBy} types={types} />
 
       {versions.length > 0 && (
         <section>

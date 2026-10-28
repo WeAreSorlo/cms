@@ -1,5 +1,7 @@
 // Generated from the CMS by `npx iight types pull`. Pull again rather than editing it.
 
+import type { Linked, Media } from '@iight/sdk'
+
 export type BlogValues = {
   title: string
   slug: string
@@ -8,6 +10,30 @@ export type BlogValues = {
   views?: number
   blocks?: Array<{ _layout: "text" } & {
     body: string
+  } | { _layout: "gallery" } & {
+    images: Array<string>
+  }>
+  author?: string
+  cover?: string
+  related?: Array<string>
+  credits?: Array<{
+    person: string
+    role?: string
+  }>
+}
+
+export type BlogResolvedValues<Depth extends number> = {
+  blocks?: Array<{ _layout: "text" } & {
+    body: string
+  } | { _layout: "gallery" } & {
+    images: Array<Media>
+  }>
+  author?: Linked<EntryAuthors, Depth> | null
+  cover?: Media | null
+  related?: Array<Linked<EntryBlog, Depth>>
+  credits?: Array<{
+    person: Linked<EntryAuthors, Depth> | null
+    role?: string
   }>
 }
 
@@ -28,6 +54,8 @@ export type DocsValues = {
   slug: string
 }
 
+export type DocsResolvedValues<Depth extends number> = {}
+
 export type EntryDocs = {
   id: string
   type: "docs"
@@ -45,6 +73,8 @@ export type HomeValues = {
   intro?: string
 }
 
+export type HomeResolvedValues<Depth extends number> = {}
+
 export type EntryHome = {
   id: string
   type: "home"
@@ -57,12 +87,41 @@ export type EntryHome = {
   updatedAt: string
 }
 
+export type AuthorsValues = {
+  name: string
+  avatar?: string
+}
+
+export type AuthorsResolvedValues<Depth extends number> = {
+  avatar?: Media | null
+}
+
+export type EntryAuthors = {
+  id: string
+  type: "authors"
+  slug: null
+  uri: null
+  parentId: null
+  position: null
+  values: AuthorsValues
+  createdAt: string
+  updatedAt: string
+}
+
 declare module '@iight/sdk' {
   interface EntryTypes {
     blog: EntryBlog
     docs: EntryDocs
     home: EntryHome
+    authors: EntryAuthors
+  }
+  interface ResolvedTypes<Depth extends number> {
+    blog: BlogResolvedValues<Depth>
+    docs: DocsResolvedValues<Depth>
+    home: HomeResolvedValues<Depth>
+    authors: AuthorsResolvedValues<Depth>
+  }
+  interface DeliverySettings {
+    depth: 2
   }
 }
-
-export {}

@@ -46,7 +46,7 @@ test('needs a session', async () => {
 
 test('lists the content types', async () => {
   const { body } = await send('GET', '/types')
-  expect(body.data.map((type: { name: string }) => type.name)).toEqual(['blog', 'docs', 'home'])
+  expect(body.data.map((type: { name: string }) => type.name)).toEqual(['blog', 'docs', 'home', 'authors'])
 })
 
 test("creates and edits entries with the type's fields, saving a version each time", async () => {

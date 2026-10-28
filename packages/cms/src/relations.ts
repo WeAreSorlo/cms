@@ -1,0 +1,257 @@
+import type { DeliveryOptions } from '.'
+import { inputs, pickValues, validationError } from './core'
+import { Database, isUuid } from './db'
+import { allows, holdsOne, idsOf, linkFields, media, relationship } from './fields'
+import { toMedia } from './media'
+import { isSaved, toEntry } from './query'
+import type { ContentType } from './types'
+import { HTTPException } from 'hono/http-exception'
+import type { Input, InputPickValue, InputSchema } from 'iight'
+import { Kysely, SqlBool, sql } from 'kysely'
+
+// Core's inputs and the CMS's own, which the server never renders. The admin adds their pickers.
+export const cmsInputs: Record<string, Input> = {
+  ...inputs,
+  relationship: { ...relationship, default: () => null },
+  media: { ...media, default: () => null },
+}
+
+// The names of the content types a relationship field takes, which is all of them when it lists none
+export function allowedTypes(types: Map<string, ContentType>, schema: InputSchema) {
+  const ids: Array<string> = schema.options?.types ?? []
+  return [...types.values()].filter((type) => !ids.length || ids.includes(type.id)).map((type) => type.name)
+}
+
+const fitsMedia = (schema: InputSchema, mime: string) =>
+  !schema.options?.types?.length || allows(schema.options.types, mime)
+
+// cmsInputs, with the relationship and media fields' values picked by these, so pickValues visits every link in a set
+// of values, inside groups, repeaters and flexible blocks too
+const walking = (relationshipPick: InputPickValue, mediaPick = relationshipPick) => ({
+  ...cmsInputs,
+  relationship: { ...cmsInputs.relationship, pickValue: relationshipPick },
+  media: { ...cmsInputs.media, pickValue: mediaPick },
+})
+
+// cmsInputs, with server checks that each ID is an entry of a type the field takes, or a file of a type it takes.
+// Archived entries count, so archiving one doesn't stop the entries that link to it from saving.
+export function serverInputs(db: Kysely<Database>, types: Map<string, ContentType>): Record<string, Input> {
+  const check =
+    (find: (ids: Array<string>) => Promise<Array<{ id: string }>>, fits: (row: any, schema: InputSchema) => boolean) =>
+    async (value: unknown, schema: InputSchema) => {
+      // Both fields check their shape the same way
+      const validation = relationship.validateValue(value, schema)
+      const ids = idsOf(value)
+      if (!validation.isValid || !ids.length) return validation
+
+      const rows = ids.every(isUuid) ? await find(ids) : []
+      if (ids.every((id) => rows.some((row) => row.id === id && fits(row, schema)))) return validation
+      return validationError(
+        value,
+        holdsOne(schema)
+          ? "It's been deleted, or isn't of a type this field takes."
+          : "Some of them have been deleted, or aren't of a type this field takes.",
+      )
+    }
+
+  return {
+    ...cmsInputs,
+    relationship: {
+      ...cmsInputs.relationship,
+      validateServerValue: check(
+        (ids) => db.selectFrom('entries').select(['id', 'type']).where('id', 'in', ids).execute(),
+        (row, schema) => allowedTypes(types, schema).includes(row.type),
+      ),
+    },
+    media: {
+      ...cmsInputs.media,
+      validateServerValue: check(
+        (ids) => db.selectFrom('media').select(['id', 'mime']).where('id', 'in', ids).execute(),
+        (row, schema) => fitsMedia(schema, row.mime),
+      ),
+    },
+  }
+}
+
+type Relation = Database['entry_relations']
+
+// What an entry's relationship and media fields link to, as rows of entry_relations
+function relationsOf(type: ContentType, entryId: string, values: Record<string, any>) {
+  const rows = new Map<string, Relation>()
+  const collect: InputPickValue = (value, schema) => {
+    for (const id of idsOf(value).filter(isUuid)) {
+      rows.set(`${schema.id} ${id}`, { entry_id: entryId, field_id: String(schema.id), target_id: id })
+    }
+    return value
+  }
+  pickValues(type.fields, values, walking(collect))
+  return [...rows.values()]
+}
+
+const insertRelations = (trx: Kysely<Database>, rows: Array<Relation>) =>
+  sql`
+    insert into entry_relations (entry_id, field_id, target_id)
+    select * from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as data (entry_id uuid, field_id text, target_id uuid)
+  `.execute(trx)
+
+// Rebuild an entry's rows of entry_relations from its values, as every save does
+export async function saveRelations(
+  trx: Kysely<Database>,
+  type: ContentType,
+  entryId: string,
+  values: Record<string, any>,
+) {
+  await trx.deleteFrom('entry_relations').where('entry_id', '=', entryId).execute()
+  await insertRelations(trx, relationsOf(type, entryId, values))
+}
+
+// Rebuild entry_relations for every entry of a type that still exists, 500 at a time, after content migrations have
+// changed their values
+export async function rebuildRelations(db: Kysely<Database>, types: Map<string, ContentType>) {
+  if (types.size === 0) return
+  await db.transaction().execute(async (trx) => {
+    let after: string | undefined
+    for (;;) {
+      const rows = await trx
+        .selectFrom('entries')
+        .select(['id', 'type', 'values'])
+        .where('type', 'in', [...types.keys()])
+        .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
+        .orderBy('id')
+        .limit(500)
+        .execute()
+      if (rows.length === 0) return
+
+      await trx
+        .deleteFrom('entry_relations')
+        .where(
+          'entry_id',
+          'in',
+          rows.map((row) => row.id),
+        )
+        .execute()
+      await insertRelations(
+        trx,
+        rows.flatMap((row) => relationsOf(types.get(row.type)!, row.id, row.values)),
+      )
+      if (rows.length < 500) return
+      after = rows.at(-1)!.id
+    }
+  })
+}
+
+const badRequest = (message: string) => new HTTPException(400, { message })
+
+// The fields a delivery request's with names, as a JSON list, and how many levels of links its depth asks for
+export function parseWith(
+  type: ContentType,
+  params: Record<string, string>,
+  { depth, maxDepth }: Required<DeliveryOptions>,
+) {
+  if (params.with === undefined) return undefined
+  const fields = linkFields(type).map((field) => field.name)
+  const example = JSON.stringify(fields.length ? fields.slice(0, 2) : ['author'])
+
+  let names: unknown
+  try {
+    names = JSON.parse(params.with)
+  } catch {}
+  if (!Array.isArray(names) || !names.every((name) => typeof name === 'string')) {
+    throw badRequest(`with must be a JSON list of fields, such as ${example}.`)
+  }
+  const unknown = names.find((name) => !fields.includes(name))
+  if (unknown !== undefined) {
+    throw badRequest(
+      fields.length
+        ? `with can't name ${JSON.stringify(unknown)}. Use ${fields.join(', ')}, which hold ${type.name}'s links.`
+        : `${type.name} has no relationship or media fields for with to name.`,
+    )
+  }
+
+  const levels = Number(params.depth ?? depth)
+  if (!Number.isInteger(levels) || levels < 1 || levels > maxDepth) {
+    throw badRequest(`depth must be a whole number from 1 to ${maxDepth}.`)
+  }
+  return { names, depth: levels }
+}
+
+type Entry = ReturnType<typeof toEntry>
+
+// Swap the IDs in some fields of entries for what they link to, as the delivery API's with does. The named fields go
+// first, then every link of the entries they hold, a level at a time down to depth. Each level loads its entries in one
+// query and its media in another, whatever their types, and pickValues walks the groups, repeaters and flexible blocks
+// in between (PLAN.md section 12, change 4). Entries the delivery API doesn't serve, such as archived ones, are left
+// out, which is null in a field that holds one.
+export async function resolveLinks(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  origin: string,
+  entries: Array<Entry>,
+  names: Array<string>,
+  depth: number,
+) {
+  let level = entries.map((entry) => ({ entry, names: names as Array<string> | undefined }))
+  for (let remaining = depth; remaining > 0 && level.length > 0; remaining--) {
+    // Fields an entry has no value for stay out, since pickValues would fill them with defaults
+    const fieldsOf = (entry: Entry, names?: Array<string>) =>
+      linkFields(types.get(entry.type)!).filter(
+        (field) => (!names || names.includes(field.name)) && Object.hasOwn(entry.values, field.name),
+      )
+
+    // The first pass collects the IDs
+    const entryIds = new Set<string>()
+    const mediaIds = new Set<string>()
+    const collect =
+      (ids: Set<string>): InputPickValue =>
+      (value) => {
+        for (const id of idsOf(value).filter(isUuid)) ids.add(id)
+        return value
+      }
+    for (const { entry, names } of level) {
+      pickValues(fieldsOf(entry, names), entry.values, walking(collect(entryIds), collect(mediaIds)))
+    }
+
+    const among = (ids: Set<string>) => sql<SqlBool>`id = any(${[...ids]}::uuid[])`
+    const linked = new Map(
+      (entryIds.size === 0
+        ? []
+        : await db
+            .selectFrom('entries')
+            .selectAll()
+            .where(among(entryIds))
+            // Entries of a type that's been removed stay in the database, but the API doesn't serve them
+            .where('type', 'in', [...types.keys()])
+            .where('archived_at', 'is', null)
+            .where(isSaved)
+            .execute()
+      ).map((row) => [row.id, toEntry(row)]),
+    )
+    const files = new Map(
+      (mediaIds.size === 0 ? [] : await db.selectFrom('media').selectAll().where(among(mediaIds)).execute()).map(
+        (row) => [row.id, toMedia(row, origin)],
+      ),
+    )
+
+    // The second swaps each ID for its record
+    const swap =
+      <T>(found: Map<string, T>, fits: (record: T, schema: InputSchema) => boolean): InputPickValue =>
+      (value, schema) => {
+        const records = idsOf(value).flatMap((id) => {
+          const record = found.get(id)
+          return record && fits(record, schema) ? [record] : []
+        })
+        return holdsOne(schema) ? (records[0] ?? null) : records
+      }
+    const inputs = walking(
+      swap(linked, (entry, schema) => allowedTypes(types, schema).includes(entry.type)),
+      swap(files, (file, schema) => fitsMedia(schema, file.mime)),
+    )
+    for (const { entry, names } of level) {
+      entry.values = { ...entry.values, ...pickValues(fieldsOf(entry, names), entry.values, inputs) }
+    }
+
+    // An entry linked from several places is one record, resolved once for all of them
+    level = [...linked.values()].map((entry) => ({ entry, names: undefined }))
+  }
+  return entries
+}

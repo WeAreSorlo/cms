@@ -1,4 +1,4 @@
-import type { MediaOptions, Storage } from '.'
+import type { DeliveryOptions, MediaOptions, Storage } from '.'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
@@ -31,13 +31,16 @@ export interface AppOptions {
   storage?: Storage
   // What the media library takes, and how it serves files
   media?: MediaOptions
+  // How deep the delivery API's with resolves links
+  delivery?: DeliveryOptions
 }
 
 export function createApp(
   db: Kysely<Database>,
   types = new Map<string, ContentType>(),
-  { migrations = async () => ({}), editor, storage, media }: AppOptions = {},
+  { migrations = async () => ({}), editor, storage, media, delivery }: AppOptions = {},
 ) {
+  const { depth = 2, maxDepth = 5 } = delivery ?? {}
   const app = new Hono<AdminEnv>()
 
   // Every error except a failed validation replies { message }, as Laravel does
@@ -136,11 +139,11 @@ export function createApp(
   app.route('/api', entryRoutes(db, types, migrations))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
-  app.route('/v1', deliveryRoutes(db, types))
+  app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
 
   // What the delivery API returns, as TypeScript, for `npx iight types pull`
   // Made for each request, since the type editor can change the types
-  app.get('/types', apiKey(db), (c) => c.text(typesFile(types)))
+  app.get('/types', apiKey(db), (c) => c.text(typesFile(types, depth)))
 
   return app
 }

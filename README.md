@@ -61,6 +61,29 @@ Each content type is a JSON file in the site project's `schema/types` folder, na
 
 In `iight dev`, the admin's Content types page creates, edits and deletes types, with core's schema builder for their fields. Settings that name a field, such as `titleField`, follow it when the builder renames it. Saving writes the type's file, laid out by the site project's Prettier if it has one, then runs `make:migration` and shows the migration it wrote with its flags and TODOs. The editor doesn't run the migration, so you can check it and finish any TODOs first. Outside `iight dev` the page is read-only, and types change through git.
 
+### Relationship and media fields
+
+The CMS adds two field types to core's. A `relationship` field links to entries, and a `media` field to files in the media library. Both store IDs. The admin edits them with pickers: a search over the entries of the types a relationship takes, and the media library, which can upload files too.
+
+```json
+{
+  "id": "fld_g2we5u9g",
+  "type": "relationship",
+  "name": "author",
+  "options": { "types": ["typ_7ky6hnq7"], "maximum": 1 }
+}
+```
+
+| Option               | What it holds                                                                                                                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types`              | For a relationship, the `id`s of the content types it links to, so renaming a type breaks nothing. For media, MIME types with wildcards, as in `media.types`. None means any            |
+| `minimum`, `maximum` | How many items it takes. With a maximum of 1 the field holds one ID, such as `"author": "0192f0c4-…"`, and otherwise a list of IDs. The type editor starts new fields at a maximum of 1 |
+
+- Saving checks that each ID is an entry or a file of a type the field takes. Archived entries count, so archiving one doesn't stop the entries that link to it from saving. `iight migrate --check` checks the same.
+- Every save rebuilds the entry's rows in `entry_relations`, which record what its fields link to, nested ones included, and `iight migrate` rebuilds them after content migrations. The admin shows them as "Used by" on entries and files.
+- Archiving an entry that others link to asks first in the admin. Deleting an entry or a file for good replies 409 while any entry links to it, archived ones included, so remove the links first. The type editor won't delete a type that relationship fields link to.
+- Changing a `maximum` to or from 1 changes the shape of the field's values, which `make:migration` flags and `iight migrate --check` lists.
+
 ## Content migrations
 
 Entries keep their values as JSON, so changing a content type never changes a table. A content migration changes the values inside entries instead. It's a file in the site project's `migrations` folder with an `up` and a `down`, as in Laravel.
@@ -208,13 +231,15 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `PUT /api/entries/:id/position`         | Moves a page to `{ position }` among its siblings, counting from 0                                                                                |
 | `POST /api/entries/:id/archive`         | Archives an entry with its live descendants                                                                                                       |
 | `POST /api/entries/:id/restore`         | Restores an entry with the descendants archived along with it, once its parent is live                                                            |
-| `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions                                                                             |
+| `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions, or replies 409 while other entries link to it                              |
+| `GET /api/entries/:id/used-by`          | Lists the entries that link to it, archived ones included                                                                                         |
 | `GET /api/entries/:id/versions`         | Lists the entry's versions, newest first. Every save writes one                                                                                   |
 | `GET /api/entries/:id/versions/:number` | Replies a version, with its values brought up to date by the content migrations that ran since. Restoring it means saving those values again      |
 | `GET /api/media`                        | Lists media, taking the delivery API's query parameters                                                                                           |
 | `POST /api/media`                       | Uploads one file, sent as the multipart field `file`. Replies 201 with `{ data: media }`, or 422 with core's report on `file` saying what's wrong |
 | `PUT /api/media/:id`                    | Saves `{ name, alt, caption }`, or replies 422 with core's report                                                                                 |
-| `DELETE /api/media/:id`                 | Deletes a file from its disk, with its record                                                                                                     |
+| `DELETE /api/media/:id`                 | Deletes a file from its disk, with its record, or replies 409 while entries link to it                                                            |
+| `GET /api/media/:id/used-by`            | Lists the entries that link to the file, archived ones included                                                                                   |
 
 The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
@@ -239,6 +264,8 @@ Lists take these query parameters, with `where` and `order` in JSON:
 | `where`           | Groups of conditions, where any group matches when all its conditions do: `[[{"field":"values.featured","op":"=","value":true}],[{"field":"values.title","op":"like","value":"release"}]]` |
 | `order`           | Fields and their directions, in order: `{"values.published_at":"desc"}`. Without it, entries come in the order they were made                                                              |
 | `page`, `perPage` | The page from 1, and from 1 to 100 entries a page, 15 if not given                                                                                                                         |
+| `with`            | Top-level fields whose links come resolved, a JSON list such as `["author","blocks"]`. Entry routes that reply one entry take it too                                                       |
+| `depth`           | How many levels of links `with` resolves, from 1 to `delivery.maxDepth`. `delivery.depth` if not given                                                                                     |
 
 - A field is `values.<name>` for a top-level field of the type, or an entry property: `id`, `slug`, `uri`, `parentId`, `position`, `createdAt` or `updatedAt`.
 - For media, a field is one of their properties: `id`, `name`, `mime`, `size`, `width`, `height`, `alt`, `caption`, `createdAt` or `updatedAt`. `[[{"field":"mime","op":"like","value":"image/"}]]` finds images.
@@ -246,6 +273,25 @@ Lists take these query parameters, with `where` and `order` in JSON:
 - Field values compare as JSON, so `10` is more than `7`, and ISO dates compare as text. `like` ignores case and matches anywhere in the text. `in` takes a list, and `between` a list of two.
 - `exists` means a value that isn't empty, as core sees it: a missing field, null, empty text and an empty list don't count. A missing field never matches a comparison, `!=` included.
 - A query with a field the type doesn't have, an unknown operator, or a value that doesn't suit it replies 400 with a `{ message }` saying what's wrong.
+
+`with` names relationship and media fields, or fields that hold them. Naming a group, repeater or flexible field resolves every link inside it.
+
+- A linked entry comes back as the delivery API returns entries, and a file as `/v1/media` does. A linked entry's own links come resolved too, down to `depth` levels, so at the default of 2 a post's author comes with the author's avatar. Past the depth, links stay IDs, and links that loop repeat until it runs out.
+- What the delivery API doesn't serve, such as an archived entry, is left out: null in a field that holds one item, and missing from a list.
+- Each level takes one query for its entries and one for its files, whatever their types. Each level can also multiply the entries a reply holds, which is why `delivery.maxDepth` caps it.
+
+```ts
+// iight.config.ts
+export default defineConfig({
+  // ...
+  delivery: { depth: 2, maxDepth: 5 },
+})
+```
+
+| Setting    | What it holds                                                                           |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `depth`    | The levels of links `with` resolves when a request doesn't send `depth`, 2 if not given |
+| `maxDepth` | The most levels a request can ask for, 5 if not given                                   |
 
 ## The SDK
 
@@ -266,10 +312,11 @@ const posts = await cms
 
 - Fields and entry properties go by the API's names, such as `values.featured` and `createdAt`. `where` adds a condition to the current group, and `orWhere` starts a new group.
 - `paginate(perPage = 15, page = 1)` replies `{ data, pagination }`, `first()` the first entry or `null`, and `all()` every entry, fetched 100 at a time.
+- `with('author', 'cover')` asks for those fields' links to come resolved, and `depth(3)` for how many levels, from 1 to 10. The results are typed to match: after `cms.entries('blog').with('author')`, `post.values.author` is an `EntryAuthors` or null, and its own links are resolved a level less. Without `with`, it stays a `string`. `With<EntryBlog, 'author'>` is that type, for typing a frontend's own functions, and `Media` is a file's.
 - Results are the API's plain JSON. A failed request throws an `IightError` with the HTTP `status`, the API's `message` and the reply's `body`. When the CMS can't be reached, fetch's own error comes through.
 - `createClient` takes a `fetch` to use in place of the global one.
 
-`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, and registers them with the SDK. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date.
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, and the fields `with` can resolve, such as `BlogResolvedValues`, and registers them with the SDK. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date.
 
 A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key`:
 

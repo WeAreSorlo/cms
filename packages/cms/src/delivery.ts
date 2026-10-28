@@ -1,9 +1,11 @@
+import type { DeliveryOptions } from '.'
 import { Database, isUuid, uuidv7 } from './db'
 import { findMedia, origin, toMedia } from './media'
 import { hashToken } from './passwords'
-import { isSaved, listEntries, listMedia, parseMediaQuery, parseQuery, toEntry } from './query'
+import { EntryRow, isSaved, listEntries, listMedia, parseMediaQuery, parseQuery, toEntry } from './query'
+import { parseWith, resolveLinks } from './relations'
 import type { ContentType } from './types'
-import { Hono, MiddlewareHandler } from 'hono'
+import { Context, Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely } from 'kysely'
 import { randomBytes } from 'node:crypto'
@@ -31,7 +33,16 @@ export const apiKey =
   }
 
 // The read-only delivery API, for clients with an API key. It serves live entries that have been saved, and media.
-export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
+export function deliveryRoutes(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  delivery: Required<DeliveryOptions>,
+) {
+  const { depth, maxDepth } = delivery
+  if (![depth, maxDepth].every(Number.isInteger) || depth < 1 || depth > maxDepth) {
+    throw new Error('delivery in iight.config.ts needs a whole number depth from 1 to its maxDepth.')
+  }
+
   const app = new Hono()
 
   app.use(apiKey(db))
@@ -42,35 +53,46 @@ export function deliveryRoutes(db: Kysely<Database>, types: Map<string, ContentT
     return type
   }
 
+  // Entries as the delivery API returns them, with the links resolved that the request's with names
+  const withLinks = (c: Context, resolving: ReturnType<typeof parseWith>, rows: Array<EntryRow>) => {
+    const found = rows.map(toEntry)
+    return resolving ? resolveLinks(db, types, origin(c), found, resolving.names, resolving.depth) : found
+  }
+
   // One live entry, replied as { data }, or a 404. Only top-level entries have unique slugs.
-  const one = async (typeName: string, column: 'id' | 'slug' | 'uri', value: string) => {
+  const one = async (c: Context, column: 'id' | 'slug' | 'uri', value: string) => {
+    const type = typeNamed(c.req.param('type')!)
+    const resolving = parseWith(type, c.req.query(), delivery)
     const row = await db
       .selectFrom('entries')
       .selectAll()
-      .where('type', '=', typeNamed(typeName).name)
+      .where('type', '=', type.name)
       .where('archived_at', 'is', null)
       .where(isSaved)
       .where(column, '=', value)
       .$if(column === 'slug', (qb) => qb.where('parent_id', 'is', null))
       .executeTakeFirst()
     if (!row) throw new HTTPException(404)
-    return { data: toEntry(row) }
+    const [data] = await withLinks(c, resolving, [row])
+    return c.json({ data })
   }
 
   app.get('/entries/:type', async (c) => {
     const type = typeNamed(c.req.param('type'))
-    const { data, pagination } = await listEntries(db, type, parseQuery(type, c.req.query()), { saved: true })
-    return c.json({ data: data.map(toEntry), pagination })
+    const query = parseQuery(type, c.req.query())
+    const resolving = parseWith(type, c.req.query(), delivery)
+    const { data, pagination } = await listEntries(db, type, query, { saved: true })
+    return c.json({ data: await withLinks(c, resolving, data), pagination })
   })
 
-  app.get('/entries/:type/slug/:slug', async (c) => c.json(await one(c.req.param('type'), 'slug', c.req.param('slug'))))
+  app.get('/entries/:type/slug/:slug', (c) => one(c, 'slug', c.req.param('slug')))
 
-  app.get('/entries/:type/uri/:uri{.+}', async (c) => c.json(await one(c.req.param('type'), 'uri', c.req.param('uri'))))
+  app.get('/entries/:type/uri/:uri{.+}', (c) => one(c, 'uri', c.req.param('uri')))
 
-  app.get('/entries/:type/:id', async (c) => {
+  app.get('/entries/:type/:id', (c) => {
     const id = c.req.param('id')
     if (!isUuid(id)) throw new HTTPException(404)
-    return c.json(await one(c.req.param('type'), 'id', id))
+    return one(c, 'id', id)
   })
 
   app.get('/media', async (c) => {

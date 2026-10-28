@@ -2,7 +2,8 @@ import { MediaOptions, Storage, defaultMediaTypes } from '.'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import type { AdminEnv } from './entries'
-import { MediaRow, listMedia, parseMediaQuery } from './query'
+import { allows } from './fields'
+import { MediaRow, listMedia, parseMediaQuery, toAdminEntry, usedBy } from './query'
 import { mediaSchema } from './schemas'
 import { fileTypeFromBuffer, supportedMimeTypes } from 'file-type'
 import { DriveManager } from 'flydrive'
@@ -22,12 +23,6 @@ const isSvg = (bytes: Buffer) =>
 // A file's real type and extension, from its content, never from its name or the type its client sent
 const detect = async (bytes: Buffer) =>
   isSvg(bytes) ? { ext: 'svg', mime: 'image/svg+xml' } : await fileTypeFromBuffer(bytes)
-
-// Whether types such as image/png or image/* allow a mime, leaving out its parameters, as in audio/ogg; codecs=opus
-function allows(types: Array<string>, mime: string) {
-  const essence = mime.split(';')[0]
-  return types.some((type) => type === essence || (type.endsWith('/*') && essence.startsWith(type.slice(0, -1))))
-}
 
 // The other extensions some types go by, since file-type gives each type one
 const aliases: Record<string, Array<string>> = {
@@ -203,9 +198,21 @@ export function mediaRoutes(
     return c.json({ data: toAdminMedia(updated, origin(c)) })
   })
 
+  // The entries that link to the file
+  app.get('/api/media/:id/used-by', async (c) => {
+    const row = await findMedia(db, c.req.param('id'))
+    return c.json({ data: (await usedBy(db, row.id)).map(toAdminEntry) })
+  })
+
   // Deletes the file with its row. A file that can't be deleted keeps its row, so deleting it can be tried again.
+  // shortcut: a save that links the file while it's being deleted can slip past the check, lock it when that matters
   app.delete('/api/media/:id', async (c) => {
     const row = await findMedia(db, c.req.param('id'))
+    const users = (await usedBy(db, row.id)).length
+    if (users) {
+      const message = `${users === 1 ? 'An entry links' : `${users} entries link`} to this file. Remove the links before deleting it.`
+      throw new HTTPException(409, { message })
+    }
     await db.transaction().execute(async (trx) => {
       await trx.deleteFrom('media').where('id', '=', row.id).execute()
       await drive.use(row.disk).delete(row.path)

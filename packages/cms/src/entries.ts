@@ -1,7 +1,8 @@
 import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
-import { inputs, isEmptyValue, pickValues, validateServerValues, validationError } from './core'
+import { isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
-import { EntryRow, listEntries, parseQuery, toEntry } from './query'
+import { EntryRow, listEntries, parseQuery, toAdminEntry, usedBy } from './query'
+import { cmsInputs, saveRelations, serverInputs } from './relations'
 import type { ContentType } from './types'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
@@ -9,14 +10,6 @@ import type { InputSchema } from 'iight'
 import { Kysely, sql } from 'kysely'
 
 export type AdminEnv = { Variables: { user: { id: string; email: string; name: string } } }
-
-// An entry as the admin API returns it
-const toAdminEntry = (row: EntryRow) => ({
-  ...toEntry(row),
-  archivedAt: row.archived_at,
-  createdBy: row.created_by,
-  updatedBy: row.updated_by,
-})
 
 const slugTaken = 'Another entry here already uses this slug.'
 
@@ -58,15 +51,16 @@ export function entryRoutes(
 
   const reply = async (c: Context<AdminEnv>, id: string) => c.json({ data: toAdminEntry((await find(id)).row) })
 
-  // Core's inputs, with the type's slug field also checking that no sibling has the slug, archived ones included.
-  // Built per request, since the check needs the entry and its parent.
-  const slugInputs = (type: ContentType, id: string | null, parentId: string | null) => {
+  // The inputs' server checks, with the type's slug field also checking that no sibling has the slug, archived ones
+  // included. Built per request, since the check needs the entry and its parent.
+  const checkInputs = (type: ContentType, id: string | null, parentId: string | null) => {
+    const inputs = serverInputs(db, types)
     const slugField = type.fields.find((field) => field.name === type.slugField)
     if (!slugField) return inputs
 
     const identifier = inputs.identifier
     const validateServerValue = async (value: unknown, schema: InputSchema) => {
-      const validation = identifier.validateValue(value, schema)
+      const validation = identifier.validateValue!(value, schema)
       if (schema.id !== slugField.id || !validation.isValid || isEmptyValue(value)) return validation
 
       const sibling = await db
@@ -136,8 +130,8 @@ export function entryRoutes(
     const parentId: string | null = type.structure === 'hierarchical' ? (body?.parentId ?? null) : null
     const parent = parentId === null ? undefined : await checkParent(type, parentId, existing?.id)
 
-    const values = pickValues(type.fields, body?.values ?? {}, inputs)
-    const report = await validateServerValues(type.fields, values, slugInputs(type, existing?.id ?? null, parentId))
+    const values = pickValues(type.fields, body?.values ?? {}, cmsInputs)
+    const report = await validateServerValues(type.fields, values, checkInputs(type, existing?.id ?? null, parentId))
     if (!report.isValid) return c.json(report, 422)
 
     const slug: string | null = (type.slugField && values[type.slugField]) || null
@@ -187,6 +181,7 @@ export function entryRoutes(
             created_by: user,
           })
           .execute()
+        await saveRelations(trx, type, row.id, values)
 
         // A new slug or parent changes the uri of every page under the entry
         if (existing && existing.uri !== uri) {
@@ -238,7 +233,7 @@ export function entryRoutes(
       const found = await trx.selectFrom('entries').selectAll().where('type', '=', type.name).executeTakeFirst()
       if (found) return found
 
-      const values = pickValues(type.fields, {}, inputs)
+      const values = pickValues(type.fields, {}, cmsInputs)
       const user = c.var.user.id
       return trx
         .insertInto('entries')
@@ -321,10 +316,31 @@ export function entryRoutes(
     return reply(c, row.id)
   })
 
-  // Delete an archived entry for good, with its descendants, which are archived too, and its versions
-  app.delete('/entries/:id', async (c) => {
+  // The entries that link to this one, archived ones included
+  app.get('/entries/:id/used-by', async (c) => {
     const { row } = await find(c.req.param('id'))
+    return c.json({ data: (await usedBy(db, row.id)).map(toAdminEntry) })
+  })
+
+  // Delete an archived entry for good, with its descendants, which are archived too, and its versions. Links from
+  // entries outside it would be left broken, so they must go first.
+  // shortcut: a save that links the entry while it's being deleted can slip past the check, lock it when that matters
+  app.delete('/entries/:id', async (c) => {
+    const { row, type } = await find(c.req.param('id'))
     if (!row.archived_at) throw new HTTPException(409, { message: 'Archive the entry before deleting it.' })
+
+    const { users } = (
+      await sql<{ users: number }>`${tree(row.id)}
+        select count(distinct entry_id)::int as users from entry_relations
+        where target_id in (select id from tree) and entry_id not in (select id from tree)
+      `.execute(db)
+    ).rows[0]
+    if (users) {
+      const linked = `${users === 1 ? 'Another entry links' : `${users} other entries link`} to this one`
+      const under = type.structure === 'hierarchical' ? ' or to pages under it' : ''
+      throw new HTTPException(409, { message: `${linked}${under}. Remove the links before deleting it.` })
+    }
+
     await db.deleteFrom('entries').where('id', '=', row.id).execute()
     return c.body(null, 204)
   })
