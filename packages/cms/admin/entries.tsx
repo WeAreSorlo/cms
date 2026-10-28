@@ -125,7 +125,10 @@ interface Version {
 export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?: Entry }) {
   const form = useRef<FormHandle>(null)
   const [entry, setEntry] = useState(loaded)
-  const [values, setValues] = useState<Record<string, any>>(loaded?.values ?? {})
+  // A new entry starts from its fields' defaults, as core's new flexible blocks do, so conditions can see them
+  const [values, setValues] = useState<Record<string, any>>(
+    () => loaded?.values ?? Object.fromEntries(type.fields.map((field) => [field.name, field.defaultValue])),
+  )
   // What the form starts from, replaced only to load a version. Passing every change back would let the form
   // adopt a stale copy while an input is still updating, such as a slug generated from the title.
   const [shown, setShown] = useState(values)
