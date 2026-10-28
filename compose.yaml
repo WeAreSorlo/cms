@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: iight
+      POSTGRES_PASSWORD: iight
+      POSTGRES_DB: iight
+    ports:
+      # Development credentials, so only listen on this machine
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    configs:
+      - source: test-database
+        target: /docker-entrypoint-initdb.d/test-database.sql
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'iight', '-d', 'iight']
+      interval: 1s
+      retries: 30
+
+configs:
+  # Runs once, when the volume is first created
+  test-database:
+    content: CREATE DATABASE iight_test;
+
+volumes:
+  postgres:
