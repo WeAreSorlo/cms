@@ -12,10 +12,72 @@
         background: #f9fafb;
       }
 
-      main {
+      .sign-in {
         max-width: 24rem;
         margin: 15vh auto;
         padding: 0 1rem;
+      }
+
+      .admin {
+        display: flex;
+        min-height: 100vh;
+      }
+
+      .admin > nav {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 14rem;
+        padding: 1rem;
+        background: #fff;
+        border-right: 1px solid #e5e7eb;
+      }
+
+      .admin > main {
+        flex: 1;
+        min-width: 0;
+        max-width: 48rem;
+        padding: 1rem 2rem;
+      }
+
+      .admin header,
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .admin table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .admin th,
+      .admin td {
+        padding: 0.5rem;
+        text-align: left;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .actions {
+        margin: 1rem 0;
+      }
+
+      @media (max-width: 40rem) {
+        .admin {
+          flex-direction: column;
+        }
+
+        .admin > nav {
+          width: auto;
+          border-right: 0;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .admin > main {
+          padding: 1rem;
+        }
       }
     </style>
   </head>

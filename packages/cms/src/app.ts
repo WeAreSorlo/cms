@@ -1,23 +1,23 @@
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
-import { verifyPassword } from './passwords'
+import { deliveryRoutes } from './delivery'
+import { AdminEnv, entryRoutes } from './entries'
+import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
-import { Hono } from 'hono'
+import type { ContentType } from './types'
+import { Hono, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { csrf } from 'hono/csrf'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely } from 'kysely'
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { STATUS_CODES } from 'node:http'
 
 const sessionCookie = 'iight_session'
 const sessionLength = 30 * 24 * 60 * 60 * 1000
 
-// Only a hash of each session token is stored, so a copy of the database can't be used to sign in
-const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')
-
-export function createApp(db: Kysely<Database>) {
-  const app = new Hono()
+export function createApp(db: Kysely<Database>, types = new Map<string, ContentType>()) {
+  const app = new Hono<AdminEnv>()
 
   // Every error except a failed validation replies { message }, as Laravel does
   app.notFound((c) => c.json({ message: 'Not Found' }, 404))
@@ -75,19 +75,20 @@ export function createApp(db: Kysely<Database>) {
     return c.json({ data: { id: user.id, email: user.email, name: user.name } })
   })
 
+  // The user whose session cookie came with the request
+  const sessionUser = async (token: string | undefined) =>
+    token &&
+    (await db
+      .selectFrom('sessions')
+      .innerJoin('users', 'users.id', 'sessions.user_id')
+      .select(['users.id', 'users.email', 'users.name'])
+      .where('sessions.token_hash', '=', hashToken(token))
+      .where('sessions.expires_at', '>', new Date())
+      .executeTakeFirst())
+
   // The signed-in user
   app.get('/api/session', async (c) => {
-    const token = getCookie(c, sessionCookie)
-    const user =
-      token &&
-      (await db
-        .selectFrom('sessions')
-        .innerJoin('users', 'users.id', 'sessions.user_id')
-        .select(['users.id', 'users.email', 'users.name'])
-        .where('sessions.token_hash', '=', hashToken(token))
-        .where('sessions.expires_at', '>', new Date())
-        .executeTakeFirst())
-
+    const user = await sessionUser(getCookie(c, sessionCookie))
     return user ? c.json({ data: user }) : c.json({ message: 'Unauthenticated.' }, 401)
   })
 
@@ -99,6 +100,19 @@ export function createApp(db: Kysely<Database>) {
     deleteCookie(c, sessionCookie, { path: '/' })
     return c.body(null, 204)
   })
+
+  // The rest of the admin API needs a session
+  const signedIn: MiddlewareHandler<AdminEnv> = async (c, next) => {
+    const user = await sessionUser(getCookie(c, sessionCookie))
+    if (!user) return c.json({ message: 'Unauthenticated.' }, 401)
+    c.set('user', user)
+    await next()
+  }
+  app.use('/api/types/*', signedIn)
+  app.use('/api/entries/*', signedIn)
+  app.route('/api', entryRoutes(db, types))
+
+  app.route('/v1', deliveryRoutes(db, types))
 
   return app
 }

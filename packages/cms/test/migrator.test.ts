@@ -69,10 +69,13 @@ test("the CMS's own migrations run forward and back", async () => {
   expect(Object.keys(migrations)).toEqual([
     '2026_10_28_000000_create_users_table',
     '2026_10_28_000001_create_sessions_table',
+    '2026_10_28_000002_create_entries_table',
+    '2026_10_28_000003_create_entry_versions_table',
+    '2026_10_28_000004_create_api_keys_table',
   ])
 
   await migrate(db, migrations)
-  expect(await tables()).toEqual(['migrations', 'sessions', 'users'])
+  expect(await tables()).toEqual(['api_keys', 'entries', 'entry_versions', 'migrations', 'sessions', 'users'])
 
   await rollback(db, migrations)
   expect(await tables()).toEqual(['migrations'])

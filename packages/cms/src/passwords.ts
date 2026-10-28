@@ -1,4 +1,4 @@
-import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 
 // OWASP's minimum cost for scrypt, which takes 128 MiB per hash
 const cost = { N: 2 ** 17, r: 8, p: 1 }
@@ -29,3 +29,7 @@ export async function verifyPassword(password: string, hash: string | undefined)
   const derived = await derive(password, Buffer.from(salt, 'base64'), { N: Number(N), r: Number(r), p: Number(p) })
   return timingSafeEqual(derived, Buffer.from(key, 'base64'))
 }
+
+// Session tokens and API keys are random, so a fast hash is enough. Only the hash is stored, so a copy of the
+// database can't be used to sign in or read content.
+export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex')

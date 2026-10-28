@@ -1,4 +1,6 @@
 import { signInSchema } from '../src/schemas'
+import { ContentType, api } from './api'
+import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import Form, { FormHandle } from 'iight'
 import 'iight/styles/base.scss'
 import 'iight/styles/layout.scss'
@@ -43,7 +45,7 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   return (
     // Core's form has no submit button, so Enter in a field submits from here
     <main
-      className='iight-theme-default'
+      className='iight-theme-default sign-in'
       onKeyDown={(event) => event.key === 'Enter' && event.target instanceof HTMLInputElement && submit()}
     >
       <h1>Sign in</h1>
@@ -56,15 +58,42 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
+// The page for the URL's hash, such as #/types/blog or #/entries/<id>
+function Page({ types }: { types: Map<string, ContentType> }) {
+  const [hash, setHash] = useState(location.hash)
+  useEffect(() => {
+    const update = () => setHash(location.hash)
+    addEventListener('hashchange', update)
+    return () => removeEventListener('hashchange', update)
+  }, [])
+
+  const [section, name, action] = hash.replace(/^#\/?/, '').split('/')
+  const type = section === 'types' ? types.get(name) : undefined
+
+  if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
+  if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
+  if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
+  if (type) return <EntryList key={`${type.name}/${action}`} type={type} archived={action === 'archive'} />
+  return <p>{types.size ? 'Choose a content type.' : 'Add a content type to schema/types to get started.'}</p>
+}
+
 function App() {
   // Undefined until we know whether a session exists
   const [user, setUser] = useState<null | User>()
+  const [types, setTypes] = useState<Map<string, ContentType>>()
 
   useEffect(() => {
     fetch('/api/session')
       .then(async (response) => setUser(response.ok ? (await response.json()).data : null))
       .catch(() => setUser(null))
   }, [])
+
+  useEffect(() => {
+    if (!user) return
+    api('GET', '/types')
+      .then(({ body }) => setTypes(new Map(body.data.map((type: ContentType) => [type.name, type]))))
+      .catch(() => setTypes(new Map()))
+  }, [user])
 
   const signOut = async () => {
     await fetch('/api/session', { method: 'DELETE' })
@@ -73,16 +102,28 @@ function App() {
 
   if (user === undefined) return null
   if (user === null) return <SignIn onSignIn={setUser} />
+  if (!types) return null
 
   return (
-    <main className='iight-theme-default'>
-      <p>
-        Signed in as {user.name} ({user.email}).
-      </p>
-      <button type='button' className='iight-button' onClick={signOut}>
-        Sign out
-      </button>
-    </main>
+    <div className='iight-theme-default admin'>
+      <nav>
+        <strong>iight</strong>
+        {[...types.values()].map((type) => (
+          <a key={type.name} href={`#/types/${type.name}`}>
+            {type.label}
+          </a>
+        ))}
+        <p>
+          Signed in as {user.name}.{' '}
+          <button type='button' className='iight-button' onClick={signOut}>
+            Sign out
+          </button>
+        </p>
+      </nav>
+      <main>
+        <Page types={types} />
+      </main>
+    </div>
   )
 }
 

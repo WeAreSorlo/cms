@@ -2,9 +2,12 @@ import type { Config } from '.'
 import { createApp } from './app'
 import { flattenValidationReport, inputs, validateServerValues } from './core'
 import { Database, createDb, uuidv7 } from './db'
+import { createApiKey } from './delivery'
 import { loadMigrations, migrate, migrationsDir, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
-import { userSchema } from './schemas'
+import { apiKeySchema, userSchema } from './schemas'
+import { loadTypes } from './types'
+import type { FieldSchema } from 'iight'
 import { Kysely } from 'kysely'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
@@ -38,6 +41,7 @@ const commands: Record<string, { description: string; run: (db: Kysely<Database>
     },
   },
   'make:user': { description: 'Create an admin user', run: makeUser },
+  'make:api-key': { description: 'Create a key for the delivery API', run: makeApiKey },
 }
 
 async function dev(db: Kysely<Database>) {
@@ -45,13 +49,19 @@ async function dev(db: Kysely<Database>) {
   const { getRequestListener } = await import('@hono/node-server')
   const vite = await import('vite')
 
+  // shortcut: types load once, so restart after editing them, until the type editor (phase 4) reloads them
+  const types = await loadTypes(resolve('schema/types')).catch((error) => {
+    console.error(error.message)
+    process.exit(1)
+  })
+
   const port = Number(process.env.PORT) || 3000
   const server = createServer()
   const admin = await vite.createServer({
     configFile: fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url)),
     server: { middlewareMode: true, hmr: { server } },
   })
-  const api = getRequestListener(createApp(db).fetch)
+  const api = getRequestListener(createApp(db, types).fetch)
 
   // Vite serves the admin under /admin, and Hono everything else
   server.on('request', (req, res) => (req.url?.startsWith('/admin') ? admin.middlewares(req, res) : api(req, res)))
@@ -67,15 +77,7 @@ async function makeUser(db: Kysely<Database>) {
   }
   prompt.close()
 
-  // The same core validation a form would run
-  const report = await validateServerValues(userSchema, values, inputs)
-  if (!report.isValid) {
-    for (const [name, messages] of Object.entries(flattenValidationReport(report).messages)) {
-      console.error(`${userSchema.find((field) => field.name === name)?.label}: ${messages.join(' ')}`)
-    }
-    process.exitCode = 1
-    return
-  }
+  if (!(await validates(userSchema, values))) return
 
   const email = values.email.toLowerCase()
   if (await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst()) {
@@ -89,6 +91,27 @@ async function makeUser(db: Kysely<Database>) {
     .values({ id: uuidv7(), name: values.name, email, password_hash: await hashPassword(values.password) })
     .execute()
   console.log(`Created ${email}, who can now sign in at /admin/.`)
+}
+
+async function makeApiKey(db: Kysely<Database>) {
+  const prompt = createPrompt()
+  const values = { name: (await prompt.ask('Name, such as Website: ')).trim() }
+  prompt.close()
+
+  if (!(await validates(apiKeySchema, values))) return
+  console.log(
+    `Created the key ${values.name}. Copy it now, since it can't be shown again:\n${await createApiKey(db, values.name)}`,
+  )
+}
+
+// Run the same core validation a form would, printing what's wrong
+async function validates(schema: Array<FieldSchema>, values: Record<string, string>) {
+  const report = await validateServerValues(schema, values, inputs)
+  for (const [name, messages] of Object.entries(flattenValidationReport(report).messages)) {
+    console.error(`${schema.find((field) => field.name === name)?.label}: ${messages.join(' ')}`)
+  }
+  if (!report.isValid) process.exitCode = 1
+  return report.isValid
 }
 
 // Ask questions on the terminal, without echoing the answers to hidden ones

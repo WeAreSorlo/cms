@@ -18,6 +18,36 @@ export interface Database {
     expires_at: Date
     created_at: Generated<Date>
   }
+  entries: {
+    id: string
+    type: string
+    values: Record<string, any>
+    parent_id: string | null
+    position: number | null
+    slug: string | null
+    uri: string | null
+    // The last content migration the values have been through (PLAN.md section 6)
+    migration: string | null
+    created_by: string | null
+    updated_by: string | null
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+    archived_at: Date | null
+  }
+  entry_versions: {
+    entry_id: string
+    number: number
+    values: Record<string, any>
+    migration: string | null
+    created_by: string | null
+    created_at: Generated<Date>
+  }
+  api_keys: {
+    id: string
+    name: string
+    token_hash: string
+    created_at: Generated<Date>
+  }
 }
 
 export function createDb(url: string) {
@@ -35,3 +65,6 @@ export function uuidv7() {
   const hex = bytes.toString('hex')
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
+
+export const isUuid = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
