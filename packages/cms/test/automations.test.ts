@@ -1,4 +1,5 @@
 import type { MailMessage } from '../src'
+import { webhookNetworks } from '../src/actions'
 import { createApp } from '../src/app'
 import { createWorker } from '../src/automations'
 import { db } from './database'
@@ -37,12 +38,13 @@ const other = createWorker(db, types, options)
 const received: Array<{ headers: IncomingHttpHeaders; body: string }> = []
 let statuses: Array<number> = []
 let held: Promise<void> | undefined
+let reply = 'Thanks'
 const receiver = createServer(async (request, response) => {
   let body = ''
   for await (const chunk of request) body += chunk
   received.push({ headers: request.headers, body })
   await held
-  response.writeHead(statuses.shift() ?? 200, { 'content-type': 'text/plain' }).end('Thanks')
+  response.writeHead(statuses.shift() ?? 200, { 'content-type': 'text/plain' }).end(reply)
 })
 let hookUrl: string
 
@@ -62,6 +64,7 @@ beforeEach(async () => {
   received.length = 0
   statuses = []
   held = undefined
+  reply = 'Thanks'
   await admin('POST', '/forms', { label: 'Contact us', name: 'contact_us', fields: contactFields })
 })
 afterAll(async () => {
@@ -479,6 +482,32 @@ test("webhooks can't reach private networks unless iight.config.ts allows them, 
   expect(() => createWorker(db, types, { automations: { attempts: 0 } })).toThrow(
     'automations.attempts in iight.config.ts needs a whole number from 1.',
   )
+})
+
+test('webhooks reach public addresses, and no way of writing an internal one', () => {
+  const reaches = webhookNetworks()
+  for (const address of ['93.184.216.34', '8.8.8.8', '2606:4700::1111']) expect(reaches(address), address).toBe(true)
+  for (const address of [
+    ...['127.0.0.1', '10.0.0.1', '169.254.169.254', '100.100.100.200', '::1', 'fd00:ec2::254', 'fe80::1'],
+    // IPv4 inside IPv6, and NAT64's prefixes, which a site's own NAT64 translates to its internal IPv4 addresses
+    ...['::ffff:127.0.0.1', '::ffff:a9fe:a9fe', '::127.0.0.1', '64:ff9b::a00:1', '64:ff9b:1::a00:1'],
+  ]) {
+    expect(reaches(address), address).toBe(false)
+  }
+
+  // IPv4 addresses are checked as IPv6 ones too, so an IPv6 network as wide as ::ffff:0:0/96 would let them all in
+  expect(webhookNetworks(['::ffff:10.0.0.0/104'])('10.0.0.1')).toBe(true)
+  expect(() => webhookNetworks(['::ffff:10.0.0.0/8'])).toThrow(
+    'webhooks.allowNetworks in iight.config.ts has ::ffff:10.0.0.0/8, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.',
+  )
+})
+
+test('a reply with a NUL in it is logged, rather than failing the log and holding up every other run', async () => {
+  await createAutomation({ actions: [webhook()] })
+  reply = 'Tha\0nks'
+  await submit(valid)
+  await drain()
+  expect(await runs()).toMatchObject([{ attempt: 1, status: 'succeeded', response: '200\nThanks' }])
 })
 
 test('automations are checked, saved, listed and deleted through the admin API', async () => {

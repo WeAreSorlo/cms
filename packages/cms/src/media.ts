@@ -17,9 +17,12 @@ import { Readable } from 'node:stream'
 import sharp from 'sharp'
 
 // file-type knows files by their content, but an SVG is XML text, known here by an svg root element after any XML
-// declaration, comments and doctype. A doctype that declares entities, as XML bombs do, doesn't count.
+// declaration, comments and doctype. A doctype that declares entities, as XML bombs do, doesn't count. A comment stops
+// at its first -->, since one that could run on to a later one would try every way to split a run of them.
 const isSvg = (bytes: Buffer) =>
-  /^\s*(<\?xml[^>]*\?>\s*)?(<!--[\s\S]*?-->\s*|<!DOCTYPE[^>[]*>\s*)*<svg[\s>]/.test(bytes.toString('utf8', 0, 4096))
+  /^\s*(<\?xml[^>]*\?>\s*)?(<!--(?:(?!-->)[\s\S])*-->\s*|<!DOCTYPE[^>[]*>\s*)*<svg[\s>]/.test(
+    bytes.toString('utf8', 0, 4096),
+  )
 
 // A file's real type and extension, from its content, never from its name or the type its client sent
 const detect = async (bytes: Buffer) =>
@@ -227,19 +230,22 @@ export function mediaRoutes(
     return c.body(null, 204)
   })
 
-  // A file, public so pages can show it. It's found by its ID, so the URL can't name a path on the disk, and the name
-  // after the ID only gives downloads a filename.
+  // A file, public so pages can show it. It's found by its ID, so the URL can't name a path on the disk, and any name
+  // after the ID serves it.
   app.get('/media/:id/:name', async (c) => {
     const row = await findMedia(db, c.req.param('id'))
     const disk = drive.use(row.disk)
     if (!(await disk.exists(row.path))) throw new HTTPException(404)
 
+    // Downloads take the file's safe name, not the URL's, which a link could end in evil.html
+    const filename = encodeURIComponent(row.name).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16)}`)
     const headers: Record<string, string> = {
       'content-type': row.mime,
       'accept-ranges': 'bytes',
       'cache-control': cacheControl,
       // Browsers take the file as the type its content was checked as
       'x-content-type-options': 'nosniff',
+      'content-disposition': `inline; filename*=UTF-8''${filename}`,
     }
     if (!viewable.test(row.mime)) {
       headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox"

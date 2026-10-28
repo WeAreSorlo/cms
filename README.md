@@ -33,6 +33,7 @@ Run it from a site project, where it reads `iight.config.ts`.
 | Command                       | What it does                                                                                                          |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `iight dev`                   | Serves the API and the admin on one port, `PORT` or 3000, and runs automations                                        |
+| `iight start`                 | Serves the API and the built admin for production on `PORT` or 3000, and runs automations. Types are read-only        |
 | `iight migrate`               | Runs pending migrations as one batch: the CMS's own, then the site project's content migrations                       |
 | `iight migrate --check`       | Lists the saved entries that no longer pass their type's checks, and fails if there are any. It migrates nothing      |
 | `iight migrate:rollback`      | Rolls back the last batch, content migrations first                                                                   |
@@ -40,6 +41,8 @@ Run it from a site project, where it reads `iight.config.ts`.
 | `iight make:migration [name]` | Writes a content migration for the changes to `schema/types`, named after the types it changes unless you give a name |
 | `iight make:user`             | Creates an admin user                                                                                                 |
 | `iight make:api-key`          | Creates a key for the delivery API, shown just once                                                                   |
+
+`iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine. It serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin.
 
 ## Content types
 
@@ -168,7 +171,7 @@ export default defineConfig({
 - A type with no signature in its content, such as CSV or plain text, can't be allowed, so `iight dev` won't start with one in `types`.
 - An image's `width` and `height` are read on upload by sharp, as it shows after EXIF rotation. They're null for other files, and for images sharp can't read, such as BMP.
 - A file is stored as `<id>.<extension>`, so its name never reaches the disk. Names lose folders and control, invisible and reserved characters, and end in an extension of the file's real type, so a PNG named `evil.html` becomes `evil.html.png`.
-- Files are public at `/media/<id>/<name>`, since `<img>` can't send an API key. They're found by ID, so a URL can't reach outside the disk, and any name after the ID serves the same file, so renaming breaks no links. They're served with `nosniff`, and in ranges of bytes for video and audio players.
+- Files are public at `/media/<id>/<name>`, since `<img>` can't send an API key. They're found by ID, so a URL can't reach outside the disk, and any name after the ID serves the same file, so renaming breaks no links. Downloads take the file's own name, whatever the URL ends in. They're served with `nosniff`, and in ranges of bytes for video and audio players.
 - Pictures, video, audio and PDFs open in the browser's own viewers. Every other file, such as an SVG or an XML file, is served with `Content-Security-Policy: sandbox`, so a script in it can't run, even when its URL is opened on its own. A frontend that puts an SVG's markup into its own page loses that, so show SVGs with `<img>`.
 - Deleting a file removes it from its disk too.
 

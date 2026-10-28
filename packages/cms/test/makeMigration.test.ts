@@ -251,6 +251,22 @@ test('narrowed choices and settings are flagged for --check, widened ones and ne
   expect(source).toContain('export const down: ContentMigration = ({ entries }) => {\n  // Nothing to undo\n}')
 })
 
+test("a line break in a choice value can't end a note's comment and add code to the migration", async () => {
+  const before = edit(blog, (find) => {
+    find('fld_category').options.choices.push(
+      { value: 'a\nglobalThis.injected = true //' },
+      { value: 'b globalThis.injected = true //' },
+    )
+  })
+  const { file, source } = await migration([before], [blog])
+  await roundTrip(file)
+
+  expect(globalThis).not.toHaveProperty('injected')
+  expect(source).toContain(
+    '  // Flagged: category lost the choices a globalThis.injected = true //, b globalThis.injected = true //, so some',
+  )
+})
+
 test('new fields with a default fill it in, and new required ones without a default are flagged', async () => {
   const added = edit(blog, (find, type) => {
     type.fields.push({ id: 'fld_featured', type: 'boolean', name: 'featured', defaultValue: false })

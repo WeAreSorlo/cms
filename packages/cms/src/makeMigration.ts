@@ -78,6 +78,10 @@ function literal(value: unknown): string {
   return JSON.stringify(value)
 }
 
+// A line comment, kept on one line, since a note can quote a type file's choice values and option keys, and a line
+// break in one would end the comment and run the rest
+const comment = (text: string) => `// ${text.replace(/\s+/g, ' ')}`
+
 // A call to one of the entries helpers, broken over lines as Prettier breaks one longer than 120 columns inside up
 function call(method: string, ...args: Array<string>) {
   const line = `entries.${method}(${args.join(', ')})`
@@ -99,8 +103,8 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
     const what = node.kind === 'field' ? `the values of ${pathOf(old, id)}` : `every ${pathOf(old, id)} block`
     const note = `Flagged: deletes ${what}, which down can't bring back. Old versions keep them`
     const method = node.kind === 'field' ? 'removeField' : 'removeLayout'
-    const up = [`// ${note}`, ...call(method, name, literal(pathOf(current, id)))]
-    changes.push({ up, down: [`// ${what[0].toUpperCase()}${what.slice(1)} can't come back`], note })
+    const up = [comment(note), ...call(method, name, literal(pathOf(current, id)))]
+    changes.push({ up, down: [comment(`${what[0].toUpperCase()}${what.slice(1)} can't come back`)], note })
 
     const drop = (id: string) => {
       current.delete(id)
@@ -133,7 +137,11 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
     } else {
       const note = `TODO: ${from} moved to ${path}, which a rename can't do across lists or layouts. Move it here, and back in down`
       const stub = call('update', name, '(values) => values')
-      changes.push({ up: [`// ${note}`, ...stub], down: [`// TODO: move ${path} back to ${from}`, ...stub], note })
+      changes.push({
+        up: [comment(note), ...stub],
+        down: [comment(`TODO: move ${path} back to ${from}`), ...stub],
+        note,
+      })
     }
     Object.assign(node, { name: to, parent })
   }
@@ -166,8 +174,8 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
       const note = `TODO: ${path} changed from ${was.schema.type} to ${node.schema.type}. Convert its values here, and back in down`
       const stub = call('mapField', name, literal(path), '(value) => value')
       changes.push({
-        up: [`// ${note}`, ...stub],
-        down: [`// TODO: convert ${path} back to ${was.schema.type}`, ...stub],
+        up: [comment(note), ...stub],
+        down: [comment(`TODO: convert ${path} back to ${was.schema.type}`), ...stub],
         note,
       })
     } else if (was) {
@@ -190,7 +198,7 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
       ]
       if (reasons.length) {
         const note = `Flagged: ${path} ${reasons.join(' and ')}, so some entries may not pass. Run iight migrate --check`
-        changes.push({ up: [`// ${note}`], down: [], note })
+        changes.push({ up: [comment(note)], down: [], note })
       }
     } else if (!node.parent || old.has(node.parent)) {
       // A new field in a container that's new too has no values to fill
@@ -202,7 +210,7 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
         })
       } else if (node.schema.required) {
         const note = `Flagged: ${path} is new and required, so entries saved before it have no value. Run iight migrate --check`
-        changes.push({ up: [`// ${note}`], down: [], note })
+        changes.push({ up: [comment(note)], down: [], note })
       }
     }
   }
@@ -234,7 +242,7 @@ export function diffTypes(snapshot: Record<string, ContentType>, types: Map<stri
     if (holder && kept.has(holder)) rename(holder, `_${holder}`)
     else if (holder) {
       const note = `Flagged: ${type.name} was the name of a type that's gone. Delete its entries first, or the rename stops`
-      changes.push({ up: [`// ${note}`], down: [], note })
+      changes.push({ up: [comment(note)], down: [], note })
     }
     rename(type.id, type.name)
     touched.add(type.name)
@@ -249,7 +257,7 @@ export function diffTypes(snapshot: Record<string, ContentType>, types: Map<stri
   for (const [id, type] of before) {
     if (kept.has(id)) continue
     const note = `Flagged: the type ${type.name} is gone, but its entries stay until you delete them. iight migrate --check lists them`
-    changes.push({ up: [`// ${note}`], down: [], note })
+    changes.push({ up: [comment(note)], down: [], note })
     touched.add(type.name)
   }
 

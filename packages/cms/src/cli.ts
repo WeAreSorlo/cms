@@ -15,7 +15,7 @@ import type { FieldSchema } from 'iight'
 import { Kysely } from 'kysely'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Writable } from 'node:stream'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -24,6 +24,7 @@ type Command = { description: string; run: (db: Kysely<Database>, args: Array<st
 
 const commands: Record<string, Command> = {
   dev: { description: 'Start the server and admin', run: dev },
+  start: { description: 'Start the server and the built admin, for production', run: start },
   migrate: {
     description: "Run pending migrations, or with --check, list entries that don't pass",
     run: async (db, args) => {
@@ -151,6 +152,36 @@ async function dev(db: Kysely<Database>) {
   server.listen(port, () => console.log(`The admin is running at http://localhost:${port}/admin/`))
 }
 
+// The production server: the admin as npm run build wrote it, and types that change only through git
+async function start(db: Kysely<Database>) {
+  const { serve } = await import('@hono/node-server')
+  const admin = fileURLToPath(new URL('../admin/dist', import.meta.url))
+  if (!existsSync(join(admin, 'index.html'))) {
+    console.error("The admin hasn't been built. Run npm run build in @iight/cms first.")
+    process.exit(1)
+  }
+
+  const types = await loadProjectTypes()
+  // No editor, so the type editor is read-only
+  const app = createApp(db, types, {
+    migrations: () => loadContentMigrations(resolve('migrations')),
+    admin,
+    storage: config.storage,
+    media: config.media,
+    delivery: config.delivery,
+    forms: config.forms,
+  })
+
+  // Hands events on to automations, in this process
+  createWorker(db, types, { mail: config.mail, automations: config.automations, webhooks: config.webhooks }).start()
+
+  // Every interface, unless HOST names one, such as 127.0.0.1 behind a proxy on the same machine
+  const port = Number(process.env.PORT) || 3000
+  serve({ fetch: app.fetch, port, hostname: process.env.HOST }, () =>
+    console.log(`iight is running on port ${port}, with the admin at /admin/`),
+  )
+}
+
 async function makeUser(db: Kysely<Database>) {
   const prompt = createPrompt()
   const values = {
@@ -247,5 +278,5 @@ const config: Config = (await import(pathToFileURL(configFile).href)).default
 const db = createDb(config.database.url)
 await command.run(db, process.argv.slice(3))
 
-// The dev server keeps the database, every other command is done with it
-if (name !== 'dev') await db.destroy()
+// The servers keep the database, every other command is done with it
+if (name !== 'dev' && name !== 'start') await db.destroy()

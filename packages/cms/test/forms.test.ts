@@ -1,5 +1,6 @@
 import { createApp } from '../src/app'
 import { createApiKey } from '../src/delivery'
+import { embedHtml } from '../src/embed'
 import { db } from './database'
 import { contactFields, setUp, types } from './fixtures'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
@@ -405,6 +406,16 @@ test('the embed HTML posts every field it shows to the form, by its ID', async (
     address: { town: 'Ada' },
     source: 'website',
   })
+})
+
+test("the embed HTML escapes a field's ID wherever it goes", () => {
+  const fields = [{ id: '"><script>alert(1)</script>', type: 'text', name: 'name', label: 'Name', instructions: 'Hi' }]
+  const embed = embedHtml(fields, 'http://localhost/v1/forms/1')
+  const id = 'iight-&#34;&#62;&#60;script&#62;alert(1)&#60;/script&#62;'
+  expect(embed).not.toContain('<script>')
+  expect(embed).toContain(`<label for="${id}">Name</label>`)
+  expect(embed).toContain(`<input type="text" id="${id}" name="name" aria-describedby="${id}-help">`)
+  expect(embed).toContain(`<small id="${id}-help">Hi</small>`)
 })
 
 test('turns away a post too large for a form', async () => {

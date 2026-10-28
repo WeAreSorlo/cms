@@ -269,9 +269,17 @@ export function createWorker(
         const response = error instanceof ActionFailed ? error.response : null
         result = { status: 'failed', response, error: error instanceof Error ? error.message : String(error) }
       }
+      // Postgres text can't hold a NUL, which a binary reply can, and an update that failed would leave the run to be
+      // tried again on every pass, ahead of every other
+      const text = (value: string | null) => value?.replaceAll('\0', '') ?? null
       await trx
         .updateTable('automation_runs')
-        .set({ ...result, finished_at: sql`clock_timestamp()` })
+        .set({
+          ...result,
+          response: text(result.response),
+          error: text(result.error),
+          finished_at: sql`clock_timestamp()`,
+        })
         .where('id', '=', run.id)
         .execute()
 

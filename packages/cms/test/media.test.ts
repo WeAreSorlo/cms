@@ -6,8 +6,11 @@ import { setUp, types } from './fixtures'
 import { FSDriver } from 'flydrive/drivers/fs'
 import { existsSync } from 'node:fs'
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import sharp from 'sharp'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
@@ -176,6 +179,11 @@ test('rejects files of the wrong type, whatever they are named', async () => {
   // An SVG whose doctype declares entities, as XML bombs do
   const bomb = '<!DOCTYPE svg [<!ENTITY a "aaaa">]><svg xmlns="http://www.w3.org/2000/svg">&a;</svg>'
   expect(await upload(bomb, 'bomb.svg')).toEqual(rejection(unknownType))
+  // Comments with no svg after them, which took seconds to check when a comment could run on to a later -->, doubling
+  // with each one
+  const started = performance.now()
+  expect(await upload('<!---->'.repeat(30) + 'x', 'comments.svg')).toEqual(rejection(unknownType))
+  expect(performance.now() - started).toBeLessThan(1000)
   expect(await upload('', 'empty.png')).toEqual(rejection(unknownType))
   // A file that only starts like a PNG
   const fake = Buffer.concat([(await image('png')).subarray(0, 8), Buffer.from('<script>alert(1)</script>')])
@@ -268,9 +276,10 @@ test("serves files by ID, so a URL can't reach outside the storage folder", asyn
     expect(await response.text()).not.toContain('secret')
   }
 
-  // The name only gives downloads a filename, so any name serves the same file and renaming breaks no links
-  const renamed = await app.request(`/media/${body.data.id}/..%2F..%2Fsecret.txt`)
+  // Any name serves the same file, so renaming breaks no links, and it downloads under its own name, not the URL's
+  const renamed = await app.request(`/media/${body.data.id}/..%2F..%2Fsecret.html`)
   expect(renamed.headers.get('content-type')).toBe('image/png')
+  expect(renamed.headers.get('content-disposition')).toBe("inline; filename*=UTF-8''logo.png")
 })
 
 test('serves SVGs in a sandbox that runs no scripts', async () => {
@@ -413,4 +422,26 @@ test('the delivery API lists media with their URLs and dimensions', async () => 
     headers: { authorization: `Bearer ${key}`, 'x-forwarded-proto': 'https' },
   })
   expect((await proxied.json()).data.url).toBe(`https://localhost/media/${media.id}/logo.png`)
+})
+
+test("the admin's dev server serves no files from the workspace around it, such as a site's uploads", async () => {
+  // As iight dev runs it, with its cache in the temporary folder
+  const vite = await import('vite')
+  const admin = await vite.createServer({
+    configFile: fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url)),
+    cacheDir: join(root, 'vite'),
+    server: { middlewareMode: true, hmr: false },
+    optimizeDeps: { noDiscovery: true },
+    logLevel: 'silent',
+  })
+  const server = createServer(admin.middlewares)
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const workspace = vite.searchForWorkspaceRoot(fileURLToPath(new URL('../admin/', import.meta.url)))
+    const { port } = server.address() as AddressInfo
+    expect((await fetch(`http://127.0.0.1:${port}/admin/@fs${join(workspace, 'package.json')}`)).status).toBe(403)
+  } finally {
+    server.close()
+    await admin.close()
+  }
 })

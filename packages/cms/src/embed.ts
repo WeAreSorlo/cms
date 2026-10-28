@@ -44,7 +44,9 @@ function fieldHtml(field: FieldSchema, prefix: string, indent: string): string {
   const id = `iight-${field.id ?? name}`
   const label = escapeHtml(field.label ?? field.name)
   const inner = `${indent}  `
-  const help = field.instructions ? `\n${inner}<small id="${id}-help">${escapeHtml(field.instructions)}</small>` : ''
+  const help = field.instructions
+    ? `\n${inner}<small id="${escapeHtml(id)}-help">${escapeHtml(field.instructions)}</small>`
+    : ''
   // Conditions need JavaScript to hide a field, so the browser never requires a field that has them
   const required = field.required === true && normaliseConditions(field).length === 0
   const shared = { name, required, 'aria-describedby': field.instructions && `${id}-help` }
@@ -115,7 +117,7 @@ function fieldHtml(field: FieldSchema, prefix: string, indent: string): string {
 
   return [
     `${indent}<p>`,
-    `${inner}<label for="${id}">${label}</label>`,
+    `${inner}<label for="${escapeHtml(id)}">${label}</label>`,
     `${inner}${control}${help}`,
     `${indent}</p>`,
   ].join('\n')

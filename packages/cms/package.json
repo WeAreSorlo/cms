@@ -11,6 +11,8 @@
     "iight": "./bin/iight.js"
   },
   "scripts": {
+    "build": "vite build --config admin/vite.config.ts",
+    "prepack": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

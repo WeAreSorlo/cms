@@ -11,4 +11,7 @@ export default defineConfig({
     // The linked core has its own node_modules, and a second copy of React breaks hooks
     dedupe: ['react', 'react-dom', 'react-i18next', 'i18next'],
   },
+  // Vite serves the files in these folders at /admin/@fs/ to anyone, and by default that's the workspace around the
+  // admin, which can hold the site's config and uploads. What the admin imports from elsewhere is still served.
+  server: { fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] } },
 })

@@ -12,7 +12,9 @@ import { signInSchema } from './schemas'
 import { EditorDirs, typeRoutes } from './typeEditor'
 import type { ContentType } from './types'
 import { typesFile } from './typescript'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, MiddlewareHandler } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { csrf } from 'hono/csrf'
 import { HTTPException } from 'hono/http-exception'
@@ -37,12 +39,14 @@ export interface AppOptions {
   delivery?: DeliveryOptions
   // Who can use the public form routes, and how often
   forms?: FormOptions
+  // The built admin's folder, which iight start serves at /admin/. iight dev serves the admin with Vite instead.
+  admin?: string
 }
 
 export function createApp(
   db: Kysely<Database>,
   types = new Map<string, ContentType>(),
-  { migrations = async () => ({}), editor, storage, media, delivery, forms }: AppOptions = {},
+  { migrations = async () => ({}), editor, storage, media, delivery, forms, admin }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
   const app = new Hono<AdminEnv>()
@@ -64,8 +68,22 @@ export function createApp(
 
   app.get('/', (c) => c.redirect('/admin/'))
 
-  // Sign in
-  app.post('/api/session', async (c) => {
+  // The built admin. It routes by the URL's hash, so its page at /admin/ is the only page the browser asks for.
+  if (admin) {
+    // Each build names new files in the page, so browsers check for a new page every time
+    app.use('/admin/*', async (c, next) => {
+      await next()
+      if (c.res.headers.get('content-type')?.startsWith('text/html')) c.header('Cache-Control', 'no-cache')
+    })
+    app.use('/admin/*', serveStatic({ root: admin, rewriteRequestPath: (path) => path.slice('/admin'.length) }))
+  }
+
+  // Sign in. Anyone can post here, so the body is limited before it's read.
+  const signInLimit = bodyLimit({
+    maxSize: 64 * 1024,
+    onError: (c) => c.json({ message: 'The request is too large.' }, 413),
+  })
+  app.post('/api/session', signInLimit, async (c) => {
     const values = pickValues(signInSchema, await c.req.json().catch(() => ({})), inputs)
     const report = await validateServerValues(signInSchema, values, inputs)
     if (!report.isValid) return c.json(report, 422)

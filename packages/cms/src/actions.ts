@@ -186,11 +186,13 @@ for (const [network, prefix] of [
 ] as const) {
   internal.addSubnet(network, prefix, 'ipv4')
 }
-// The unspecified address and loopback, IPv4 inside IPv6, unique local, link-local and multicast
+// The unspecified address and loopback, IPv4 inside IPv6 for NAT64, unique local, link-local and multicast. BlockList
+// checks an IPv6 address mapped from IPv4, such as ::ffff:127.0.0.1, by the IPv4 rules, and an IPv4 address by IPv6
+// rules for ::ffff:0:0/96, so a rule for that network would block every IPv4 address.
 for (const [network, prefix] of [
   ['::', 96],
-  ['::ffff:0:0', 96],
   ['64:ff9b::', 96],
+  ['64:ff9b:1::', 48],
   ['fc00::', 7],
   ['fe80::', 10],
   ['ff00::', 8],
@@ -215,6 +217,18 @@ export function webhookNetworks(allowNetworks: Array<string> = []) {
     }
     if (prefix === undefined) allowed.addAddress(address, family(address))
     else allowed.addSubnet(address, Number(prefix), family(address))
+
+    // BlockList checks IPv4 addresses as ::ffff:<address> too, so an IPv6 network as wide as ::ffff:0:0/96 holds every
+    // one of them, internal ones too
+    if (version === 6 && Number(prefix) <= 96) {
+      const covered = new BlockList()
+      covered.addSubnet(address, Number(prefix), 'ipv6')
+      if (covered.check('::ffff:0:0', 'ipv6')) {
+        throw new Error(
+          `webhooks.allowNetworks in iight.config.ts has ${network}, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.`,
+        )
+      }
+    }
   }
   return (address: string) => allowed.check(address, family(address)) || !internal.check(address, family(address))
 }

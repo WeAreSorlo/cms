@@ -3,12 +3,21 @@ import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 // OWASP's minimum cost for scrypt, which takes 128 MiB per hash
 const cost = { N: 2 ** 17, r: 8, p: 1 }
 
+// Hashes wait their turn, since each takes one of the four threads of libuv's pool, which file reads and DNS lookups
+// share, and a flood of sign-ins would take them all
+let queue: Promise<unknown> = Promise.resolve()
+
 function derive(password: string, salt: Buffer, { N, r, p }: typeof cost) {
-  return new Promise<Buffer>((resolve, reject) => {
-    scrypt(password, salt, 64, { N, r, p, maxmem: 256 * 1024 * 1024 }, (error, key) =>
-      error ? reject(error) : resolve(key),
-    )
-  })
+  const key = queue.then(
+    () =>
+      new Promise<Buffer>((resolve, reject) => {
+        scrypt(password, salt, 64, { N, r, p, maxmem: 256 * 1024 * 1024 }, (error, key) =>
+          error ? reject(error) : resolve(key),
+        )
+      }),
+  )
+  queue = key.catch(() => {})
+  return key
 }
 
 // Stored as scrypt$N$r$p$salt$key, so the cost can rise later without breaking existing hashes

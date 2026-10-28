@@ -3,6 +3,8 @@ import { createDb, uuidv7 } from '../src/db'
 import { loadMigrations, migrate, migrationsDir } from '../src/migrator'
 import { hashPassword } from '../src/passwords'
 import { db, resetDb } from './database'
+import { stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { afterAll, beforeAll, expect, test, vi } from 'vitest'
 
 const app = createApp(db)
@@ -80,6 +82,24 @@ test('signs in with a session cookie, then signs out', async () => {
   })
   expect(signOut.status).toBe(204)
   expect((await app.request('/api/session', { headers: { cookie } })).status).toBe(401)
+})
+
+test('turns away a sign-in far larger than an email and a password, before reading it', async () => {
+  const response = await signIn({ email: 'ada@example.com', password: 'x'.repeat(64 * 1024) })
+
+  expect(response.status).toBe(413)
+  expect(await response.json()).toEqual({ message: 'The request is too large.' })
+})
+
+test('a flood of sign-ins hashes one at a time, leaving threads for reading files and looking up names', async () => {
+  // Each hash holds one of libuv's four threads for a while, and file reads wait for a free one
+  const flood = Array.from({ length: 8 }, (_, i) => signIn({ email: `nobody${i}@example.com`, password: 'x' }))
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  const started = performance.now()
+  await stat(tmpdir())
+  expect(performance.now() - started).toBeLessThan(100)
+
+  for (const response of await Promise.all(flood)) expect(response.status).toBe(422)
 })
 
 test('marks the cookie Secure behind HTTPS', async () => {
