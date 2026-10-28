@@ -251,8 +251,8 @@ export function Inbox({ id, view }: { id: string; view: View }) {
     if (body) setVersions((all) => ({ ...all, [submission.version]: body.data.fields }))
   }
 
-  // Archive, restore or move out of spam, which takes the submission out of this view
-  const act = async (action: 'archive' | 'restore' | 'not-spam') => {
+  // Archive, restore, or mark as spam or not, each of which takes the submission out of this view
+  const act = async (action: 'archive' | 'restore' | 'spam' | 'not-spam') => {
     if (busy || !open) return
     setBusy(true)
     try {
@@ -374,11 +374,6 @@ export function Inbox({ id, view }: { id: string; view: View }) {
             </div>
           </dl>
           <div className='actions'>
-            {view === 'spam' && (
-              <button type='button' className='iight-button' disabled={busy} onClick={() => act('not-spam')}>
-                Not spam
-              </button>
-            )}
             {view === 'inbox' && (
               <button type='button' className='iight-button' disabled={busy} onClick={() => act('archive')}>
                 Archive
@@ -387,6 +382,15 @@ export function Inbox({ id, view }: { id: string; view: View }) {
             {view === 'archive' && (
               <button type='button' className='iight-button' disabled={busy} onClick={() => act('restore')}>
                 Restore
+              </button>
+            )}
+            {open.spam ? (
+              <button type='button' className='iight-button' disabled={busy} onClick={() => act('not-spam')}>
+                Not spam
+              </button>
+            ) : (
+              <button type='button' className='iight-button' disabled={busy} onClick={() => act('spam')}>
+                Mark as spam
               </button>
             )}
           </div>

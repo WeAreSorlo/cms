@@ -177,7 +177,7 @@ export default defineConfig({
 Forms live in the database rather than in `schema/`, since marketers make them in production. The admin's Forms page creates and edits them with core's schema builder, which offers every one of core's inputs. Each form has a label and a `name`, such as `contact_us`, which the SDK and the generated types call it by.
 
 - Each change to a form's fields saves a new version, and each submission records the version it was checked against, so the inbox shows it with that version's fields. Changing only the label or name keeps the version.
-- Each form has an inbox of its submissions, newest first, with Spam and Archive views. Archived submissions can be restored, and Not spam moves a submission from Spam to the inbox.
+- Each form has an inbox of its submissions, newest first, with Spam and Archive views. Archived submissions can be restored, and any submission can be marked as spam by hand, such as one that got past the honeypot, or as not spam, such as a person's that filled it in.
 - The form's page shows HTML for pasting it into any page, which posts to the form with JavaScript off and takes the page's own styles. It posts to the form's ID, so renaming a form never breaks a page it's pasted into. Repeater, matrix and flexible fields are left out of it, since adding their items needs JavaScript.
 
 ### Submissions
@@ -289,7 +289,8 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `GET /api/forms/:id/submissions`        | Lists the inbox, or the archive with `archived=true`, or spam with `spam=true`, taking `order`, `page` and `perPage`                              |
 | `POST /api/submissions/:id/archive`     | Archives a submission                                                                                                                             |
 | `POST /api/submissions/:id/restore`     | Restores an archived submission                                                                                                                   |
-| `POST /api/submissions/:id/not-spam`    | Moves a submission from spam to the inbox                                                                                                         |
+| `POST /api/submissions/:id/spam`        | Marks a submission as spam, taking it out of the inbox or the archive                                                                             |
+| `POST /api/submissions/:id/not-spam`    | Marks a submission as not spam, back in the inbox, or the archive if it was archived                                                              |
 
 The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 

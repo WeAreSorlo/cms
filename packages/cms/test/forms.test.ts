@@ -299,7 +299,7 @@ test('keeps a submission that fills in the honeypot as spam, with the reply anyo
   expect(await view('?spam=true')).toEqual([true])
 })
 
-test('archives and restores submissions', async () => {
+test('archives and restores submissions, and marks them as spam or not by hand', async () => {
   const { id } = await createForm()
   const sent = await submit('contact', valid)
   const ids = async (query = '') =>
@@ -321,6 +321,16 @@ test('archives and restores submissions', async () => {
   })
   expect(await ids()).toEqual([sent.body.data.id])
   expect((await admin('POST', '/submissions/nope/archive')).status).toBe(404)
+
+  // Spam that gets past the honeypot goes by hand, and comes back the same way
+  const marked = await admin('POST', `/submissions/${sent.body.data.id}/spam`)
+  expect(marked.body.data).toMatchObject({ id: sent.body.data.id, spam: true })
+  expect(await ids()).toEqual([])
+  expect(await ids('?spam=true')).toEqual([sent.body.data.id])
+
+  await admin('POST', `/submissions/${sent.body.data.id}/not-spam`)
+  expect(await ids()).toEqual([sent.body.data.id])
+  expect(await ids('?spam=true')).toEqual([])
 })
 
 test("limits each address's posts, valid or not, except requests that send an API key", async () => {

@@ -177,7 +177,7 @@ export function formRoutes(db: Kysely<Database>) {
     return c.json({ data: data.map(toAdminSubmission), pagination })
   })
 
-  // Archive or restore a submission, or move it out of spam into the inbox
+  // Archive or restore a submission, or mark it as spam or not, which moves it between the inbox and spam
   const change = (set: { archived_at?: RawBuilder<Date> | null; spam?: boolean }) => async (c: Context<AdminEnv>) => {
     const id = c.req.param('id')!
     const row = isUuid(id)
@@ -189,6 +189,7 @@ export function formRoutes(db: Kysely<Database>) {
 
   app.post('/submissions/:id/archive', change({ archived_at: sql<Date>`coalesce(archived_at, now())` }))
   app.post('/submissions/:id/restore', change({ archived_at: null }))
+  app.post('/submissions/:id/spam', change({ spam: true }))
   app.post('/submissions/:id/not-spam', change({ spam: false }))
 
   return app
