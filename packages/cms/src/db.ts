@@ -48,6 +48,13 @@ export interface Database {
     token_hash: string
     created_at: Generated<Date>
   }
+  // Both kinds of migration that have run, made by migrator.ts
+  migrations: {
+    id: Generated<number>
+    name: string
+    batch: number
+    migrated_at: Generated<Date>
+  }
 }
 
 export function createDb(url: string) {

@@ -1,8 +1,6 @@
-import { ContentType, Entry, allEntries, api, date, formatField, titleOf, tree } from './api'
+import { ContentType, Entry, allEntries, api, date, errorMessage, formatField, titleOf, tree } from './api'
 import Form, { FieldSchema, FormHandle } from 'iight'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 // A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive
 export function EntryList({ type, archived = false }: { type: ContentType; archived?: boolean }) {

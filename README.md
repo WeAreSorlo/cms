@@ -30,18 +30,20 @@ npm run dev         # the admin is at http://localhost:3000/admin/
 
 Run it from a site project, where it reads `iight.config.ts`.
 
-| Command                  | What it does                                             |
-| ------------------------ | -------------------------------------------------------- |
-| `iight dev`              | Serves the API and the admin on one port, `PORT` or 3000 |
-| `iight migrate`          | Runs pending migrations as one batch                     |
-| `iight migrate:rollback` | Rolls back the last batch                                |
-| `iight migrate:status`   | Lists each migration and the batch it ran in             |
-| `iight make:user`        | Creates an admin user                                    |
-| `iight make:api-key`     | Creates a key for the delivery API, shown just once      |
+| Command                       | What it does                                                                                                          |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `iight dev`                   | Serves the API and the admin on one port, `PORT` or 3000                                                              |
+| `iight migrate`               | Runs pending migrations as one batch: the CMS's own, then the site project's content migrations                       |
+| `iight migrate --check`       | Lists the saved entries that no longer pass their type's checks, and fails if there are any. It migrates nothing      |
+| `iight migrate:rollback`      | Rolls back the last batch, content migrations first                                                                   |
+| `iight migrate:status`        | Lists the migrations of both kinds, and the batch each ran in                                                         |
+| `iight make:migration [name]` | Writes a content migration for the changes to `schema/types`, named after the types it changes unless you give a name |
+| `iight make:user`             | Creates an admin user                                                                                                 |
+| `iight make:api-key`          | Creates a key for the delivery API, shown just once                                                                   |
 
 ## Content types
 
-Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `playground/schema/types`. `iight dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a type.
+Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `playground/schema/types`. `iight dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a file by hand. The type editor reloads the types itself.
 
 | Key                 | What it holds                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------- |
@@ -54,6 +56,60 @@ Each content type is a JSON file in the site project's `schema/types` folder, na
 | `slugField`         | Optional, a top-level `identifier` field. Slugs are unique among siblings, archived included |
 | `listColumns`       | Optional, the top-level fields the admin's lists show                                        |
 | `fields`            | A core schema. Every field and flexible layout needs an `id`, such as `fld_k3x9q2mz`         |
+
+### The type editor
+
+In `iight dev`, the admin's Content types page creates, edits and deletes types, with core's schema builder for their fields. Settings that name a field, such as `titleField`, follow it when the builder renames it. Saving writes the type's file, laid out by the site project's Prettier if it has one, then runs `make:migration` and shows the migration it wrote with its flags and TODOs. The editor doesn't run the migration, so you can check it and finish any TODOs first. Outside `iight dev` the page is read-only, and types change through git.
+
+## Content migrations
+
+Entries keep their values as JSON, so changing a content type never changes a table. A content migration changes the values inside entries instead. It's a file in the site project's `migrations` folder with an `up` and a `down`, as in Laravel.
+
+`iight make:migration` compares `schema/types` with `migrations/.snapshot.json`, the types as the last migration left them, matching types, fields and layouts by `id`. Its first run only writes the snapshot, so run it once before you change a type. Commit the migrations and the snapshot.
+
+| Change                                                | What the migration does                                                                        |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Field added                                           | Nothing, or fills in its `defaultValue`. A new required field without one is flagged           |
+| Field renamed or moved                                | Renames it, and back in `down`. A move into or out of a list or layout gets a stub with a TODO |
+| Field removed                                         | Deletes its values, flagged, since `down` can't bring them back                                |
+| Field type changed                                    | A stub with a TODO for the conversion                                                          |
+| Choices or settings narrowed, or a field now required | Nothing, flagged for `iight migrate --check`                                                   |
+| Layout renamed or removed                             | Renames the blocks' `_layout`, or deletes the blocks, flagged                                  |
+| Type renamed                                          | Renames the type of its entries                                                                |
+| Type removed                                          | Flagged. Its entries stay until you delete them                                                |
+
+```ts
+// migrations/2026_10_28_120000_blog.ts
+import type { ContentMigration } from '@iight/cms'
+
+export const up: ContentMigration = ({ entries }) => {
+  entries.renameField('blog', 'title', 'headline')
+  // Flagged: deletes the values of summary, which down can't bring back. Old versions keep them
+  entries.removeField('blog', 'summary')
+}
+
+export const down: ContentMigration = ({ entries }) => {
+  // The values of summary can't come back
+  entries.renameField('blog', 'headline', 'title')
+}
+```
+
+| Helper                         | What it does to each of the type's entries                                             |
+| ------------------------------ | -------------------------------------------------------------------------------------- |
+| `renameField(type, from, to)`  | Moves a field's value to another name or place                                         |
+| `removeField(type, path)`      | Deletes a field's value                                                                |
+| `addField(type, path, value)`  | Gives the field this value where it has none                                           |
+| `mapField(type, path, change)` | Replaces the field's value with what `change` returns for it                           |
+| `renameLayout(type, from, to)` | Renames a flexible field's layout, as in `('blog', 'blocks.quote', 'blocks.citation')` |
+| `removeLayout(type, path)`     | Deletes the blocks of a layout                                                         |
+| `renameType(from, to)`         | Renames a type, unless the new name already has entries                                |
+| `update(type, change)`         | Any other change: `change` takes an entry's values and returns new ones                |
+
+- Paths name fields as the schema nests them: `address.town` in a group, `pets.name` in every item of a repeater or matrix, and `blocks.quote.credit` in the blocks of the `quote` layout.
+- An `up` or `down` only declares changes to one entry's values. `iight migrate` runs them on every entry, 500 at a time, inside one transaction for each migration, and old versions run them too.
+- Every save records the last content migration that ran. Opening an old version runs the `up` of each migration that ran after it was saved, so its values fit the fields as they are now. A version saved after a migration that has since been rolled back replies 409 until it runs again.
+- While a content migration hasn't run, saving an entry replies 409, since the types already have its change and the entries don't yet.
+- `iight migrate --check` leaves out entries that were never saved, such as a singleton that has only been opened.
 
 ## The API
 
@@ -79,23 +135,28 @@ An entry keeps its field values in `values`. `uri` is a hierarchical page's path
 
 The admin uses it with the session cookie, which every route but `/api/session` needs. Its entries also have `archivedAt`, `createdBy` and `updatedBy`.
 
-| Route                                   | What it does                                                                                                                            |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/session`                     | Signs in with `{ email, password }`. Replies `{ data: user }` and sets the `iight_session` cookie, or 422 with core's validation report |
-| `GET /api/session`                      | Replies `{ data: user }` for the signed-in user, or 401                                                                                 |
-| `DELETE /api/session`                   | Signs out                                                                                                                               |
-| `GET /api/types`                        | Lists the content types                                                                                                                 |
-| `GET /api/types/:type/entries`          | Lists live entries, or archived ones with `archived=true`, taking the delivery API's query parameters                                   |
-| `POST /api/types/:type/entries`         | Creates an entry from `{ values, parentId }`, where `parentId` is for hierarchicals                                                     |
-| `GET /api/types/:type/singleton`        | Replies a singleton's entry, created the first time it's opened                                                                         |
-| `GET /api/entries/:id`                  | Replies an entry, archived or not                                                                                                       |
-| `PUT /api/entries/:id`                  | Saves `{ values, parentId }`. A moved page goes after its new siblings, and the `uri`s under it follow                                  |
-| `PUT /api/entries/:id/position`         | Moves a page to `{ position }` among its siblings, counting from 0                                                                      |
-| `POST /api/entries/:id/archive`         | Archives an entry with its live descendants                                                                                             |
-| `POST /api/entries/:id/restore`         | Restores an entry with the descendants archived along with it, once its parent is live                                                  |
-| `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions                                                                   |
-| `GET /api/entries/:id/versions`         | Lists the entry's versions, newest first. Every save writes one                                                                         |
-| `GET /api/entries/:id/versions/:number` | Replies a version with its values. Restoring it means saving those values again                                                         |
+| Route                                   | What it does                                                                                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/session`                     | Signs in with `{ email, password }`. Replies `{ data: user }` and sets the `iight_session` cookie, or 422 with core's validation report           |
+| `GET /api/session`                      | Replies `{ data: user }` for the signed-in user, or 401                                                                                           |
+| `DELETE /api/session`                   | Signs out                                                                                                                                         |
+| `GET /api/types`                        | Lists the content types, with `editable`, which is true in `iight dev`                                                                            |
+| `POST /api/types`                       | Creates a type from its settings and `fields`, giving it an `id`. Replies `{ data: type, migration: { file, notes } }`, or 422 with core's report |
+| `PUT /api/types/:type`                  | Replaces a type, renaming its file when `name` changes, and writes a content migration for the change. Replies as `POST` does                     |
+| `DELETE /api/types/:type`               | Deletes a type's file and writes a migration that flags its entries, which stay. Replies `{ migration: { file, notes } }`                         |
+| `GET /api/types/:type/entries`          | Lists live entries, or archived ones with `archived=true`, taking the delivery API's query parameters                                             |
+| `POST /api/types/:type/entries`         | Creates an entry from `{ values, parentId }`, where `parentId` is for hierarchicals                                                               |
+| `GET /api/types/:type/singleton`        | Replies a singleton's entry, created the first time it's opened                                                                                   |
+| `GET /api/entries/:id`                  | Replies an entry, archived or not                                                                                                                 |
+| `PUT /api/entries/:id`                  | Saves `{ values, parentId }`. A moved page goes after its new siblings, and the `uri`s under it follow                                            |
+| `PUT /api/entries/:id/position`         | Moves a page to `{ position }` among its siblings, counting from 0                                                                                |
+| `POST /api/entries/:id/archive`         | Archives an entry with its live descendants                                                                                                       |
+| `POST /api/entries/:id/restore`         | Restores an entry with the descendants archived along with it, once its parent is live                                                            |
+| `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions                                                                             |
+| `GET /api/entries/:id/versions`         | Lists the entry's versions, newest first. Every save writes one                                                                                   |
+| `GET /api/entries/:id/versions/:number` | Replies a version, with its values brought up to date by the content migrations that ran since. Restoring it means saving those values again      |
+
+The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
 ### The delivery API
 

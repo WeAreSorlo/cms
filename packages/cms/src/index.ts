@@ -7,3 +7,6 @@ export interface Config {
 
 // Types a site project's iight.config.ts
 export const defineConfig = (config: Config) => config
+
+// Types a site project's content migrations
+export type { ContentMigration, EntryChanges } from './content'

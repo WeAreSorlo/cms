@@ -1,11 +1,12 @@
 import { signInSchema } from '../src/schemas'
 import { ContentType, api } from './api'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
+import { TypeEditor, TypeList } from './types'
 import Form, { FormHandle } from 'iight'
 import 'iight/styles/base.scss'
 import 'iight/styles/layout.scss'
 import 'iight/styles/themes/default.scss'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 interface User {
@@ -58,8 +59,16 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
-// The page for the URL's hash, such as #/types/blog or #/entries/<id>
-function Page({ types }: { types: Map<string, ContentType> }) {
+// The page for the URL's hash, such as #/types/blog, #/entries/<id> or #/schema/blog in the type editor
+function Page({
+  types,
+  editable,
+  reloadTypes,
+}: {
+  types: Map<string, ContentType>
+  editable: boolean
+  reloadTypes: () => Promise<void>
+}) {
   const [hash, setHash] = useState(location.hash)
   useEffect(() => {
     const update = () => setHash(location.hash)
@@ -70,6 +79,11 @@ function Page({ types }: { types: Map<string, ContentType> }) {
   const [section, name, action] = hash.replace(/^#\/?/, '').split('/')
   const type = section === 'types' ? types.get(name) : undefined
 
+  if (section === 'schema' && name === 'new') return <TypeEditor key='new' editable={editable} onSaved={reloadTypes} />
+  if (section === 'schema' && types.has(name)) {
+    return <TypeEditor key={name} type={types.get(name)} editable={editable} onSaved={reloadTypes} />
+  }
+  if (section === 'schema') return <TypeList types={types} editable={editable} />
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
@@ -81,6 +95,7 @@ function App() {
   // Undefined until we know whether a session exists
   const [user, setUser] = useState<null | User>()
   const [types, setTypes] = useState<Map<string, ContentType>>()
+  const [editable, setEditable] = useState(false)
 
   useEffect(() => {
     fetch('/api/session')
@@ -88,12 +103,16 @@ function App() {
       .catch(() => setUser(null))
   }, [])
 
+  // Loaded again after each change in the type editor
+  const reloadTypes = useCallback(async () => {
+    const { body } = await api('GET', '/types')
+    setTypes(new Map(body.data.map((type: ContentType) => [type.name, type])))
+    setEditable(body.editable)
+  }, [])
+
   useEffect(() => {
-    if (!user) return
-    api('GET', '/types')
-      .then(({ body }) => setTypes(new Map(body.data.map((type: ContentType) => [type.name, type]))))
-      .catch(() => setTypes(new Map()))
-  }, [user])
+    if (user) reloadTypes().catch(() => setTypes(new Map()))
+  }, [user, reloadTypes])
 
   const signOut = async () => {
     await fetch('/api/session', { method: 'DELETE' })
@@ -113,6 +132,7 @@ function App() {
             {type.label}
           </a>
         ))}
+        <a href='#/schema'>Content types</a>
         <p>
           Signed in as {user.name}.{' '}
           <button type='button' className='iight-button' onClick={signOut}>
@@ -121,7 +141,7 @@ function App() {
         </p>
       </nav>
       <main>
-        <Page types={types} />
+        <Page types={types} editable={editable} reloadTypes={reloadTypes} />
       </main>
     </div>
   )

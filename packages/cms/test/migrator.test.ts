@@ -1,5 +1,9 @@
+import { loadContentMigrations } from '../src/content'
 import { Migration, loadMigrations, migrate, migrationsDir, rollback, status } from '../src/migrator'
 import { db, resetDb } from './database'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, beforeEach, expect, test } from 'vitest'
 
 beforeEach(resetDb)
@@ -57,6 +61,29 @@ test('a failing migration leaves nothing behind and stops the batch', async () =
     { name: '2026_01_02_fails', batch: null },
     { name: '2026_01_03_c', batch: null },
   ])
+})
+
+test('sets of migrations run in the order given, as one batch, and roll back in reverse', async () => {
+  // The CMS's migrations run before the site project's, even ones with earlier names
+  const cms = { '2026_02_01_cms': table('cms') }
+  const content = { '2026_01_01_content': table('content') }
+  expect(await migrate(db, cms, content)).toEqual(['2026_02_01_cms', '2026_01_01_content'])
+  expect(await status(db, content)).toEqual([{ name: '2026_01_01_content', batch: 1 }])
+  expect(await rollback(db, { ...cms, ...content })).toEqual(['2026_01_01_content', '2026_02_01_cms'])
+})
+
+test("loads a folder's migrations, skipping other files, and needs an up and a down in content migrations", async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  await writeFile(join(dir, '2026_01_01_000000_blog.ts'), 'export const up = () => {}\nexport const down = () => {}\n')
+  await writeFile(join(dir, '.snapshot.json'), '{}')
+  await writeFile(join(dir, 'notes.md'), 'Not a migration')
+  expect(Object.keys(await loadContentMigrations(dir))).toEqual(['2026_01_01_000000_blog'])
+  expect(await loadMigrations(join(dir, 'missing'))).toEqual({})
+
+  await writeFile(join(dir, '2026_01_02_000000_docs.ts'), 'export const up = () => {}\n')
+  await expect(loadContentMigrations(dir)).rejects.toThrow(
+    'The content migration 2026_01_02_000000_docs must export an up and a down function.',
+  )
 })
 
 test('refuses to roll back a migration whose file is gone', async () => {

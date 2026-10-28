@@ -1,9 +1,11 @@
+import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
 import { apiKey, deliveryRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
+import { EditorDirs, typeRoutes } from './typeEditor'
 import type { ContentType } from './types'
 import { typesFile } from './typescript'
 import { Hono, MiddlewareHandler } from 'hono'
@@ -17,7 +19,19 @@ import { STATUS_CODES } from 'node:http'
 const sessionCookie = 'iight_session'
 const sessionLength = 30 * 24 * 60 * 60 * 1000
 
-export function createApp(db: Kysely<Database>, types = new Map<string, ContentType>()) {
+// What the server uses from the site project, besides its types
+export interface AppOptions {
+  // Its content migrations, loaded by each request that needs them, so a new one counts as soon as it's written
+  migrations?: () => Promise<Record<string, ContentMigrationFile>>
+  // Its folders, where the type editor writes types and migrations, as in iight dev
+  editor?: EditorDirs
+}
+
+export function createApp(
+  db: Kysely<Database>,
+  types = new Map<string, ContentType>(),
+  { migrations = async () => ({}), editor }: AppOptions = {},
+) {
   const app = new Hono<AdminEnv>()
 
   // Every error except a failed validation replies { message }, as Laravel does
@@ -111,13 +125,14 @@ export function createApp(db: Kysely<Database>, types = new Map<string, ContentT
   }
   app.use('/api/types/*', signedIn)
   app.use('/api/entries/*', signedIn)
-  app.route('/api', entryRoutes(db, types))
+  app.route('/api', typeRoutes(types, editor))
+  app.route('/api', entryRoutes(db, types, migrations))
 
   app.route('/v1', deliveryRoutes(db, types))
 
   // What the delivery API returns, as TypeScript, for `npx iight types pull`
-  const declarations = typesFile(types)
-  app.get('/types', apiKey(db), (c) => c.text(declarations))
+  // Made for each request, since the type editor can change the types
+  app.get('/types', apiKey(db), (c) => c.text(typesFile(types)))
 
   return app
 }

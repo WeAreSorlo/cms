@@ -1,4 +1,5 @@
 import { Kysely, sql } from 'kysely'
+import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -13,10 +14,12 @@ export type Migrations = Record<string, Migration>
 // The CMS's own migrations, which create its fixed tables
 export const migrationsDir = fileURLToPath(new URL('./migrations', import.meta.url))
 
-// Load every migration in a folder, named after its file
-export async function loadMigrations(dir: string): Promise<Migrations> {
-  const migrations: Migrations = {}
-  for (const file of await readdir(dir)) {
+// Load every migration in a folder, named after its file. Other files, such as a site project's
+// migrations/.snapshot.json, are skipped, and a folder that doesn't exist yet has none.
+export async function loadMigrations<T = Migration>(dir: string): Promise<Record<string, T>> {
+  const migrations: Record<string, T> = {}
+  const files = existsSync(dir) ? await readdir(dir) : []
+  for (const file of files.filter((file) => /^[^.].*\.[jt]s$/.test(file))) {
     migrations[basename(file, extname(file))] = await import(pathToFileURL(join(dir, file)).href)
   }
   return migrations
@@ -35,24 +38,28 @@ async function ensureTable(db: Kysely<any>) {
     .execute()
 }
 
-// Run every pending migration in name order, each in its own transaction, as one new batch
-export async function migrate(db: Kysely<any>, migrations: Migrations) {
+// Run every pending migration, each in its own transaction, as one new batch. Sets run in the order given, such as
+// the CMS's before the site project's, and the migrations in each set in name order.
+export async function migrate(db: Kysely<any>, ...sets: Array<Migrations>) {
   await ensureTable(db)
   const ran = await db.selectFrom('migrations').select(['name', 'batch']).execute()
   const done = new Set(ran.map((row) => row.name))
-  const pending = Object.keys(migrations)
-    .sort()
-    .filter((name) => !done.has(name))
+  const pending = sets.flatMap((set) =>
+    Object.keys(set)
+      .sort()
+      .filter((name) => !done.has(name))
+      .map((name) => ({ name, migration: set[name] })),
+  )
   const batch = Math.max(0, ...ran.map((row) => row.batch)) + 1
 
-  for (const name of pending) {
+  for (const { name, migration } of pending) {
     await db.transaction().execute(async (trx) => {
-      await migrations[name].up(trx)
+      await migration.up(trx)
       await trx.insertInto('migrations').values({ name, batch }).execute()
     })
   }
 
-  return pending
+  return pending.map(({ name }) => name)
 }
 
 // Roll back every migration in the latest batch, newest first

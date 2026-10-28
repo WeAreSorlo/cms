@@ -1,3 +1,4 @@
+import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
 import { inputs, isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { EntryRow, listEntries, parseQuery, toEntry } from './query'
@@ -28,8 +29,16 @@ const tree = (id: string) => sql`
   )`
 
 // The admin API for entries. Every route needs a session, which createApp checks
-export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
+export function entryRoutes(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  migrations: () => Promise<Record<string, ContentMigrationFile>>,
+) {
   const app = new Hono<AdminEnv>()
+
+  // The last content migration to run, which values saved now have been through (PLAN.md section 6)
+  const lastMigration = async (trx: Kysely<Database>) =>
+    (await appliedMigrations(trx, await migrations())).at(-1) ?? null
 
   const typeNamed = (name: string) => {
     const type = types.get(name)
@@ -111,6 +120,18 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
 
   // Create or update an entry from { values, parentId }, saving a version of its values
   const save = async (c: Context<AdminEnv>, type: ContentType, existing?: EntryRow) => {
+    // The types already have a pending migration's change, so saving now would mix the old fields' values with the new
+    const files = await migrations()
+    const applied = await appliedMigrations(db, files)
+    const pending = Object.keys(files)
+      .sort()
+      .find((name) => !applied.includes(name))
+    if (pending) {
+      throw new HTTPException(409, {
+        message: `Run iight migrate first. The content migration ${pending} hasn't run yet.`,
+      })
+    }
+
     const body = await c.req.json().catch(() => ({}))
     const parentId: string | null = type.structure === 'hierarchical' ? (body?.parentId ?? null) : null
     const parent = parentId === null ? undefined : await checkParent(type, parentId, existing?.id)
@@ -140,7 +161,8 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
                   .executeTakeFirstOrThrow()
               ).next
 
-        const fields = { values, parent_id: parentId, position, slug, uri, updated_by: user }
+        const migration = applied.at(-1) ?? null
+        const fields = { values, parent_id: parentId, position, slug, uri, migration, updated_by: user }
         const row = existing
           ? await trx
               .updateTable('entries')
@@ -161,6 +183,7 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
             entry_id: row.id,
             number: sql`(select coalesce(max(number), 0) + 1 from entry_versions where entry_id = ${row.id})`,
             values,
+            migration,
             created_by: user,
           })
           .execute()
@@ -191,8 +214,6 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
     }
   }
 
-  app.get('/types', (c) => c.json({ data: [...types.values()] }))
-
   app.get('/types/:type/entries', async (c) => {
     const type = typeNamed(c.req.param('type'))
     const query = parseQuery(type, c.req.query())
@@ -215,16 +236,22 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
       // Two admins opening a new singleton at once still make one entry
       await sql`select pg_advisory_xact_lock(hashtext(${type.name}))`.execute(trx)
       const found = await trx.selectFrom('entries').selectAll().where('type', '=', type.name).executeTakeFirst()
+      if (found) return found
+
       const values = pickValues(type.fields, {}, inputs)
       const user = c.var.user.id
-      return (
-        found ??
-        trx
-          .insertInto('entries')
-          .values({ id: uuidv7(), type: type.name, values, created_by: user, updated_by: user })
-          .returningAll()
-          .executeTakeFirstOrThrow()
-      )
+      return trx
+        .insertInto('entries')
+        .values({
+          id: uuidv7(),
+          type: type.name,
+          values,
+          migration: await lastMigration(trx),
+          created_by: user,
+          updated_by: user,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow()
     })
 
     return c.json({ data: toAdminEntry(row) })
@@ -302,7 +329,7 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
     return c.body(null, 204)
   })
 
-  // Every saved version, newest first. To restore one, save its values again.
+  // Every saved version, newest first. To restore one, save its values again, which the next route brings up to date.
   app.get('/entries/:id/versions', async (c) => {
     const { row } = await find(c.req.param('id'))
     const versions = await db
@@ -333,10 +360,24 @@ export function entryRoutes(db: Kysely<Database>, types: Map<string, ContentType
       : undefined
     if (!version) throw new HTTPException(404)
 
+    // Run the ups of the content migrations that ran after the version was saved, so its values fit the type's fields
+    const files = await migrations()
+    const applied = await appliedMigrations(db, files)
+    const since = version.migration === null ? 0 : applied.indexOf(version.migration) + 1
+    if (since === 0 && version.migration !== null) {
+      const message = `Version ${number} was saved after the content migration ${version.migration}, which has been rolled back. Migrate again to restore it.`
+      throw new HTTPException(409, { message })
+    }
+    const values = await catchUp(
+      row.type,
+      version.values,
+      applied.slice(since).map((name) => files[name].up),
+    )
+
     return c.json({
       data: {
         number: version.number,
-        values: version.values,
+        values,
         createdBy: version.created_by,
         createdAt: version.created_at,
       },

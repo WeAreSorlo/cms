@@ -19,6 +19,8 @@ export interface Entry {
   updatedBy: string | null
 }
 
+export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
 // Call the admin API. A validation report comes back with its 422, and any other failure throws its message.
 export async function api(method: string, path: string, body?: unknown) {
   const response = await fetch(`/api${path}`, {
