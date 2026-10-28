@@ -1,6 +1,7 @@
 import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
 import { isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
+import { addEvents } from './events'
 import { EntryRow, listEntries, parseQuery, toAdminEntry, usedBy } from './query'
 import { cmsInputs, saveRelations, serverInputs } from './relations'
 import type { ContentType } from './types'
@@ -20,6 +21,9 @@ const tree = (id: string) => sql`
     union all
     select entries.id from entries join tree on entries.parent_id = tree.id
   )`
+
+// Each changed entry's event data
+const entryEvents = (rows: Array<EntryRow>) => rows.map((row) => ({ entry: toAdminEntry(row) }))
 
 // The admin API for entries. Every route needs a session, which createApp checks
 export function entryRoutes(
@@ -182,10 +186,11 @@ export function entryRoutes(
           })
           .execute()
         await saveRelations(trx, type, row.id, values)
+        await addEvents(trx, existing ? 'entry.updated' : 'entry.created', entryEvents([row]))
 
         // A new slug or parent changes the uri of every page under the entry
         if (existing && existing.uri !== uri) {
-          await sql`
+          const { rows } = await sql<EntryRow>`
             with recursive tree as (
               select id, uri from entries where id = ${row.id}
               union all
@@ -193,8 +198,11 @@ export function entryRoutes(
                 else tree.uri || '/' || entries.slug end
               from entries join tree on entries.parent_id = tree.id
             )
-            update entries set uri = tree.uri from tree where entries.id = tree.id and entries.id <> ${row.id}
+            update entries set uri = tree.uri from tree
+            where entries.id = tree.id and entries.id <> ${row.id} and entries.uri is distinct from tree.uri
+            returning entries.*
           `.execute(trx)
+          await addEvents(trx, 'entry.updated', entryEvents(rows))
         }
 
         return row
@@ -284,20 +292,28 @@ export function entryRoutes(
     const ids = siblings.map((sibling) => sibling.id)
     ids.splice(position, 0, row.id)
 
-    await sql`
-      update entries set position = ordered.position - 1
-      from unnest(${ids}::uuid[]) with ordinality as ordered (id, position)
-      where entries.id = ordered.id
-    `.execute(db)
+    await db.transaction().execute(async (trx) => {
+      const { rows } = await sql<EntryRow>`
+        update entries set position = ordered.position - 1
+        from unnest(${ids}::uuid[]) with ordinality as ordered (id, position)
+        where entries.id = ordered.id and entries.position is distinct from ordered.position - 1
+        returning entries.*
+      `.execute(trx)
+      await addEvents(trx, 'entry.updated', entryEvents(rows))
+    })
     return reply(c, row.id)
   })
 
   // Archive an entry with its live descendants, stamped with the same time so restoring brings back just those
   app.post('/entries/:id/archive', async (c) => {
     const { row } = await find(c.req.param('id'))
-    await sql`${tree(row.id)}
-      update entries set archived_at = now() from tree where entries.id = tree.id and entries.archived_at is null
-    `.execute(db)
+    await db.transaction().execute(async (trx) => {
+      const { rows } = await sql<EntryRow>`${tree(row.id)}
+        update entries set archived_at = now() from tree where entries.id = tree.id and entries.archived_at is null
+        returning entries.*
+      `.execute(trx)
+      await addEvents(trx, 'entry.archived', entryEvents(rows))
+    })
     return reply(c, row.id)
   })
 
@@ -309,10 +325,14 @@ export function entryRoutes(
     if (parent?.archived_at)
       throw new HTTPException(409, { message: 'Its parent is archived. Restore the parent first.' })
 
-    await sql`${tree(row.id)}
-      update entries set archived_at = null from tree
-      where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})
-    `.execute(db)
+    await db.transaction().execute(async (trx) => {
+      const { rows } = await sql<EntryRow>`${tree(row.id)}
+        update entries set archived_at = null from tree
+        where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})
+        returning entries.*
+      `.execute(trx)
+      await addEvents(trx, 'entry.restored', entryEvents(rows))
+    })
     return reply(c, row.id)
   })
 
@@ -341,7 +361,13 @@ export function entryRoutes(
       throw new HTTPException(409, { message: `${linked}${under}. Remove the links before deleting it.` })
     }
 
-    await db.deleteFrom('entries').where('id', '=', row.id).execute()
+    await db.transaction().execute(async (trx) => {
+      // The whole tree, rather than leaving its descendants to the cascade, so each one gets its event
+      const { rows } = await sql<EntryRow>`${tree(row.id)}
+        delete from entries using tree where entries.id = tree.id returning entries.*
+      `.execute(trx)
+      await addEvents(trx, 'entry.deleted', entryEvents(rows))
+    })
     return c.body(null, 204)
   })
 

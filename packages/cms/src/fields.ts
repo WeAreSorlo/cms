@@ -10,6 +10,23 @@ export function allows(types: Array<string>, mime: string) {
   return types.some((type) => type === essence || (type.endsWith('/*') && essence.startsWith(type.slice(0, -1))))
 }
 
+export const isEmpty = (value: unknown) =>
+  value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)
+
+// A value as text, as the inbox and emails show it: the labels of the choices it holds, yes or no, or JSON for a group
+// or list of rows
+export function showValue(field: FieldSchema, value: unknown) {
+  if (isEmpty(value)) return '–'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  const choices: Array<{ value: string; label?: string }> | undefined = field.options?.choices
+  if (choices)
+    return [value]
+      .flat()
+      .map((item) => choices.find((choice) => choice.value === item)?.label ?? item)
+      .join(', ')
+  return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
+}
+
 // A field that takes one item holds its ID, and any other a list of IDs
 export const holdsOne = (schema: InputSchema) => schema.options?.maximum === 1
 

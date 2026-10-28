@@ -1,5 +1,6 @@
 import { signInSchema } from '../src/schemas'
 import { ContentType, TypesContext, api } from './api'
+import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { MediaLibrary } from './media'
@@ -61,8 +62,8 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
-// The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media, #/forms/<id>/inbox or #/schema/blog in
-// the type editor
+// The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media, #/forms/<id>/inbox,
+// #/automations/<id>/runs or #/schema/blog in the type editor
 function Page({
   types,
   editable,
@@ -92,6 +93,10 @@ function Page({
   if (section === 'forms' && name && isView(action)) return <Inbox key={`${name}/${action}`} id={name} view={action} />
   if (section === 'forms' && name) return <FormPage key={name} id={name} />
   if (section === 'forms') return <FormList />
+  if (section === 'automations' && name === 'new') return <NewAutomation key={`new/${action}`} formId={action} />
+  if (section === 'automations' && name && action === 'runs') return <Runs key={name} id={name} />
+  if (section === 'automations' && name) return <AutomationPage key={name} id={name} />
+  if (section === 'automations') return <AutomationList />
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
@@ -142,6 +147,7 @@ function App() {
         ))}
         <a href='#/media'>Media</a>
         <a href='#/forms'>Forms</a>
+        <a href='#/automations'>Automations</a>
         <a href='#/schema'>Content types</a>
         <p>
           Signed in as {user.name}.{' '}

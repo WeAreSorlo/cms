@@ -1,5 +1,6 @@
 import type { Config } from '.'
 import { createApp } from './app'
+import { createWorker } from './automations'
 import { checkEntries, contentMigrations, loadContentMigrations } from './content'
 import { flattenValidationReport, inputs, validateServerValues } from './core'
 import { Database, createDb, uuidv7 } from './db'
@@ -141,6 +142,9 @@ async function dev(db: Kysely<Database>) {
     forms: config.forms,
   })
   const api = getRequestListener(app.fetch)
+
+  // Hands events on to automations, in this process
+  createWorker(db, types, { mail: config.mail, automations: config.automations, webhooks: config.webhooks }).start()
 
   // Vite serves the admin under /admin, and Hono everything else
   server.on('request', (req, res) => (req.url?.startsWith('/admin') ? admin.middlewares(req, res) : api(req, res)))

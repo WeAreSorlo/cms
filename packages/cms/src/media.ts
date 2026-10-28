@@ -2,6 +2,7 @@ import { MediaOptions, Storage, defaultMediaTypes } from '.'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import type { AdminEnv } from './entries'
+import { addEvents } from './events'
 import { allows } from './fields'
 import { MediaRow, listMedia, parseMediaQuery, toAdminEntry, usedBy } from './query'
 import { mediaSchema } from './schemas'
@@ -168,6 +169,7 @@ export function mediaRoutes(
           })
           .returningAll()
           .executeTakeFirstOrThrow()
+        await addEvents(trx, 'media.created', [{ media: toAdminMedia(row, origin(c)) }])
         await drive.use(disk).put(path, bytes)
         return row
       })
@@ -184,17 +186,21 @@ export function mediaRoutes(
     const report = await validateServerValues(mediaSchema, values, inputs)
     if (!report.isValid) return c.json(report, 422)
 
-    const updated = await db
-      .updateTable('media')
-      .set({
-        name: safeName(values.name, extname(row.path).slice(1)),
-        alt: values.alt || null,
-        caption: values.caption || null,
-        updated_at: sql`now()`,
-      })
-      .where('id', '=', row.id)
-      .returningAll()
-      .executeTakeFirstOrThrow()
+    const updated = await db.transaction().execute(async (trx) => {
+      const updated = await trx
+        .updateTable('media')
+        .set({
+          name: safeName(values.name, extname(row.path).slice(1)),
+          alt: values.alt || null,
+          caption: values.caption || null,
+          updated_at: sql`now()`,
+        })
+        .where('id', '=', row.id)
+        .returningAll()
+        .executeTakeFirstOrThrow()
+      await addEvents(trx, 'media.updated', [{ media: toAdminMedia(updated, origin(c)) }])
+      return updated
+    })
     return c.json({ data: toAdminMedia(updated, origin(c)) })
   })
 
@@ -215,6 +221,7 @@ export function mediaRoutes(
     }
     await db.transaction().execute(async (trx) => {
       await trx.deleteFrom('media').where('id', '=', row.id).execute()
+      await addEvents(trx, 'media.deleted', [{ media: toAdminMedia(row, origin(c)) }])
       await drive.use(row.disk).delete(row.path)
     })
     return c.body(null, 204)

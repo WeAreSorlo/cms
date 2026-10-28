@@ -1,4 +1,5 @@
 import type { DeliveryOptions, FormOptions, MediaOptions, Storage } from '.'
+import { automationRoutes } from './automations'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
@@ -141,9 +142,11 @@ export function createApp(
   app.use('/api/media/*', signedIn)
   app.use('/api/forms/*', signedIn)
   app.use('/api/submissions/*', signedIn)
+  app.use('/api/automations/*', signedIn)
   app.route('/api', typeRoutes(types, editor))
   app.route('/api', entryRoutes(db, types, migrations))
   app.route('/api', formRoutes(db))
+  app.route('/api', automationRoutes(db))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))

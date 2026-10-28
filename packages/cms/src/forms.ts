@@ -4,6 +4,7 @@ import { Database, isUuid, uuidv7 } from './db'
 import { sendsApiKey } from './delivery'
 import { embedHtml, escapeHtml, honeypot, page } from './embed'
 import type { AdminEnv } from './entries'
+import { addEvents } from './events'
 import { origin } from './media'
 import { SubmissionRow, listSubmissions, parseSubmissionQuery } from './query'
 import { formSchema } from './schemas'
@@ -346,21 +347,27 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
         return reply(c, 422, report, 'Your submission has problems', `<ul>${problems.join('')}</ul>`)
       }
 
-      const row = await db
-        .insertInto('submissions')
-        .values({
-          id: uuidv7(),
-          form_id: form.id,
-          form_version: form.version,
-          values,
-          ip,
-          user_agent: c.req.header('user-agent') ?? null,
-          referer: c.req.header('referer') ?? null,
-          // A bot that fills in the honeypot gets the reply anyone gets, so it can't tell
-          spam: !isEmptyValue(posted[honeypot]),
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow()
+      const row = await db.transaction().execute(async (trx) => {
+        const row = await trx
+          .insertInto('submissions')
+          .values({
+            id: uuidv7(),
+            form_id: form.id,
+            form_version: form.version,
+            values,
+            ip,
+            user_agent: c.req.header('user-agent') ?? null,
+            referer: c.req.header('referer') ?? null,
+            // A bot that fills in the honeypot gets the reply anyone gets, so it can't tell
+            spam: !isEmptyValue(posted[honeypot]),
+          })
+          .returningAll()
+          .executeTakeFirstOrThrow()
+        // Spam triggers automations too, with spam in its data for their conditions to skip
+        const event = { form: { id: form.id, name: form.name, label: form.label }, submission: toAdminSubmission(row) }
+        await addEvents(trx, 'submission.created', [event])
+        return row
+      })
 
       const data = { id: row.id, version: row.form_version, values: row.values, createdAt: row.created_at }
       return reply(c, 201, { data }, 'Thank you', '<p>Your submission has been received.</p>')

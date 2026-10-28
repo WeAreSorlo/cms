@@ -1,4 +1,5 @@
-import type { FieldSchema } from 'iight'
+import type { EventName } from './schemas'
+import type { ConditionGroup, FieldSchema } from 'iight'
 import { ColumnType, Generated, Kysely, PostgresDialect } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { Pool } from 'pg'
@@ -104,6 +105,41 @@ export interface Database {
     spam: Generated<boolean>
     created_at: Generated<Date>
     archived_at: Date | null
+  }
+  // The outbox of changes, which the worker hands on to automations (PLAN.md section 11)
+  events: {
+    id: string
+    name: EventName
+    data: Record<string, any>
+    created_at: Generated<Date>
+    dispatched_at: Date | null
+  }
+  automations: {
+    id: string
+    name: string
+    triggers: JsonList<EventName>
+    // Core's conditional logic, as groups of rules
+    conditions: JsonList<ConditionGroup>
+    // A flexible field's blocks, each with _layout naming its action type
+    actions: JsonList<Record<string, any>>
+    created_by: string | null
+    updated_by: string | null
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
+  // A row for each try of an action, pending until the worker tries it
+  automation_runs: {
+    id: string
+    automation_id: string
+    event_id: string
+    action: number
+    attempt: number
+    status: 'pending' | 'succeeded' | 'failed'
+    run_at: Generated<Date>
+    response: string | null
+    error: string | null
+    finished_at: Date | null
+    created_at: Generated<Date>
   }
   // Both kinds of migration that have run, made by migrator.ts
   migrations: {

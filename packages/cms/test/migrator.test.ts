@@ -104,14 +104,20 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_28_000007_create_forms_table',
     '2026_10_28_000008_create_form_versions_table',
     '2026_10_28_000009_create_submissions_table',
+    '2026_10_28_000010_create_events_table',
+    '2026_10_28_000011_create_automations_table',
+    '2026_10_28_000012_create_automation_runs_table',
   ])
 
   await migrate(db, migrations)
   expect(await tables()).toEqual([
     'api_keys',
+    'automation_runs',
+    'automations',
     'entries',
     'entry_relations',
     'entry_versions',
+    'events',
     'form_versions',
     'forms',
     'media',

@@ -5,6 +5,9 @@ import { createRequire } from 'node:module'
 const core: typeof import('iight') = createRequire(import.meta.url)('iight')
 
 export const {
+  baseInputSchemaFields,
+  evaluateCondition,
+  evaluateConditions,
   flattenValidationReport,
   inputs,
   isEmptyValue,

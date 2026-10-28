@@ -1,5 +1,7 @@
+import { isEmpty, showValue } from '../src/fields'
 import { formSchema } from '../src/schemas'
 import { api, date, errorMessage } from './api'
+import { FormAutomations } from './automations'
 import Form, { FieldSchema, FormHandle } from 'iight'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -170,6 +172,8 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
           </div>
         </section>
       )}
+
+      {form && <FormAutomations formId={form.id} />}
     </>
   )
 }
@@ -187,22 +191,6 @@ export function FormPage({ id }: { id: string }) {
 
   if (error) return <p role='alert'>{error}</p>
   return form ? <FormEditor form={form} /> : null
-}
-
-const isEmpty = (value: unknown) =>
-  value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)
-
-// A submitted value as text: the labels of the choices it holds, yes or no, or JSON for a group or list of rows
-function show(field: FieldSchema, value: unknown) {
-  if (isEmpty(value)) return '–'
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  const choices: Array<{ value: string; label?: string }> | undefined = field.options?.choices
-  if (choices)
-    return [value]
-      .flat()
-      .map((item) => choices.find((choice) => choice.value === item)?.label ?? item)
-      .join(', ')
-  return typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)
 }
 
 // What the inbox calls a submission: its first email address or text, as legacy's did
@@ -352,7 +340,7 @@ export function Inbox({ id, view }: { id: string; view: View }) {
                 .map((field) => (
                   <div key={field.id ?? field.name}>
                     <dt>{field.label ?? field.name}</dt>
-                    <dd>{show(field, open.values[field.name])}</dd>
+                    <dd>{showValue(field, open.values[field.name])}</dd>
                   </div>
                 ))}
             </dl>

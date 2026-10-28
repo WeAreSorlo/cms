@@ -9,6 +9,7 @@ import { ComparisonOperator, ExpressionBuilder, Kysely, SelectQueryBuilder, Sele
 export type EntryRow = Selectable<Database['entries']>
 export type MediaRow = Selectable<Database['media']>
 export type SubmissionRow = Selectable<Database['submissions']>
+export type RunRow = Selectable<Database['automation_runs']>
 
 // An entry as the delivery API returns it
 export const toEntry = (row: EntryRow) => ({
@@ -69,6 +70,13 @@ const mediaSubject: Subject = {
 }
 
 const submissionSubject: Subject = {
+  properties: {
+    id: ['id', 'uuid'],
+    createdAt: ['created_at', 'timestamp'],
+  },
+}
+
+const runSubject: Subject = {
   properties: {
     id: ['id', 'uuid'],
     createdAt: ['created_at', 'timestamp'],
@@ -191,6 +199,8 @@ export const parseMediaQuery = (params: Record<string, string>) => parse(mediaSu
 
 export const parseSubmissionQuery = (params: Record<string, string>) => parse(submissionSubject, params)
 
+export const parseRunQuery = (params: Record<string, string>) => parse(runSubject, params)
+
 // What a filter or sort reads: a column, or a field's jsonb value
 function read(subject: Subject, field: string) {
   const found = target(subject, field)
@@ -306,3 +316,7 @@ export const listSubmissions = (
     submissionSubject,
     query,
   )
+
+// One page of an automation's runs, each a try of one of its actions
+export const listRuns = (db: Kysely<Database>, automationId: string, query: Query) =>
+  paginate<RunRow>(db.selectFrom('automation_runs').where('automation_id', '=', automationId), runSubject, query)

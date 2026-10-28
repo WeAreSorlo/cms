@@ -10,6 +10,10 @@ export interface Config {
   media?: MediaOptions
   delivery?: DeliveryOptions
   forms?: FormOptions
+  // How automations' emails are sent. Email actions fail until it's set.
+  mail?: MailOptions
+  automations?: AutomationOptions
+  webhooks?: WebhookOptions
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>
@@ -41,6 +45,35 @@ export interface FormOptions {
   // How many posts an IP address can make in a number of minutes, 10 in 10 if not given. Requests that send a
   // delivery API key, as a site's own server can, aren't limited.
   rateLimit?: { posts?: number; minutes?: number }
+}
+
+// Sends email with the site's own library or service
+export interface MailOptions {
+  // Who every email comes from, such as iight <cms@example.com>
+  from: string
+  // Sends one email, such as with nodemailer's sendMail, which takes the message as it is. What it resolves goes in
+  // the automation's runs, and what it throws fails the run, to be tried again.
+  send: (message: MailMessage) => Promise<unknown>
+}
+
+export interface MailMessage {
+  from: string
+  to: Array<string>
+  subject: string
+  text: string
+  html: string
+}
+
+export interface AutomationOptions {
+  // How many times an action is tried before it's given up, 6 if not given. Retries wait 1 minute, 5 minutes,
+  // 30 minutes, 2 hours, then 12 hours each.
+  attempts?: number
+}
+
+export interface WebhookOptions {
+  // Networks on loopback, private and link-local addresses that webhooks may reach, such as 10.0.0.0/8 for a site's own
+  // services or 127.0.0.1 for a test server. Webhooks can't reach any others.
+  allowNetworks?: Array<string>
 }
 
 // Every format of image, video and audio that a file's content can show, and PDFs
