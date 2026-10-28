@@ -1,6 +1,7 @@
 import { signInSchema } from '../src/schemas'
 import { ContentType, TypesContext, api } from './api'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
+import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { MediaLibrary } from './media'
 import { TypeEditor, TypeList } from './types'
 import Form, { FormHandle } from 'iight'
@@ -60,7 +61,8 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
-// The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media or #/schema/blog in the type editor
+// The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media, #/forms/<id>/inbox or #/schema/blog in
+// the type editor
 function Page({
   types,
   editable,
@@ -86,6 +88,10 @@ function Page({
   }
   if (section === 'schema') return <TypeList types={types} editable={editable} />
   if (section === 'media') return <MediaLibrary />
+  if (section === 'forms' && name === 'new') return <FormEditor key='new' />
+  if (section === 'forms' && name && isView(action)) return <Inbox key={`${name}/${action}`} id={name} view={action} />
+  if (section === 'forms' && name) return <FormPage key={name} id={name} />
+  if (section === 'forms') return <FormList />
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
@@ -135,6 +141,7 @@ function App() {
           </a>
         ))}
         <a href='#/media'>Media</a>
+        <a href='#/forms'>Forms</a>
         <a href='#/schema'>Content types</a>
         <p>
           Signed in as {user.name}.{' '}

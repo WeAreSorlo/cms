@@ -138,6 +138,7 @@ async function dev(db: Kysely<Database>) {
     storage: config.storage,
     media: config.media,
     delivery: config.delivery,
+    forms: config.forms,
   })
   const api = getRequestListener(app.fetch)
 

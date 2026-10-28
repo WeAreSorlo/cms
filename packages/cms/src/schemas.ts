@@ -35,6 +35,21 @@ export const mediaSchema: Array<FieldSchema> = [
   },
 ]
 
+// A form's settings, rendered by the admin's form editor and checked by its routes. checkFormFields in types.ts checks
+// its fields.
+export const formSchema: Array<FieldSchema> = [
+  { name: 'label', label: 'Label', type: 'text', required: true, width: 50, options: { placeholder: 'Contact us' } },
+  {
+    name: 'name',
+    label: 'Name',
+    type: 'identifier',
+    required: true,
+    width: 50,
+    instructions: "What the SDK calls the form, as in cms.form('contact_us'). Embeds use its ID, which never changes.",
+    options: { format: 'mixed', source: 'label' },
+  },
+]
+
 // A content type's settings, rendered by the admin's type editor and checked by its routes. The choices come from the
 // type's top-level fields, and checkType in types.ts checks the fields themselves.
 export function typeSchema(fields: Array<FieldSchema>): Array<FieldSchema> {

@@ -1,6 +1,6 @@
 import { inputs } from './core'
 import { cmsInputs } from './relations'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema, Input } from 'iight'
 import { existsSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
@@ -40,14 +40,15 @@ const isName = (name: unknown) =>
   inputs.identifier.validateValue(name, { name: 'name', required: true, options: { format: 'mixed' } }).isValid === true
 
 // Check a list of fields or flexible layouts and everything inside them. Each needs a name that's unique beside it,
-// and an ID that's unique in the type, so content migrations can match it after a rename (PLAN.md section 6).
-// Relationship fields name content types by ID, checked against typeIds when it's given.
+// an ID that's unique in the type, so content migrations can match it after a rename (PLAN.md section 6), and a type
+// from known. Relationship fields name content types by ID, checked against typeIds when it's given.
 function checkNodes(
   nodes: unknown,
   kind: 'field' | 'layout',
   path: string,
   ids: Set<unknown>,
   problems: Array<string>,
+  known: Record<string, Input>,
   typeIds?: Set<unknown>,
 ) {
   if (!Array.isArray(nodes)) {
@@ -71,14 +72,14 @@ function checkNodes(
     ids.add(node?.id)
 
     if (kind === 'layout') {
-      checkNodes(node?.fields ?? [], 'field', at, ids, problems, typeIds)
+      checkNodes(node?.fields ?? [], 'field', at, ids, problems, known, typeIds)
       continue
     }
 
-    if (!Object.hasOwn(cmsInputs, node?.type)) problems.push(`${label} has an unknown type, ${node?.type}.`)
+    if (!Object.hasOwn(known, node?.type)) problems.push(`${label} has an unknown type, ${node?.type}.`)
     else if (node.defaultValue !== undefined) {
       // Checked as optional, so an empty default, or false on a box that must be ticked, isn't a problem
-      const validation = cmsInputs[node.type].validateValue?.(node.defaultValue, { ...node, required: false })
+      const validation = known[node.type].validateValue?.(node.defaultValue, { ...node, required: false })
       if (validation?.isValid === false) {
         problems.push([`${label} has an invalid default value.`, ...validation.messages].join(' '))
       }
@@ -87,9 +88,18 @@ function checkNodes(
     if (typeIds && node?.type === 'relationship' && !(Array.isArray(linked) && linked.every((id) => typeIds.has(id)))) {
       problems.push(`${label} must list the ids of content types in "options.types".`)
     }
-    if (node?.options?.fields !== undefined) checkNodes(node.options.fields, 'field', at, ids, problems, typeIds)
-    if (node?.options?.layouts !== undefined) checkNodes(node.options.layouts, 'layout', at, ids, problems, typeIds)
+    if (node?.options?.fields !== undefined) checkNodes(node.options.fields, 'field', at, ids, problems, known, typeIds)
+    if (node?.options?.layouts !== undefined) {
+      checkNodes(node.options.layouts, 'layout', at, ids, problems, known, typeIds)
+    }
   }
+}
+
+// What's wrong with a form's fields, which take core's inputs
+export function checkFormFields(fields: unknown) {
+  const problems: Array<string> = []
+  checkNodes(fields, 'field', '', new Set(), problems, inputs)
+  return problems
 }
 
 // What's wrong with a content type, given the name of its file and, to check what relationship fields link to, the ids
@@ -110,7 +120,7 @@ export function checkType(type: any, file: string, typeIds?: Set<unknown>) {
   }
   if (!structures.includes(type.structure)) problems.push('"structure" must be collection, hierarchical or singleton.')
 
-  checkNodes(type.fields, 'field', '', new Set(), problems, typeIds)
+  checkNodes(type.fields, 'field', '', new Set(), problems, cmsInputs, typeIds)
 
   const fields: Array<any> = Array.isArray(type.fields) ? type.fields : []
   const topLevel = (name: unknown) => fields.find((field) => field?.name === name)

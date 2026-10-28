@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-// `npx iight types pull`, which writes the CMS's content types into a frontend as TypeScript (PLAN.md section 9).
+// `npx iight types pull`, which writes the CMS's content types and forms into a frontend as TypeScript (PLAN.md
+// section 9).
 // Commit the file, so builds don't need the CMS, and run `--check` in CI to catch schema changes.
 
 const file = 'src/iight-types.d.ts'

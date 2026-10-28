@@ -9,6 +9,7 @@ export interface Config {
   storage: Storage
   media?: MediaOptions
   delivery?: DeliveryOptions
+  forms?: FormOptions
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>
@@ -30,6 +31,16 @@ export interface DeliveryOptions {
   depth?: number
   // The most levels a request can ask for, 5 if not given. Each level can multiply the entries a reply holds.
   maxDepth?: number
+}
+
+// Who can use the public form routes, and how often
+export interface FormOptions {
+  // The sites whose JavaScript can call them, such as https://example.com. Any site can if not given. Plain HTML form
+  // posts and servers aren't browsers' JavaScript, so this never stops them.
+  origins?: Array<string>
+  // How many posts an IP address can make in a number of minutes, 10 in 10 if not given. Requests that send a
+  // delivery API key, as a site's own server can, aren't limited.
+  rateLimit?: { posts?: number; minutes?: number }
 }
 
 // Every format of image, video and audio that a file's content can show, and PDFs

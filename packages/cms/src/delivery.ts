@@ -21,14 +21,19 @@ export async function createApiKey(db: Kysely<Database>, name: string) {
   return key
 }
 
-// Lets a request through when it sends a key for the delivery API as Authorization: Bearer <key>
+// Whether a request sends a key for the delivery API, as Authorization: Bearer <key>
+export async function sendsApiKey(db: Kysely<Database>, c: Context) {
+  const key = c.req.header('authorization')?.match(/^Bearer (\S+)$/)?.[1]
+  const found =
+    key && (await db.selectFrom('api_keys').select('id').where('token_hash', '=', hashToken(key)).executeTakeFirst())
+  return !!found
+}
+
+// Lets a request through when it sends a key for the delivery API
 export const apiKey =
   (db: Kysely<Database>): MiddlewareHandler =>
   async (c, next) => {
-    const key = c.req.header('authorization')?.match(/^Bearer (\S+)$/)?.[1]
-    const found =
-      key && (await db.selectFrom('api_keys').select('id').where('token_hash', '=', hashToken(key)).executeTakeFirst())
-    if (!found) return c.json({ message: 'Unauthenticated.' }, 401)
+    if (!(await sendsApiKey(db, c))) return c.json({ message: 'Unauthenticated.' }, 401)
     await next()
   }
 
@@ -45,7 +50,9 @@ export function deliveryRoutes(
 
   const app = new Hono()
 
-  app.use(apiKey(db))
+  // Each route needs a key. The public form routes share /v1, so the check names these routes' paths.
+  app.use('/entries/*', apiKey(db))
+  app.use('/media/*', apiKey(db))
 
   const typeNamed = (name: string) => {
     const type = types.get(name)

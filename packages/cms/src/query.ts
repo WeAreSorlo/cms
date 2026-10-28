@@ -3,11 +3,12 @@ import type { ContentType } from './types'
 import { HTTPException } from 'hono/http-exception'
 import { ComparisonOperator, ExpressionBuilder, Kysely, SelectQueryBuilder, Selectable, SqlBool, sql } from 'kysely'
 
-// Filtering and sorting entries and media, with legacy's query model. Fields are read with Postgres's jsonb operators,
+// Filtering and sorting entries, media and submissions, with legacy's query model. Fields are read with Postgres's jsonb operators,
 // so another database needs its own version of this module (PLAN.md section 5).
 
 export type EntryRow = Selectable<Database['entries']>
 export type MediaRow = Selectable<Database['media']>
+export type SubmissionRow = Selectable<Database['submissions']>
 
 // An entry as the delivery API returns it
 export const toEntry = (row: EntryRow) => ({
@@ -64,6 +65,13 @@ const mediaSubject: Subject = {
     caption: ['caption', 'text'],
     createdAt: ['created_at', 'timestamp'],
     updatedAt: ['updated_at', 'timestamp'],
+  },
+}
+
+const submissionSubject: Subject = {
+  properties: {
+    id: ['id', 'uuid'],
+    createdAt: ['created_at', 'timestamp'],
   },
 }
 
@@ -181,6 +189,8 @@ export const parseQuery = (type: ContentType, params: Record<string, string>) =>
 
 export const parseMediaQuery = (params: Record<string, string>) => parse(mediaSubject, params)
 
+export const parseSubmissionQuery = (params: Record<string, string>) => parse(submissionSubject, params)
+
 // What a filter or sort reads: a column, or a field's jsonb value
 function read(subject: Subject, field: string) {
   const found = target(subject, field)
@@ -279,3 +289,20 @@ export const listEntries = (
 
 export const listMedia = (db: Kysely<Database>, query: Query) =>
   paginate<MediaRow>(db.selectFrom('media'), mediaSubject, query)
+
+// One page of a form's submissions: those in its inbox, its archive, or its spam, archived or not
+export const listSubmissions = (
+  db: Kysely<Database>,
+  formId: string,
+  query: Query,
+  { archived = false, spam = false } = {},
+) =>
+  paginate<SubmissionRow>(
+    db
+      .selectFrom('submissions')
+      .where('form_id', '=', formId)
+      .where('spam', '=', spam)
+      .$if(!spam, (qb) => qb.where('archived_at', archived ? 'is not' : 'is', null)),
+    submissionSubject,
+    query,
+  )

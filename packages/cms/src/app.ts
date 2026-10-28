@@ -1,9 +1,10 @@
-import type { DeliveryOptions, MediaOptions, Storage } from '.'
+import type { DeliveryOptions, FormOptions, MediaOptions, Storage } from '.'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
 import { apiKey, deliveryRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
+import { formRoutes, publicFormRoutes } from './forms'
 import { mediaRoutes } from './media'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
@@ -33,12 +34,14 @@ export interface AppOptions {
   media?: MediaOptions
   // How deep the delivery API's with resolves links
   delivery?: DeliveryOptions
+  // Who can use the public form routes, and how often
+  forms?: FormOptions
 }
 
 export function createApp(
   db: Kysely<Database>,
   types = new Map<string, ContentType>(),
-  { migrations = async () => ({}), editor, storage, media, delivery }: AppOptions = {},
+  { migrations = async () => ({}), editor, storage, media, delivery, forms }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
   const app = new Hono<AdminEnv>()
@@ -54,8 +57,9 @@ export function createApp(
     return c.json({ message: 'Server Error' }, 500)
   })
 
-  // Sessions live in a cookie, so refuse form posts from other sites
-  app.use(csrf())
+  // Sessions live in a cookie, so refuse form posts from other sites to the admin API. Other sites' forms post to the
+  // public form routes, which take no cookie.
+  app.use('/api/*', csrf())
 
   app.get('/', (c) => c.redirect('/admin/'))
 
@@ -135,15 +139,22 @@ export function createApp(
   app.use('/api/types/*', signedIn)
   app.use('/api/entries/*', signedIn)
   app.use('/api/media/*', signedIn)
+  app.use('/api/forms/*', signedIn)
+  app.use('/api/submissions/*', signedIn)
   app.route('/api', typeRoutes(types, editor))
   app.route('/api', entryRoutes(db, types, migrations))
+  app.route('/api', formRoutes(db))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
+  app.route('/v1', publicFormRoutes(db, forms))
 
-  // What the delivery API returns, as TypeScript, for `npx iight types pull`
-  // Made for each request, since the type editor can change the types
-  app.get('/types', apiKey(db), (c) => c.text(typesFile(types, depth)))
+  // What the delivery API returns and the forms take, as TypeScript, for `npx iight types pull`
+  // Made for each request, since the type editor can change the types, and the admin the forms
+  app.get('/types', apiKey(db), async (c) => {
+    const found = await db.selectFrom('forms').select(['name', 'fields']).orderBy('name').execute()
+    return c.text(typesFile(types, depth, found))
+  })
 
   return app
 }

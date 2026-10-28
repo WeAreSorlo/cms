@@ -101,6 +101,9 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_28_000004_create_api_keys_table',
     '2026_10_28_000005_create_media_table',
     '2026_10_28_000006_create_entry_relations_table',
+    '2026_10_28_000007_create_forms_table',
+    '2026_10_28_000008_create_form_versions_table',
+    '2026_10_28_000009_create_submissions_table',
   ])
 
   await migrate(db, migrations)
@@ -109,9 +112,12 @@ test("the CMS's own migrations run forward and back", async () => {
     'entries',
     'entry_relations',
     'entry_versions',
+    'form_versions',
+    'forms',
     'media',
     'migrations',
     'sessions',
+    'submissions',
     'users',
   ])
 

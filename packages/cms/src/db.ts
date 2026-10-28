@@ -1,6 +1,10 @@
-import { Generated, Kysely, PostgresDialect } from 'kysely'
+import type { FieldSchema } from 'iight'
+import { ColumnType, Generated, Kysely, PostgresDialect } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { Pool } from 'pg'
+
+// A jsonb list, written as JSON text, since pg would send an array as a Postgres array
+type JsonList<T> = ColumnType<Array<T>, string, string>
 
 export interface Database {
   users: {
@@ -69,6 +73,37 @@ export interface Database {
     created_by: string | null
     created_at: Generated<Date>
     updated_at: Generated<Date>
+  }
+  // Forms, made in the admin, with their current fields and version number
+  forms: {
+    id: string
+    name: string
+    label: string
+    fields: JsonList<FieldSchema>
+    version: number
+    created_by: string | null
+    updated_by: string | null
+    created_at: Generated<Date>
+    updated_at: Generated<Date>
+  }
+  form_versions: {
+    form_id: string
+    number: number
+    fields: JsonList<FieldSchema>
+    created_by: string | null
+    created_at: Generated<Date>
+  }
+  submissions: {
+    id: string
+    form_id: string
+    form_version: number
+    values: Record<string, any>
+    ip: string | null
+    user_agent: string | null
+    referer: string | null
+    spam: Generated<boolean>
+    created_at: Generated<Date>
+    archived_at: Date | null
   }
   // Both kinds of migration that have run, made by migrator.ts
   migrations: {

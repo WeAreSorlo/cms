@@ -3,7 +3,7 @@ import { uuidv7 } from '../src/db'
 import { createApiKey } from '../src/delivery'
 import { typesFile } from '../src/typescript'
 import { db } from './database'
-import { blog, setUp, types } from './fixtures'
+import { blog, contactFields, setUp, types } from './fixtures'
 import { serve } from '@hono/node-server'
 import { IightError, createClient } from '@iight/sdk'
 import { sql } from 'kysely'
@@ -21,9 +21,17 @@ let url: string
 let key: string
 let server: ReturnType<typeof serve>
 
+// A form, which the generated types include
+const contact = { name: 'contact', fields: contactFields }
+const generated = () => typesFile(types, 2, [contact])
+
 beforeAll(async () => {
   await setUp()
   key = await createApiKey(db, 'Website')
+  const fields = JSON.stringify(contactFields)
+  const form = { id: uuidv7(), label: 'Contact us', name: 'contact', fields, version: 1 }
+  await db.insertInto('forms').values(form).execute()
+  await db.insertInto('form_versions').values({ form_id: form.id, number: 1, fields }).execute()
 
   const post = (title: string, slug: string, values: object, createdAt: string) => ({
     id: uuidv7(),
@@ -178,9 +186,30 @@ test("a failed request throws an IightError with the status and the API's messag
   })
 })
 
-test('generates a type for each content type, registered with the SDK', async () => {
+test('submit() sends a form its values as JSON, with no key needed', async () => {
+  const values = { name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' } }
+  const sent = await createClient({ url }).form('contact').submit(values)
+  expect(sent).toEqual({
+    id: expect.any(String),
+    version: 1,
+    values: { ...values, subscribe: false, source: 'website' },
+    createdAt: expect.any(String),
+  })
+
+  const invalid = await createClient({ url, token: key })
+    .form('contact')
+    .submit({ ...values, email: 'nope' })
+    .catch((error) => error)
+  expect(invalid).toBeInstanceOf(IightError)
+  expect(invalid).toMatchObject({ status: 422, message: "The values don't pass the form's checks." })
+  expect(invalid.body.fields.email).toEqual({ isValid: false, messages: ['A valid email address required.'] })
+
+  await expect(createClient({ url }).entries('blog').first()).rejects.toMatchObject({ status: 401 })
+})
+
+test('generates a type for each content type and form, registered with the SDK', async () => {
   // sdk.test-d.ts typechecks queries against this file, so it also shows the generated types compile
-  await expect(typesFile(types)).toMatchFileSnapshot('./iight-types.d.ts')
+  await expect(generated()).toMatchFileSnapshot('./iight-types.d.ts')
 
   const optional = blog.fields.map((field) => (field.name === 'slug' ? { ...field, required: false } : field))
   expect(typesFile(new Map([['news', { ...blog, name: 'news', fields: optional }]]))).toContain(
@@ -193,7 +222,7 @@ test('GET /types serves the generated types to API keys', async () => {
 
   const response = await fetch(`${url}/types`, { headers: { authorization: `Bearer ${key}` } })
   expect(response.headers.get('content-type')).toMatch(/^text\/plain/)
-  expect(await response.text()).toBe(typesFile(types))
+  expect(await response.text()).toBe(generated())
 })
 
 test('types pull writes the types into a frontend, and --check fails when they are out of date', async () => {
@@ -213,7 +242,7 @@ test('types pull writes the types into a frontend, and --check fails when they a
     })
 
     expect((await pull([])).stdout).toBe('Wrote src/iight-types.d.ts.\n')
-    expect(await readFile(file, 'utf8')).toBe(typesFile(types))
+    expect(await readFile(file, 'utf8')).toBe(generated())
     expect((await pull(['--check'])).stdout).toBe('src/iight-types.d.ts is up to date.\n')
 
     await writeFile(file, 'export {}\n')

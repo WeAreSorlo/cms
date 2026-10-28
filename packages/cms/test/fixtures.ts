@@ -3,6 +3,7 @@ import { loadMigrations, migrate, migrationsDir } from '../src/migrator'
 import { hashToken } from '../src/passwords'
 import type { ContentType } from '../src/types'
 import { db, resetDb } from './database'
+import type { FieldSchema } from 'iight'
 
 // One content type of each structure
 export const blog: ContentType = {
@@ -106,6 +107,43 @@ export const home: ContentType = {
 }
 
 export const types = new Map([blog, docs, home, authors].map((type) => [type.name, type]))
+
+// A form's fields, with a list of choices, a group and a hidden value that post differently from a plain HTML form,
+// and a repeater that needs JavaScript
+export const contactFields: Array<FieldSchema> = [
+  { id: 'fld_intro', type: 'content', name: 'intro', options: { content: 'We reply within a day.' } },
+  { id: 'fld_name', type: 'text', name: 'name', label: 'Name', required: true },
+  { id: 'fld_email', type: 'email', name: 'email', label: 'Email', required: true },
+  {
+    id: 'fld_topics',
+    type: 'checkbox',
+    name: 'topics',
+    label: 'Topics',
+    options: {
+      choices: [
+        { value: 'sales', label: 'Sales' },
+        { value: 'support', label: 'Support' },
+      ],
+    },
+  },
+  { id: 'fld_size', type: 'number', name: 'size', label: 'Team size', options: { min: 1 } },
+  { id: 'fld_subscribe', type: 'boolean', name: 'subscribe', label: 'Subscribe' },
+  {
+    id: 'fld_address',
+    type: 'group',
+    name: 'address',
+    label: 'Address',
+    options: { fields: [{ id: 'fld_town', type: 'text', name: 'town', label: 'Town', required: true }] },
+  },
+  { id: 'fld_source', type: 'hidden', name: 'source', options: { value: 'website' } },
+  {
+    id: 'fld_guests',
+    type: 'repeater',
+    name: 'guests',
+    label: 'Guests',
+    options: { fields: [{ id: 'fld_guest', type: 'text', name: 'guest' }] },
+  },
+]
 
 // A migrated database with a signed-in user, returning the user's ID and session cookie
 export async function setUp() {

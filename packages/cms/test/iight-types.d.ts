@@ -108,6 +108,21 @@ export type EntryAuthors = {
   updatedAt: string
 }
 
+export type ContactFormValues = {
+  name: string
+  email: string
+  topics?: Array<"sales" | "support">
+  size?: number
+  subscribe?: boolean
+  address?: {
+    town: string
+  }
+  source?: "website"
+  guests?: Array<{
+    guest?: string
+  }>
+}
+
 declare module '@iight/sdk' {
   interface EntryTypes {
     blog: EntryBlog
@@ -120,6 +135,9 @@ declare module '@iight/sdk' {
     docs: DocsResolvedValues<Depth>
     home: HomeResolvedValues<Depth>
     authors: AuthorsResolvedValues<Depth>
+  }
+  interface FormTypes {
+    contact: ContactFormValues
   }
   interface DeliverySettings {
     depth: 2

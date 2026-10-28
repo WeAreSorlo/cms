@@ -1,5 +1,5 @@
-import type { EntryAuthors, EntryBlog, EntryDocs, EntryHome } from './iight-types'
-import { type Media, type Paginated, type With, createClient } from '@iight/sdk'
+import type { ContactFormValues, EntryAuthors, EntryBlog, EntryDocs, EntryHome } from './iight-types'
+import { type Media, type Paginated, type Submission, type With, createClient } from '@iight/sdk'
 import { expectTypeOf, test } from 'vitest'
 
 // Compile-time tests, which vitest typechecks rather than runs. The generated iight-types.d.ts types the SDK here.
@@ -118,4 +118,24 @@ test('wrong values fail to typecheck', () => {
   cms.entries('docs').where('position', 'like', '1')
   // @ts-expect-error
   cms.entries('blog').orderBy('createdAt', 'newest')
+})
+
+test('submit() takes the values a form takes, and resolves what was stored', () => {
+  const contact = cms.form('contact')
+  expectTypeOf(contact.submit).parameter(0).toEqualTypeOf<ContactFormValues>()
+  expectTypeOf(
+    contact.submit({ name: 'Ada', email: 'ada@example.com', topics: ['sales'], address: { town: 'Leeds' } }),
+  ).resolves.toEqualTypeOf<Submission<ContactFormValues>>()
+
+  // A browser can send submissions without a key
+  createClient({ url: 'http://localhost:3000' }).form('contact')
+
+  // @ts-expect-error there's no form called survey
+  cms.form('survey')
+  // @ts-expect-error name is required
+  contact.submit({ email: 'ada@example.com', address: { town: 'Leeds' } })
+  // @ts-expect-error size takes a number
+  contact.submit({ name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' }, size: 'big' })
+  // @ts-expect-error topics takes the form's choices
+  contact.submit({ name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' }, topics: ['jobs'] })
 })

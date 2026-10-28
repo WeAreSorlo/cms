@@ -135,6 +135,47 @@
         margin: 0 auto;
       }
 
+      .embed {
+        box-sizing: border-box;
+        width: 100%;
+        font:
+          0.875rem/1.4 ui-monospace,
+          monospace;
+      }
+
+      .link {
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        text-align: left;
+        text-decoration: underline;
+        cursor: pointer;
+        background: none;
+        border: 0;
+      }
+
+      .link[aria-current='true'] {
+        font-weight: 600;
+      }
+
+      .submission > div {
+        display: grid;
+        grid-template-columns: minmax(8rem, 1fr) 3fr;
+        gap: 1rem;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .submission dt {
+        font-weight: 600;
+      }
+
+      .submission dd {
+        margin: 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+
       @media (max-width: 40rem) {
         .admin {
           flex-direction: column;

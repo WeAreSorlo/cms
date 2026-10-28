@@ -172,6 +172,47 @@ export default defineConfig({
 - Pictures, video, audio and PDFs open in the browser's own viewers. Every other file, such as an SVG or an XML file, is served with `Content-Security-Policy: sandbox`, so a script in it can't run, even when its URL is opened on its own. A frontend that puts an SVG's markup into its own page loses that, so show SVGs with `<img>`.
 - Deleting a file removes it from its disk too.
 
+## Forms
+
+Forms live in the database rather than in `schema/`, since marketers make them in production. The admin's Forms page creates and edits them with core's schema builder, which offers every one of core's inputs. Each form has a label and a `name`, such as `contact_us`, which the SDK and the generated types call it by.
+
+- Each change to a form's fields saves a new version, and each submission records the version it was checked against, so the inbox shows it with that version's fields. Changing only the label or name keeps the version.
+- Each form has an inbox of its submissions, newest first, with Spam and Archive views. Archived submissions can be restored, and Not spam moves a submission from Spam to the inbox.
+- The form's page shows HTML for pasting it into any page, which posts to the form with JavaScript off and takes the page's own styles. It posts to the form's ID, so renaming a form never breaks a page it's pasted into. Repeater, matrix and flexible fields are left out of it, since adding their items needs JavaScript.
+
+### Submissions
+
+`POST /v1/forms/:form` takes a submission, where `:form` is the form's ID or its name. The body is the values themselves, as JSON or as a plain HTML form post, and no key is needed.
+
+- A plain form post names a group's fields as `address.town`, and a list of choices, such as a checkbox field, sends its name again for each one ticked. The text it sends takes each field's type, so `3` is a number and `on` ticks a boolean.
+- The values go through `pickValues` and `validateServerValues`, as entries' do. JSON requests, and requests that accept JSON, get JSON replies. A plain form post gets a small page in place of each reply, with the same status and a link back to the page it came from.
+- Each submission keeps the form's version, and the IP address, user agent and referer it came with.
+
+Spam is kept out of the inbox in two ways:
+
+- **A honeypot.** The pasted HTML has a field named `_website`, off screen and out of reach of screen readers and the keyboard. A submission that fills it in is kept as spam and gets the reply any other gets, so a bot can't tell. Field names start with a letter, so no field can take the name.
+- **A rate limit.** Each IP address can make 10 posts in 10 minutes, valid or not, and is then refused with a 429 and `Retry-After` until the time is up. Requests that send a delivery API key aren't limited, so a site's own server can submit for all its visitors. Behind a proxy on a private network, such as a load balancer, the address is the one the proxy forwarded for in `X-Forwarded-For`, which the CMS believes from no one else.
+
+Any site's JavaScript can call the form routes, unless `forms.origins` in `iight.config.ts` lists the sites that can.
+
+```ts
+// iight.config.ts
+export default defineConfig({
+  // ...
+  forms: {
+    origins: ['https://example.com'],
+    rateLimit: { posts: 10, minutes: 10 },
+  },
+})
+```
+
+| Setting     | What it holds                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `origins`   | The sites whose JavaScript can call the form routes, through CORS. Any site can if not given. Plain HTML forms and servers can always post |
+| `rateLimit` | How many `posts` an IP address can make in a number of `minutes`, 10 in 10 if not given                                                    |
+
+The rate limit counts posts in the CMS's process, so each process behind a load balancer keeps its own count.
+
 ## The API
 
 Row IDs are UUIDv7s. Records come back in `data`, and lists as `{ data, pagination: { page, perPage, total, lastPage } }`. A failed validation replies 422 with core's report, and every other error replies `{ message }`, as Laravel does.
@@ -240,6 +281,15 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `PUT /api/media/:id`                    | Saves `{ name, alt, caption }`, or replies 422 with core's report                                                                                 |
 | `DELETE /api/media/:id`                 | Deletes a file from its disk, with its record, or replies 409 while entries link to it                                                            |
 | `GET /api/media/:id/used-by`            | Lists the entries that link to the file, archived ones included                                                                                   |
+| `GET /api/forms`                        | Lists the forms, each with `embed`, the HTML that pastes it into a page                                                                           |
+| `POST /api/forms`                       | Creates a form from `{ label, name, fields }`, at version 1. Replies 201 with `{ data: form }`, or 422 with core's report                         |
+| `GET /api/forms/:id`                    | Replies a form                                                                                                                                    |
+| `PUT /api/forms/:id`                    | Saves `{ label, name, fields }`, as a new version when the fields change                                                                          |
+| `GET /api/forms/:id/versions/:number`   | Replies a version's `fields`                                                                                                                      |
+| `GET /api/forms/:id/submissions`        | Lists the inbox, or the archive with `archived=true`, or spam with `spam=true`, taking `order`, `page` and `perPage`                              |
+| `POST /api/submissions/:id/archive`     | Archives a submission                                                                                                                             |
+| `POST /api/submissions/:id/restore`     | Restores an archived submission                                                                                                                   |
+| `POST /api/submissions/:id/not-spam`    | Moves a submission from spam to the inbox                                                                                                         |
 
 The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
@@ -247,15 +297,22 @@ The type routes reply 403 outside `iight dev`. Creating or saving an entry repli
 
 It's read-only, and serves media and live entries once they've been saved. A singleton's entry is created when it's first opened, but it's served only from its first save, when its required fields are filled in. It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
 
-| Route                              | What it does                                                               |
-| ---------------------------------- | -------------------------------------------------------------------------- |
-| `GET /v1/entries/:type`            | Lists entries. A singleton is a list of one                                |
-| `GET /v1/entries/:type/:id`        | Replies an entry by ID                                                     |
-| `GET /v1/entries/:type/slug/:slug` | Replies a top-level entry by slug                                          |
-| `GET /v1/entries/:type/uri/*`      | Replies a hierarchical page by `uri`, as in `/v1/entries/docs/uri/install` |
-| `GET /v1/media`                    | Lists media                                                                |
-| `GET /v1/media/:id`                | Replies a media file by ID                                                 |
-| `GET /types`                       | Replies the TypeScript types of these entries, as text, for the SDK        |
+| Route                              | What it does                                                                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------- |
+| `GET /v1/entries/:type`            | Lists entries. A singleton is a list of one                                                  |
+| `GET /v1/entries/:type/:id`        | Replies an entry by ID                                                                       |
+| `GET /v1/entries/:type/slug/:slug` | Replies a top-level entry by slug                                                            |
+| `GET /v1/entries/:type/uri/*`      | Replies a hierarchical page by `uri`, as in `/v1/entries/docs/uri/install`                   |
+| `GET /v1/media`                    | Lists media                                                                                  |
+| `GET /v1/media/:id`                | Replies a media file by ID                                                                   |
+| `GET /types`                       | Replies the TypeScript types of these entries and of the forms' values, as text, for the SDK |
+
+The form routes are public, and need no key. `:form` is a form's ID or its name.
+
+| Route                  | What it does                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /v1/forms/:form`  | Replies `{ data: { id, name, label, version, fields } }`                                                                             |
+| `POST /v1/forms/:form` | Takes a submission, replying 201 with `{ data: { id, version, values, createdAt } }`, or 422 with core's report. See [Forms](#forms) |
 
 Lists take these query parameters, with `where` and `order` in JSON:
 
@@ -316,7 +373,17 @@ const posts = await cms
 - Results are the API's plain JSON. A failed request throws an `IightError` with the HTTP `status`, the API's `message` and the reply's `body`. When the CMS can't be reached, fetch's own error comes through.
 - `createClient` takes a `fetch` to use in place of the global one.
 
-`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, and the fields `with` can resolve, such as `BlogResolvedValues`, and registers them with the SDK. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date.
+`cms.form('contact_us').submit(values)` sends a form's values as JSON, typed by the form's fields, and resolves the submission as it was stored, `{ id, version, values, createdAt }`. Values that don't pass throw an `IightError` with status 422, whose `body` is core's report, for a core form's `applyReport`.
+
+```ts
+// In a browser, which needs no key to submit
+const cms = createClient({ url: 'https://cms.example.com' })
+await cms.form('contact_us').submit({ name: 'Ada', email: 'ada@example.com' })
+```
+
+The `token` is optional, since submitting needs none, but entries do. A site's own server sends its key when it submits for its visitors, so they aren't rate limited as one IP address.
+
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date.
 
 A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key`:
 
