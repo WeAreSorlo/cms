@@ -1,5 +1,5 @@
 import { inputs } from './core'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema, Input } from 'iight'
 import { existsSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
 import { basename, join } from 'node:path'
@@ -73,6 +73,14 @@ function checkNodes(
     }
 
     if (!Object.hasOwn(inputs, node?.type)) problems.push(`${label} has an unknown type, ${node?.type}.`)
+    else if (node.defaultValue !== undefined) {
+      // Checked as optional, so an empty default, or false on a box that must be ticked, isn't a problem
+      const input = (inputs as Record<string, Input>)[node.type]
+      const validation = input.validateValue?.(node.defaultValue, { ...node, required: false })
+      if (validation?.isValid === false) {
+        problems.push([`${label} has an invalid default value.`, ...validation.messages].join(' '))
+      }
+    }
     if (node?.options?.fields !== undefined) checkNodes(node.options.fields, 'field', at, ids, problems)
     if (node?.options?.layouts !== undefined) checkNodes(node.options.layouts, 'layout', at, ids, problems)
   }

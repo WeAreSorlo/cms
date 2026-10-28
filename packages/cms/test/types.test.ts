@@ -106,3 +106,25 @@ test('checks every field and layout, however deeply nested', () => {
     '"list" must list its fields.',
   ])
 })
+
+test('checks default values with their inputs, at any depth', () => {
+  const fields = [
+    { id: 'fld_email', type: 'email', name: 'email', defaultValue: 'nope' },
+    // A default only has to be a value the input accepts, not fill a required field
+    { id: 'fld_terms', type: 'boolean', name: 'terms', required: true, defaultValue: false },
+    { id: 'fld_title', type: 'text', name: 'title', required: true, defaultValue: '' },
+    {
+      id: 'fld_links',
+      type: 'repeater',
+      name: 'links',
+      options: { fields: [{ id: 'fld_url', type: 'url', name: 'url', defaultValue: 'example' }] },
+    },
+  ]
+
+  expect(
+    checkType({ ...blog, titleField: undefined, slugField: undefined, listColumns: undefined, fields }, 'blog'),
+  ).toEqual([
+    'Field "email" has an invalid default value. A valid email address required.',
+    'Field "links.url" has an invalid default value. A valid URL required.',
+  ])
+})

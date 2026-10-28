@@ -40,7 +40,7 @@ Run it from a site project, where it reads `iight.config.ts`.
 
 ## Content types
 
-Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `playground/schema/types`. `iight dev` checks every file when it starts and lists all the problems it finds. Restart it after editing a type.
+Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `playground/schema/types`. `iight dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a type.
 
 | Key                 | What it holds                                                                                |
 | ------------------- | -------------------------------------------------------------------------------------------- |
