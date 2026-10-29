@@ -50,9 +50,10 @@ test('lists the content types', async () => {
 })
 
 test("creates and edits entries with the type's fields, saving a version each time", async () => {
+  // A draft can leave required fields empty, but not hold values that don't fit them
   const invalid = await send('POST', '/types/blog/entries', { values: { slug: 'Not a slug' } })
   expect(invalid.status).toBe(422)
-  expect(invalid.body.fields.title).toEqual({ isValid: false, messages: ['This field is required.'] })
+  expect(invalid.body.fields.title).toEqual({ isValid: true, messages: [] })
   expect(invalid.body.fields.slug.isValid).toBe(false)
 
   // featured is posted, since core will soon store an unposted boolean as false
@@ -67,9 +68,12 @@ test("creates and edits entries with the type's fields, saving a version each ti
     values: { title: 'Hello', slug: 'hello', views: 3, featured: true },
     createdAt: expect.any(String),
     updatedAt: expect.any(String),
+    publishedAt: null,
     archivedAt: null,
     createdBy: userId,
     updatedBy: userId,
+    status: 'draft',
+    publishedVersion: null,
   })
 
   const edited = await send('PUT', `/entries/${entry.id}`, { values: { title: 'Hello again', slug: 'hello-again' } })
@@ -158,7 +162,7 @@ test('pages get a uri from their parents, which follows slug changes and moves',
   expect(await uris()).toEqual(['faq 1', 'handbook 0', 'install 2', 'install/linux 0'])
 })
 
-test("a page's parent must be another live page of the type, outside it", async () => {
+test("a page's parent must be another page of the type that isn't archived, outside it", async () => {
   const guide = await page('Guide')
   const install = await page('Install', guide)
   const post = await create('blog', { title: 'Post', slug: 'post' })
@@ -169,7 +173,7 @@ test("a page's parent must be another live page of the type, outside it", async 
     const response = await send('PUT', `/entries/${guide.id}`, { values: { title: 'Guide', slug: 'guide' }, parentId })
     expect(response).toEqual({
       status: 400,
-      body: { message: 'The parent must be another live entry of this type, outside this one.' },
+      body: { message: "The parent must be another entry of this type that isn't archived, outside this one." },
     })
   }
 })
@@ -233,7 +237,7 @@ test('a singleton opens its one entry, created the first time', async () => {
   expect((await send('GET', '/types/blog/singleton')).status).toBe(404)
 })
 
-test('the delivery API serves a singleton from its first save', async () => {
+test('the delivery API serves a singleton once it is published', async () => {
   const key = await createApiKey(db, 'Website')
   const deliver = (path = '') => app.request(`/v1/entries/home${path}`, { headers: { authorization: `Bearer ${key}` } })
 
@@ -243,6 +247,9 @@ test('the delivery API serves a singleton from its first save', async () => {
   expect((await deliver(`/${id}`)).status).toBe(404)
 
   await send('PUT', `/entries/${id}`, { values: { headline: 'Hi' } })
+  expect((await (await deliver()).json()).data).toEqual([])
+
+  await send('PUT', `/entries/${id}`, { values: { headline: 'Hi' }, publish: true })
   expect((await (await deliver()).json()).data).toMatchObject([{ id, values: { headline: 'Hi' } }])
   expect((await deliver(`/${id}`)).status).toBe(200)
 })

@@ -78,6 +78,8 @@ export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
         label: settings.label,
         singular: settings.singular || undefined,
         structure: settings.structure,
+        // Drafts are on unless a type says otherwise
+        drafts: settings.drafts === false ? false : undefined,
         icon: settings.icon || undefined,
         titleField: settings.titleField || undefined,
         slugField: settings.slugField || undefined,

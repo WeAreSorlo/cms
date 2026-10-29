@@ -10,14 +10,21 @@ const app = createApp(db, types)
 let key: string
 const ids: Record<string, string> = {}
 
+// An entry with the version a save writes, and unless it's archived, the live copy a publish makes, which the delivery
+// API serves
 const insert = async (name: string, type: string, values: Record<string, any>, columns: object = {}) => {
   ids[name] = uuidv7()
-  await db
+  const { archived_at, created_by, updated_by, ...row } = await db
     .insertInto('entries')
     .values({ id: ids[name], type, values, slug: values.slug, ...columns })
-    .execute()
-  // The version a save writes, since the delivery API serves saved entries only
+    .returningAll()
+    .executeTakeFirstOrThrow()
   await db.insertInto('entry_versions').values({ entry_id: ids[name], number: 1, values }).execute()
+  if (!archived_at)
+    await db
+      .insertInto('published_entries')
+      .values({ ...row, version: 1 })
+      .execute()
 }
 
 beforeAll(async () => {
@@ -86,6 +93,7 @@ test('lists live entries in the order they were made, a page at a time', async (
         values: { title: '100% done', slug: 'done', views: 7, blocks: [] },
         createdAt: '2026-04-01T00:00:00.000Z',
         updatedAt: expect.any(String),
+        publishedAt: expect.any(String),
       },
     ],
     pagination: { page: 2, perPage: 3, total: 4, lastPage: 2 },

@@ -58,6 +58,7 @@ test('checks the settings', () => {
       {
         name: 'blog posts',
         structure: 'list',
+        drafts: 'no',
         icon: 7,
         titleFeild: 'title',
         titleField: 'heading',
@@ -74,11 +75,13 @@ test('checks the settings', () => {
     'It needs a "label".',
     '"icon" must be text.',
     '"structure" must be collection, hierarchical or singleton.',
+    '"drafts" must be true or false.',
     '"titleField" must name a top-level field.',
     '"slugField" must name a top-level identifier field.',
     '"listColumns" must list top-level fields.',
   ])
   expect(checkType(blog, 'news')).toEqual([`"name" must match the file's name, news.`])
+  expect(checkType({ ...blog, drafts: false }, 'blog')).toEqual([])
 })
 
 test('checks every field and layout, however deeply nested', () => {

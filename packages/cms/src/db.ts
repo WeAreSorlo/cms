@@ -47,6 +47,23 @@ export interface Database {
     created_by: string | null
     created_at: Generated<Date>
   }
+  // Each published entry's live copy, which the delivery API serves (PLAN.md section 17)
+  published_entries: {
+    id: string
+    type: string
+    values: Record<string, any>
+    parent_id: string | null
+    position: number | null
+    slug: string | null
+    uri: string | null
+    migration: string | null
+    created_at: Date
+    updated_at: Date
+    // The number of the draft version it was copied from
+    version: number
+    published_at: Generated<Date>
+    published_by: string | null
+  }
   // What each entry's relationship and media fields link to, rebuilt on every save
   entry_relations: {
     entry_id: string
@@ -57,6 +74,8 @@ export interface Database {
     id: string
     name: string
     token_hash: string
+    // What the key can do besides reading live content, such as preview, which reads drafts
+    scopes: Generated<Array<string>>
     created_at: Generated<Date>
   }
   media: {

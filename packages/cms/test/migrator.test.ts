@@ -1,4 +1,5 @@
 import { loadContentMigrations } from '../src/content'
+import { uuidv7 } from '../src/db'
 import { Migration, loadMigrations, migrate, migrationsDir, rollback, status } from '../src/migrator'
 import { db, resetDb } from './database'
 import { mkdtemp, writeFile } from 'node:fs/promises'
@@ -107,6 +108,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_28_000010_create_events_table',
     '2026_10_28_000011_create_automations_table',
     '2026_10_28_000012_create_automation_runs_table',
+    '2026_10_28_000013_create_published_entries_table',
   ])
 
   await migrate(db, migrations)
@@ -122,6 +124,7 @@ test("the CMS's own migrations run forward and back", async () => {
     'forms',
     'media',
     'migrations',
+    'published_entries',
     'sessions',
     'submissions',
     'users',
@@ -129,4 +132,60 @@ test("the CMS's own migrations run forward and back", async () => {
 
   await rollback(db, migrations)
   expect(await tables()).toEqual(['migrations'])
+})
+
+test('the migration that adds live copies publishes every saved entry that is not archived, as it stands', async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const published = '2026_10_28_000013_create_published_entries_table'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < published)))
+
+  const user = uuidv7()
+  await db.insertInto('users').values({ id: user, name: 'Ada', email: 'ada@example.com', password_hash: 'x' }).execute()
+  await db.insertInto('api_keys').values({ id: uuidv7(), name: 'Website', token_hash: 'x' }).execute()
+
+  const entry = (type: string, values: object, columns: object = {}) => ({ id: uuidv7(), type, values, ...columns })
+  // A content migration has changed its values since its newest version
+  const post = entry('blog', { headline: 'Hello' }, { slug: 'hello' })
+  const guide = entry('docs', { title: 'Guide' }, { slug: 'guide', uri: 'guide', position: 0 })
+  const install = entry('docs', { title: 'Install' }, { slug: 'install', uri: 'guide/install', parent_id: guide.id })
+  const archived = entry('blog', { title: 'Old' }, { slug: 'old', archived_at: new Date() })
+  // A singleton that's been opened but never saved
+  const home = entry('home', {})
+  await db.insertInto('entries').values([post, guide, install, archived, home]).execute()
+  const version = (entry: { id: string }, number: number, created_at = new Date()) => ({
+    entry_id: entry.id,
+    number,
+    values: {},
+    created_by: user,
+    created_at,
+  })
+  await db
+    .insertInto('entry_versions')
+    .values([
+      version(post, 1, new Date('2026-10-01')),
+      version(post, 2, new Date('2026-10-02')),
+      version(guide, 1),
+      version(install, 1),
+      version(archived, 1),
+    ])
+    .execute()
+
+  await migrate(db, migrations)
+  const live = await db.selectFrom('published_entries').selectAll().execute()
+  expect(live.map((row) => row.id).sort()).toEqual([post.id, guide.id, install.id].sort())
+  expect(live.find((row) => row.id === post.id)).toMatchObject({
+    type: 'blog',
+    values: { headline: 'Hello' },
+    slug: 'hello',
+    version: 2,
+    published_at: new Date('2026-10-02'),
+    published_by: user,
+  })
+  expect(live.find((row) => row.id === install.id)).toMatchObject({ parent_id: guide.id, uri: 'guide/install' })
+  // Keys read what's live as before, and none can preview
+  expect(await db.selectFrom('api_keys').select('scopes').execute()).toEqual([{ scopes: [] }])
+
+  expect(await rollback(db, migrations)).toEqual([published])
+  expect(await tables()).not.toContain('published_entries')
+  expect(await db.selectFrom('entries').select('id').execute()).toHaveLength(5)
 })

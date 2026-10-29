@@ -215,6 +215,8 @@ export function mediaRoutes(
 
   // Deletes the file with its row. A file that can't be deleted keeps its row, so deleting it can be tried again.
   // shortcut: a save that links the file while it's being deleted can slip past the check, lock it when that matters
+  // shortcut: only drafts' links count, so a live copy can keep one its draft has dropped, which with() then leaves out;
+  // record live copies' links in entry_relations too when that matters
   app.delete('/api/media/:id', async (c) => {
     const row = await findMedia(db, c.req.param('id'))
     const users = (await usedBy(db, row.id)).length

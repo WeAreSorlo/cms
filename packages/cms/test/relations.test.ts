@@ -50,11 +50,12 @@ const send = async (method: string, path: string, body?: unknown) => {
   return { status: response.status, body: response.status === 204 ? null : await response.json() }
 }
 
-// Save an entry through the admin API, a new one or over an existing one, failing the test if it doesn't save
+// Save and publish an entry through the admin API, a new one or over an existing one, failing the test if it doesn't
+// save
 const save = async (type: string, values: object, id?: string) => {
   const { status, body } = id
-    ? await send('PUT', `/entries/${id}`, { values })
-    : await send('POST', `/types/${type}/entries`, { values })
+    ? await send('PUT', `/entries/${id}`, { values, publish: true })
+    : await send('POST', `/types/${type}/entries`, { values, publish: true })
   expect(status, JSON.stringify(body)).toBe(id ? 200 : 201)
   return body.data
 }
@@ -73,10 +74,11 @@ const file = async (name: string, mime = 'image/png') => {
   return id
 }
 
-// The messages a new blog post gets for these values, by field path
+// The messages a new blog post gets for these values, by field path, when it's published and every check runs
 const problems = async (values: object) => {
   const { status, body } = await send('POST', '/types/blog/entries', {
     values: { title: 'Post', slug: `post-${uuidv7()}`, ...values },
+    publish: true,
   })
   expect(status).toBe(422)
   return flattenValidationReport(body).messages

@@ -87,9 +87,10 @@ export function TypeEditor({
   const inputs = useInputs()
   const confirm = useConfirm()
   const toast = useToast()
+  // Drafts are on unless a type's file says otherwise
   const [settings, setSettings] = useState<Record<string, any>>(() => {
     const { fields, id, ...rest } = type ?? { structure: 'collection' }
-    return rest
+    return { drafts: true, ...rest }
   })
   // What the settings form starts from, replaced only when a renamed field takes a setting with it
   const [shown, setShown] = useState(settings)

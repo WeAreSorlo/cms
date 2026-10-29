@@ -113,6 +113,25 @@ test('changes a type, writing its file and a migration for the change', async ()
   )
   expect(await typeFile('blog')).toEqual({ ...blog, titleField: 'headline', listColumns: ['headline'], fields })
   expect((await send('GET', '/types')).body.data[1].titleField).toBe('headline')
+
+  // Drafts are on unless the file says otherwise, which needs no migration
+  const settings = { ...blog, titleField: 'headline', listColumns: ['headline'], fields }
+  const off = await send('PUT', '/types/blog', { ...settings, drafts: false })
+  expect(off.body.migration.file).toBeNull()
+  expect(Object.keys(await typeFile('blog'))).toEqual([
+    'id',
+    'name',
+    'label',
+    'structure',
+    'drafts',
+    'titleField',
+    'slugField',
+    'listColumns',
+    'fields',
+  ])
+  expect((await typeFile('blog')).drafts).toBe(false)
+  await send('PUT', '/types/blog', { ...settings, drafts: true })
+  expect(await typeFile('blog')).not.toHaveProperty('drafts')
 })
 
 test('renaming a type renames its file, and deleting one removes it and flags its entries', async () => {

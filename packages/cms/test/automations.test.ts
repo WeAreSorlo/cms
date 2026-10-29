@@ -173,6 +173,51 @@ test('each change to an entry writes its event, with the entry as it became', as
   expect((await events()).filter((event) => event.data.entry.id === child.id)).toHaveLength(2)
 })
 
+test('publishing writes entry.published, and taking entries off the live site writes entry.unpublished for each', async () => {
+  // The names of the events written since the last call, in any order, since a change's events share a time
+  const written = async () => {
+    const names = (await events()).map((event) => event.name).sort()
+    await db.deleteFrom('events').execute()
+    return names
+  }
+
+  const created = await admin('POST', '/types/blog/entries', { values: { title: 'Hi', slug: 'hi' }, publish: true })
+  const { id } = created.body.data
+  expect(await written()).toEqual(['entry.created', 'entry.published'])
+  await admin('PUT', `/entries/${id}`, { values: { title: 'Hello', slug: 'hi' } })
+  expect(await written()).toEqual(['entry.updated'])
+  await admin('POST', `/entries/${id}/unpublish`)
+  const [unpublished] = await events()
+  expect(unpublished.data.entry).toMatchObject({ id, status: 'draft', publishedAt: null })
+  expect(await written()).toEqual(['entry.unpublished'])
+  await admin('PUT', `/entries/${id}`, { values: { title: 'Hello', slug: 'hi' }, publish: true })
+  const published = (await events()).find((event) => event.name === 'entry.published')
+  expect(published?.data.entry).toMatchObject({ id, status: 'published', publishedAt: expect.any(String) })
+  expect(await written()).toEqual(['entry.published', 'entry.updated'])
+  await admin('POST', `/entries/${id}/archive`)
+  expect(await written()).toEqual(['entry.archived', 'entry.unpublished'])
+
+  // A live page's changes reach the live pages under it
+  const body = { values: { title: 'Install', slug: 'install' }, publish: true }
+  const page = (await admin('POST', '/types/docs/entries', body)).body.data
+  const child = { values: { title: 'Linux', slug: 'linux' }, parentId: page.id, publish: true }
+  await admin('POST', '/types/docs/entries', child)
+  await written()
+  await admin('PUT', `/entries/${page.id}`, { values: { title: 'Setup', slug: 'setup' }, publish: true })
+  const uris = (await events()).filter((event) => event.name === 'entry.published').map((event) => event.data.entry.uri)
+  expect(uris.sort()).toEqual(['setup', 'setup/linux'])
+  expect(await written()).toEqual(['entry.published', 'entry.published', 'entry.updated', 'entry.updated'])
+  await admin('POST', `/entries/${page.id}/unpublish`)
+  expect(await written()).toEqual(['entry.unpublished', 'entry.unpublished'])
+
+  // Both can trigger automations, whose runs from one dispatch can go in any order
+  await createAutomation({ triggers: ['entry.published', 'entry.unpublished'], actions: [email] })
+  await admin('PUT', `/entries/${page.id}`, { values: { title: 'Setup', slug: 'setup' }, publish: true })
+  await admin('POST', `/entries/${page.id}/unpublish`)
+  await drain()
+  expect(sent.map((message) => message.subject).sort()).toEqual(['Docs published: Setup', 'Docs unpublished: Setup'])
+})
+
 test('uploads, changes to files and submissions write events too, spam included', async () => {
   const bytes = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } })
     .png()

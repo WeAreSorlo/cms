@@ -1,6 +1,11 @@
 /* The reference page's own styles, which the built admin leaves out along with the page */
 
 .cms-design {
+  // The samples sit in the page rather than sticking to the bottom of the window
+  .cms-action-bar {
+    position: static;
+  }
+
   &__swatches,
   &__scale,
   &__boxes {

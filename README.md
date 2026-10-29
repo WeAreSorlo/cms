@@ -32,17 +32,17 @@ In `iight dev`, `/admin/#/design` shows the admin's design system: its tokens, t
 
 Run it from a site project, where it reads `iight.config.ts`.
 
-| Command                       | What it does                                                                                                          |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `iight dev`                   | Serves the API and the admin on one port, `PORT` or 3000, and runs automations                                        |
-| `iight start`                 | Serves the API and the built admin for production on `PORT` or 3000, and runs automations. Types are read-only        |
-| `iight migrate`               | Runs pending migrations as one batch: the CMS's own, then the site project's content migrations                       |
-| `iight migrate --check`       | Lists the saved entries that no longer pass their type's checks, and fails if there are any. It migrates nothing      |
-| `iight migrate:rollback`      | Rolls back the last batch, content migrations first                                                                   |
-| `iight migrate:status`        | Lists the migrations of both kinds, and the batch each ran in                                                         |
-| `iight make:migration [name]` | Writes a content migration for the changes to `schema/types`, named after the types it changes unless you give a name |
-| `iight make:user`             | Creates an admin user                                                                                                 |
-| `iight make:api-key`          | Creates a key for the delivery API, shown just once                                                                   |
+| Command                       | What it does                                                                                                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `iight dev`                   | Serves the API and the admin on one port, `PORT` or 3000, and runs automations                                                                                                     |
+| `iight start`                 | Serves the API and the built admin for production on `PORT` or 3000, and runs automations. Types are read-only                                                                     |
+| `iight migrate`               | Runs pending migrations as one batch: the CMS's own, then the site project's content migrations                                                                                    |
+| `iight migrate --check`       | Lists the saved entries whose drafts no longer pass what a save checks, or whose live copies no longer pass what a publish checks, and fails if there are any. It migrates nothing |
+| `iight migrate:rollback`      | Rolls back the last batch, content migrations first                                                                                                                                |
+| `iight migrate:status`        | Lists the migrations of both kinds, and the batch each ran in                                                                                                                      |
+| `iight make:migration [name]` | Writes a content migration for the changes to `schema/types`, named after the types it changes unless you give a name                                                              |
+| `iight make:user`             | Creates an admin user                                                                                                                                                              |
+| `iight make:api-key`          | Creates a key for the delivery API, shown just once. With `--preview`, the key can read drafts                                                                                     |
 
 `iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine. It serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin.
 
@@ -50,17 +50,18 @@ Run it from a site project, where it reads `iight.config.ts`.
 
 Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `playground/schema/types`. `iight dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a file by hand. The type editor reloads the types itself.
 
-| Key                 | What it holds                                                                                |
-| ------------------- | -------------------------------------------------------------------------------------------- |
-| `id`                | A stable ID, such as `typ_k3x9q2mz`, so a renamed type can be told apart from a new one      |
-| `name`              | The file's name: a letter, then letters, digits or underscores                               |
-| `label`, `singular` | What the admin calls the type and one of its entries, such as `Blog posts` and `Blog post`   |
-| `structure`         | `collection`, `hierarchical` for pages with parents, or `singleton` for a type of one entry  |
-| `icon`              | Optional, the name of an icon                                                                |
-| `titleField`        | Optional, the top-level field that titles an entry                                           |
-| `slugField`         | Optional, a top-level `identifier` field. Slugs are unique among siblings, archived included |
-| `listColumns`       | Optional, the top-level fields the admin's lists show                                        |
-| `fields`            | A core schema. Every field and flexible layout needs an `id`, such as `fld_k3x9q2mz`         |
+| Key                 | What it holds                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                | A stable ID, such as `typ_k3x9q2mz`, so a renamed type can be told apart from a new one                                              |
+| `name`              | The file's name: a letter, then letters, digits or underscores                                                                       |
+| `label`, `singular` | What the admin calls the type and one of its entries, such as `Blog posts` and `Blog post`                                           |
+| `structure`         | `collection`, `hierarchical` for pages with parents, or `singleton` for a type of one entry                                          |
+| `drafts`            | Optional, `false` for a type whose every save publishes, running every check, in place of keeping drafts. Drafts are on if not given |
+| `icon`              | Optional, the name of an icon                                                                                                        |
+| `titleField`        | Optional, the top-level field that titles an entry                                                                                   |
+| `slugField`         | Optional, a top-level `identifier` field. Slugs are unique among siblings, archived included                                         |
+| `listColumns`       | Optional, the top-level fields the admin's lists show                                                                                |
+| `fields`            | A core schema. Every field and flexible layout needs an `id`, such as `fld_k3x9q2mz`                                                 |
 
 ### The type editor
 
@@ -88,6 +89,23 @@ The CMS adds two field types to core's. A `relationship` field links to entries,
 - Every save rebuilds the entry's rows in `entry_relations`, which record what its fields link to, nested ones included, and `iight migrate` rebuilds them after content migrations. The admin shows them as "Used by" on entries and files.
 - Archiving an entry that others link to asks first in the admin. Deleting an entry or a file for good replies 409 while any entry links to it, archived ones included, so remove the links first. The type editor won't delete a type that relationship fields link to.
 - Changing a `maximum` to or from 1 changes the shape of the field's values, which `make:migration` flags and `iight migrate --check` lists.
+
+## Drafts and publishing
+
+Every entry has a draft, and once it's published, a live copy, which is what the delivery API serves. Save writes the draft as a new version, and the live site keeps its copy until Publish replaces it. Unpublish takes the live copy down and keeps the draft. An entry is a draft until it's published, published while its newest version is the live one, and changed once a newer version is saved.
+
+- **Drafts can be unfinished.** A save runs every check but those an unfinished value fails: required fields, minimum lengths, and minimum numbers of items, rows, columns and selections. Publish runs them all, and the editor shows what it needs without blocking Save.
+- **Publish saves the form first**, so one click publishes what the editor shows. It's all or nothing: when a check fails, nothing is saved. In the admin API it's `publish: true` in the body of the create and save routes, settled on 29 October 2026, rather than a route of its own.
+- **Slugs.** A live entry keeps its slug until it's published again, so a publish replies 422 on the slug when a live sibling has it, even though no draft does.
+- **Pages** go live only under a live parent. A page's live `uri` comes from its live parents' slugs, so a parent's new slug reaches the live pages under it when the parent is published. A new parent waits for Publish, but moving a page among its siblings changes the live order at once. Unpublishing a page takes the live pages under it down too.
+- **Archiving** takes an entry and the pages under it off the live site, and restoring gives back drafts, to publish again.
+- **A type can go without drafts**, with `"drafts": false` in its type file, or Drafts unticked in the type editor, for types such as site settings, where editors expect Save to go live. Then every save publishes and runs every check, and the editor has Save alone. Turning drafts off leaves any unpublished changes until an entry is next saved, and that save publishes them.
+- **Content migrations** change the drafts and the live copies alike.
+- **Upgrading**, `iight migrate` publishes every saved entry that isn't archived, as it stands, so a site keeps serving what it served before.
+
+### Previews
+
+A preview reads drafts in place of live copies, for a site's preview mode. It needs a key from `iight make:api-key --preview`, which can add `status=draft` to any delivery route. It then reads every entry that isn't archived, published or not, with links resolved to drafts. Other keys get a 403 for it. Plain keys can sit in frontends, since they only ever see what's live, but keep preview keys on a server. The SDK's `createClient({ preview: true })` sends `status=draft` with every query.
 
 ## Content migrations
 
@@ -222,14 +240,15 @@ The rate limit counts posts in the CMS's process, so each process behind a load 
 
 Every change writes an event, in the same transaction as the change, so an event is kept exactly when its change is. A worker in the server's own process hands each event to the automations it triggers and runs their actions. The admin's Automations page creates and edits them, and shows each one's runs.
 
-| Event                                               | Written when                                                                                                  | Its data                                                     |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `entry.created`, `entry.updated`                    | An entry is saved or moved among its siblings. Each page whose `uri` or position changes with it gets one too | `{ entry }`, as the admin API returns it                     |
-| `entry.archived`, `entry.restored`, `entry.deleted` | An entry is archived, restored or deleted, with one for each page that goes along with it                     | `{ entry }`, as it was left                                  |
-| `submission.created`                                | A form takes a submission, spam included                                                                      | `{ form: { id, name, label }, submission }`, with its `spam` |
-| `media.created`, `media.updated`, `media.deleted`   | A file is uploaded, edited or deleted                                                                         | `{ media }`, with its `url`                                  |
+| Event                                               | Written when                                                                                                                                                                                       | Its data                                                     |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `entry.created`, `entry.updated`                    | An entry is saved or moved among its siblings. Each page whose `uri` or position changes with it gets one too                                                                                      | `{ entry }`, as the admin API returns it                     |
+| `entry.published`, `entry.unpublished`              | An entry's live copy is made or changed, by Publish or by moving a page among its siblings, or taken down, by Unpublish or Archive. Each live page that changes or goes along with it gets one too | `{ entry }`, as the admin API returns it                     |
+| `entry.archived`, `entry.restored`, `entry.deleted` | An entry is archived, restored or deleted, with one for each page that goes along with it                                                                                                          | `{ entry }`, as it was left                                  |
+| `submission.created`                                | A form takes a submission, spam included                                                                                                                                                           | `{ form: { id, name, label }, submission }`, with its `spam` |
+| `media.created`, `media.updated`, `media.deleted`   | A file is uploaded, edited or deleted                                                                                                                                                              | `{ media }`, with its `url`                                  |
 
-Content migrations write no events. An automation has:
+Content migrations write no events. `entry.updated` comes with every draft save, so a site that rebuilds when its content changes should listen for `entry.published` and `entry.unpublished` instead. An automation has:
 
 - **Triggers**, one or more of the events.
 - **Conditions**, core's conditional logic, checked against the event's data. Any group can match, and a group matches when all its rules do. A rule's field is a path into the data, such as `entry.type`, `entry.values.featured`, `form.name`, `submission.values.email` or `submission.spam`, and values compare as text, so `false` matches `"spam": false`. With no groups, every event it's triggered by runs it.
@@ -303,7 +322,7 @@ The playground's `send` prints each email in the terminal, and it allows webhook
 
 Row IDs are UUIDv7s. Records come back in `data`, and lists as `{ data, pagination: { page, perPage, total, lastPage } }`. A failed validation replies 422 with core's report, and every other error replies `{ message }`, as Laravel does.
 
-An entry keeps its field values in `values`. `uri` is a hierarchical page's path, such as `docs/install/linux`, and `position` its place among its siblings. Both are null for the other structures.
+An entry keeps its field values in `values`. `uri` is a hierarchical page's path, such as `docs/install/linux`, and `position` its place among its siblings. Both are null for the other structures. `publishedAt` is when it was last published, and the delivery API's `updatedAt` is its live copy's, so saving a draft moves neither.
 
 ```json
 {
@@ -315,7 +334,8 @@ An entry keeps its field values in `values`. `uri` is a hierarchical page's path
   "position": null,
   "values": { "title": "Hello world", "slug": "hello-world" },
   "createdAt": "2026-10-28T12:00:00.000Z",
-  "updatedAt": "2026-10-28T12:00:00.000Z"
+  "updatedAt": "2026-10-28T12:00:00.000Z",
+  "publishedAt": "2026-10-28T12:00:00.000Z"
 }
 ```
 
@@ -339,56 +359,57 @@ A media file has the `url` that serves it, on the address the request came to, w
 
 ### The admin API
 
-The admin uses it with the session cookie, which every route but `/api/session` needs. Its entries also have `archivedAt`, `createdBy` and `updatedBy`, and its media `createdBy`.
+The admin uses it with the session cookie, which every route but `/api/session` needs. Its entries are their drafts, with `archivedAt`, `createdBy` and `updatedBy`, `status`, which is `draft`, `published` or `changed`, and `publishedVersion`, the number of the version that's live, or null. Its media also have `createdBy`.
 
-| Route                                   | What it does                                                                                                                                      |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/session`                     | Signs in with `{ email, password }`. Replies `{ data: user }` and sets the `iight_session` cookie, or 422 with core's validation report           |
-| `GET /api/session`                      | Replies `{ data: user }` for the signed-in user, or 401                                                                                           |
-| `DELETE /api/session`                   | Signs out                                                                                                                                         |
-| `GET /api/types`                        | Lists the content types, with `editable`, which is true in `iight dev`                                                                            |
-| `POST /api/types`                       | Creates a type from its settings and `fields`, giving it an `id`. Replies `{ data: type, migration: { file, notes } }`, or 422 with core's report |
-| `PUT /api/types/:type`                  | Replaces a type, renaming its file when `name` changes, and writes a content migration for the change. Replies as `POST` does                     |
-| `DELETE /api/types/:type`               | Deletes a type's file and writes a migration that flags its entries, which stay. Replies `{ migration: { file, notes } }`                         |
-| `GET /api/types/:type/entries`          | Lists live entries, or archived ones with `archived=true`, taking the delivery API's query parameters                                             |
-| `POST /api/types/:type/entries`         | Creates an entry from `{ values, parentId }`, where `parentId` is for hierarchicals                                                               |
-| `GET /api/types/:type/singleton`        | Replies a singleton's entry, created the first time it's opened                                                                                   |
-| `GET /api/entries/:id`                  | Replies an entry, archived or not                                                                                                                 |
-| `PUT /api/entries/:id`                  | Saves `{ values, parentId }`. A moved page goes after its new siblings, and the `uri`s under it follow                                            |
-| `PUT /api/entries/:id/position`         | Moves a page to `{ position }` among its siblings, counting from 0                                                                                |
-| `POST /api/entries/:id/archive`         | Archives an entry with its live descendants                                                                                                       |
-| `POST /api/entries/:id/restore`         | Restores an entry with the descendants archived along with it, once its parent is live                                                            |
-| `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions, or replies 409 while other entries link to it                              |
-| `GET /api/entries/:id/used-by`          | Lists the entries that link to it, archived ones included                                                                                         |
-| `GET /api/entries/:id/versions`         | Lists the entry's versions, newest first. Every save writes one                                                                                   |
-| `GET /api/entries/:id/versions/:number` | Replies a version, with its values brought up to date by the content migrations that ran since. Restoring it means saving those values again      |
-| `GET /api/media`                        | Lists media, taking the delivery API's query parameters                                                                                           |
-| `POST /api/media`                       | Uploads one file, sent as the multipart field `file`. Replies 201 with `{ data: media }`, or 422 with core's report on `file` saying what's wrong |
-| `PUT /api/media/:id`                    | Saves `{ name, alt, caption }`, or replies 422 with core's report                                                                                 |
-| `DELETE /api/media/:id`                 | Deletes a file from its disk, with its record, or replies 409 while entries link to it                                                            |
-| `GET /api/media/:id/used-by`            | Lists the entries that link to the file, archived ones included                                                                                   |
-| `GET /api/forms`                        | Lists the forms, each with `embed`, the HTML that pastes it into a page                                                                           |
-| `POST /api/forms`                       | Creates a form from `{ label, name, fields }`, at version 1. Replies 201 with `{ data: form }`, or 422 with core's report                         |
-| `GET /api/forms/:id`                    | Replies a form                                                                                                                                    |
-| `PUT /api/forms/:id`                    | Saves `{ label, name, fields }`, as a new version when the fields change                                                                          |
-| `GET /api/forms/:id/versions/:number`   | Replies a version's `fields`                                                                                                                      |
-| `GET /api/forms/:id/submissions`        | Lists the inbox, or the archive with `archived=true`, or spam with `spam=true`, taking `order`, `page` and `perPage`                              |
-| `POST /api/submissions/:id/archive`     | Archives a submission                                                                                                                             |
-| `POST /api/submissions/:id/restore`     | Restores an archived submission                                                                                                                   |
-| `POST /api/submissions/:id/spam`        | Marks a submission as spam, taking it out of the inbox or the archive                                                                             |
-| `POST /api/submissions/:id/not-spam`    | Marks a submission as not spam, back in the inbox, or the archive if it was archived                                                              |
-| `GET /api/automations`                  | Lists the automations, or with `form=<id>`, those that form's submissions can run                                                                 |
-| `POST /api/automations`                 | Creates an automation from `{ name, triggers, conditions, actions }`. Replies 201 with `{ data: automation }`, or 422 with core's report          |
-| `GET /api/automations/:id`              | Replies an automation                                                                                                                             |
-| `PUT /api/automations/:id`              | Saves `{ name, triggers, conditions, actions }`                                                                                                   |
-| `DELETE /api/automations/:id`           | Deletes an automation, with its runs, including those still to come                                                                               |
-| `GET /api/automations/:id/runs`         | Lists its runs, each a try of one of its actions with its event, taking `order`, `page` and `perPage`                                             |
+| Route                                   | What it does                                                                                                                                                                                                                                              |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/session`                     | Signs in with `{ email, password }`. Replies `{ data: user }` and sets the `iight_session` cookie, or 422 with core's validation report                                                                                                                   |
+| `GET /api/session`                      | Replies `{ data: user }` for the signed-in user, or 401                                                                                                                                                                                                   |
+| `DELETE /api/session`                   | Signs out                                                                                                                                                                                                                                                 |
+| `GET /api/types`                        | Lists the content types, with `editable`, which is true in `iight dev`                                                                                                                                                                                    |
+| `POST /api/types`                       | Creates a type from its settings and `fields`, giving it an `id`. Replies `{ data: type, migration: { file, notes } }`, or 422 with core's report                                                                                                         |
+| `PUT /api/types/:type`                  | Replaces a type, renaming its file when `name` changes, and writes a content migration for the change. Replies as `POST` does                                                                                                                             |
+| `DELETE /api/types/:type`               | Deletes a type's file and writes a migration that flags its entries, which stay. Replies `{ migration: { file, notes } }`                                                                                                                                 |
+| `GET /api/types/:type/entries`          | Lists entries that aren't archived, or archived ones with `archived=true`, taking the delivery API's query parameters                                                                                                                                     |
+| `POST /api/types/:type/entries`         | Creates an entry from `{ values, parentId, publish }`, where `parentId` is for hierarchicals. With `publish: true`, it runs every check and publishes the entry too                                                                                       |
+| `GET /api/types/:type/singleton`        | Replies a singleton's entry, created the first time it's opened                                                                                                                                                                                           |
+| `GET /api/entries/:id`                  | Replies an entry, archived or not                                                                                                                                                                                                                         |
+| `PUT /api/entries/:id`                  | Saves `{ values, parentId, publish }` as the draft. With `publish: true`, it runs every check and publishes the draft too, or replies 409 while a page's parent isn't published. A moved page goes after its new siblings, and the `uri`s under it follow |
+| `POST /api/entries/:id/unpublish`       | Takes the entry's live copy down, with the live pages under it, and keeps the draft. A type without drafts replies 409                                                                                                                                    |
+| `PUT /api/entries/:id/position`         | Moves a page to `{ position }` among its siblings, counting from 0, on the live site too                                                                                                                                                                  |
+| `POST /api/entries/:id/archive`         | Archives an entry with its descendants that aren't archived, and takes them off the live site                                                                                                                                                             |
+| `POST /api/entries/:id/restore`         | Restores an entry with the descendants archived along with it, as drafts, once its parent isn't archived                                                                                                                                                  |
+| `DELETE /api/entries/:id`               | Deletes an archived entry for good, with its descendants and versions, or replies 409 while other entries link to it                                                                                                                                      |
+| `GET /api/entries/:id/used-by`          | Lists the entries that link to it, archived ones included                                                                                                                                                                                                 |
+| `GET /api/entries/:id/versions`         | Lists the entry's versions, newest first. Every save writes one                                                                                                                                                                                           |
+| `GET /api/entries/:id/versions/:number` | Replies a version, with its values brought up to date by the content migrations that ran since. Restoring it means saving those values again                                                                                                              |
+| `GET /api/media`                        | Lists media, taking the delivery API's query parameters                                                                                                                                                                                                   |
+| `POST /api/media`                       | Uploads one file, sent as the multipart field `file`. Replies 201 with `{ data: media }`, or 422 with core's report on `file` saying what's wrong                                                                                                         |
+| `PUT /api/media/:id`                    | Saves `{ name, alt, caption }`, or replies 422 with core's report                                                                                                                                                                                         |
+| `DELETE /api/media/:id`                 | Deletes a file from its disk, with its record, or replies 409 while entries link to it                                                                                                                                                                    |
+| `GET /api/media/:id/used-by`            | Lists the entries that link to the file, archived ones included                                                                                                                                                                                           |
+| `GET /api/forms`                        | Lists the forms, each with `embed`, the HTML that pastes it into a page                                                                                                                                                                                   |
+| `POST /api/forms`                       | Creates a form from `{ label, name, fields }`, at version 1. Replies 201 with `{ data: form }`, or 422 with core's report                                                                                                                                 |
+| `GET /api/forms/:id`                    | Replies a form                                                                                                                                                                                                                                            |
+| `PUT /api/forms/:id`                    | Saves `{ label, name, fields }`, as a new version when the fields change                                                                                                                                                                                  |
+| `GET /api/forms/:id/versions/:number`   | Replies a version's `fields`                                                                                                                                                                                                                              |
+| `GET /api/forms/:id/submissions`        | Lists the inbox, or the archive with `archived=true`, or spam with `spam=true`, taking `order`, `page` and `perPage`                                                                                                                                      |
+| `POST /api/submissions/:id/archive`     | Archives a submission                                                                                                                                                                                                                                     |
+| `POST /api/submissions/:id/restore`     | Restores an archived submission                                                                                                                                                                                                                           |
+| `POST /api/submissions/:id/spam`        | Marks a submission as spam, taking it out of the inbox or the archive                                                                                                                                                                                     |
+| `POST /api/submissions/:id/not-spam`    | Marks a submission as not spam, back in the inbox, or the archive if it was archived                                                                                                                                                                      |
+| `GET /api/automations`                  | Lists the automations, or with `form=<id>`, those that form's submissions can run                                                                                                                                                                         |
+| `POST /api/automations`                 | Creates an automation from `{ name, triggers, conditions, actions }`. Replies 201 with `{ data: automation }`, or 422 with core's report                                                                                                                  |
+| `GET /api/automations/:id`              | Replies an automation                                                                                                                                                                                                                                     |
+| `PUT /api/automations/:id`              | Saves `{ name, triggers, conditions, actions }`                                                                                                                                                                                                           |
+| `DELETE /api/automations/:id`           | Deletes an automation, with its runs, including those still to come                                                                                                                                                                                       |
+| `GET /api/automations/:id/runs`         | Lists its runs, each a try of one of its actions with its event, taking `order`, `page` and `perPage`                                                                                                                                                     |
 
 The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
 ### The delivery API
 
-It's read-only, and serves media and live entries once they've been saved. A singleton's entry is created when it's first opened, but it's served only from its first save, when its required fields are filled in. It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
+It's read-only, and serves media and the live copies of published entries, or with a preview key and `status=draft`, drafts (see [Previews](#previews)). It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
 
 | Route                              | What it does                                                                                 |
 | ---------------------------------- | -------------------------------------------------------------------------------------------- |
@@ -414,6 +435,7 @@ Lists take these query parameters, with `where` and `order` in JSON:
 | `where`           | Groups of conditions, where any group matches when all its conditions do: `[[{"field":"values.featured","op":"=","value":true}],[{"field":"values.title","op":"like","value":"release"}]]` |
 | `order`           | Fields and their directions, in order: `{"values.published_at":"desc"}`. Without it, entries come in the order they were made                                                              |
 | `page`, `perPage` | The page from 1, and from 1 to 100 entries a page, 15 if not given                                                                                                                         |
+| `status`          | `published`, the default, or `draft` to read drafts, which needs a preview key and replies 403 for others. Every entry and media route takes it                                            |
 | `with`            | Top-level fields whose links come resolved, a JSON list such as `["author","blocks"]`. Entry routes that reply one entry take it too                                                       |
 | `depth`           | How many levels of links `with` resolves, from 1 to `delivery.maxDepth`. `delivery.depth` if not given                                                                                     |
 
@@ -465,6 +487,7 @@ const posts = await cms
 - `with('author', 'cover')` asks for those fields' links to come resolved, and `depth(3)` for how many levels, from 1 to 10. The results are typed to match: after `cms.entries('blog').with('author')`, `post.values.author` is an `EntryAuthors` or null, and its own links are resolved a level less. Without `with`, it stays a `string`. `With<EntryBlog, 'author'>` is that type, for typing a frontend's own functions, and `Media` is a file's.
 - Results are the API's plain JSON. A failed request throws an `IightError` with the HTTP `status`, the API's `message` and the reply's `body`. When the CMS can't be reached, fetch's own error comes through.
 - `createClient` takes a `fetch` to use in place of the global one.
+- `createClient({ preview: true })` reads drafts, for a site's preview, sending `status=draft` with every query. It needs a key from `iight make:api-key --preview`, so keep it on a server. Its entries are typed as drafts, which can be unfinished: every field can be missing, at any depth, `slug`, `uri` and `publishedAt` can be null, and links resolve to drafts. `Draft<EntryBlog>` is that type.
 
 `cms.form('contact_us').submit(values)` sends a form's values as JSON, typed by the form's fields, and resolves the submission as it was stored, `{ id, version, values, createdAt }`. Values that don't pass throw an `IightError` with status 422, whose `body` is core's report, for a core form's `applyReport`.
 
@@ -476,7 +499,7 @@ await cms.form('contact_us').submit({ name: 'Ada', email: 'ada@example.com' })
 
 The `token` is optional, since submitting needs none, but entries do. A site's own server sends its key when it submits for its visitors, so they aren't rate limited as one IP address.
 
-`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date.
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
 
 A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key`:
 

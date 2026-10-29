@@ -7,12 +7,50 @@ import { ComparisonOperator, ExpressionBuilder, Kysely, SelectQueryBuilder, Sele
 // so another database needs its own version of this module (PLAN.md section 5).
 
 export type EntryRow = Selectable<Database['entries']>
+export type PublishedRow = Selectable<Database['published_entries']>
 export type MediaRow = Selectable<Database['media']>
 export type SubmissionRow = Selectable<Database['submissions']>
 export type RunRow = Selectable<Database['automation_runs']>
 
+// What an entry's status needs: when its live copy was published, the version that copy came from, and the entry's
+// newest version
+export type StatusRow = EntryRow & {
+  published_at: Date | null
+  published_version: number | null
+  version: number | null
+}
+
+// Every entry with what its status needs, as a table of its own named entries, so queries name its columns as they
+// name entries'
+export const withStatus = (db: Kysely<Database>) =>
+  db.selectFrom((eb) =>
+    eb
+      .selectFrom('entries')
+      .leftJoin('published_entries as live', 'live.id', 'entries.id')
+      .selectAll('entries')
+      .select(['live.published_at', 'live.version as published_version'])
+      .select((eb) =>
+        eb
+          .selectFrom('entry_versions')
+          .select((eb) => eb.fn.max('number').as('number'))
+          .whereRef('entry_versions.entry_id', '=', 'entries.id')
+          .as('version'),
+      )
+      .as('entries'),
+  )
+
+// The entries the delivery API reads: their live copies, or for a preview, the drafts of those that aren't archived
+export const deliveredEntries = (db: Kysely<Database>, draft: boolean): SelectQueryBuilder<any, any, {}> =>
+  draft ? withStatus(db).where('archived_at', 'is', null) : db.selectFrom('published_entries')
+
+// What the delivery API returns of an entry, in its live copy or its draft with withStatus
+export type Delivered = Pick<
+  EntryRow,
+  'id' | 'type' | 'slug' | 'uri' | 'parent_id' | 'position' | 'values' | 'created_at' | 'updated_at'
+> & { published_at: Date | null }
+
 // An entry as the delivery API returns it
-export const toEntry = (row: EntryRow) => ({
+export const toEntry = (row: Delivered) => ({
   id: row.id,
   type: row.type,
   slug: row.slug,
@@ -22,14 +60,18 @@ export const toEntry = (row: EntryRow) => ({
   values: row.values,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  publishedAt: row.published_at,
 })
 
-// An entry as the admin API returns it
-export const toAdminEntry = (row: EntryRow) => ({
+// An entry as the admin API returns it. It's a draft until it's published, then published, or changed once a newer
+// version is saved.
+export const toAdminEntry = (row: StatusRow) => ({
   ...toEntry(row),
   archivedAt: row.archived_at,
   createdBy: row.created_by,
   updatedBy: row.updated_by,
+  status: !row.published_version ? 'draft' : row.version! > row.published_version ? 'changed' : 'published',
+  publishedVersion: row.published_version,
 })
 
 type Kind = 'uuid' | 'text' | 'integer' | 'timestamp'
@@ -243,15 +285,14 @@ function conditionSql(eb: ExpressionBuilder<any, any>, subject: Subject, { field
 }
 
 // Whether an entry has been saved, which every save records with a version. Opening a singleton creates its entry
-// without one, and until it's saved its required fields can be empty, so the delivery API serves saved entries only.
+// without one, and until it's saved its required fields can be empty, so migrate --check skips it.
 export const isSaved = (eb: ExpressionBuilder<Database, 'entries'>) =>
   eb.exists(eb.selectFrom('entry_versions').select('entry_id').whereRef('entry_versions.entry_id', '=', 'entries.id'))
 
 // The entries whose relationship or media fields link to an entry or media file, archived ones included
 // shortcut: every one of them, page it when sites link one file from thousands of entries
 export const usedBy = (db: Kysely<Database>, id: string) =>
-  db
-    .selectFrom('entries')
+  withStatus(db)
     .selectAll()
     .where('id', 'in', db.selectFrom('entry_relations').select('entry_id').where('target_id', '=', id))
     .orderBy('updated_at', 'desc')
@@ -280,22 +321,9 @@ async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Su
   }
 }
 
-// One page of a type's live or archived entries
-export const listEntries = (
-  db: Kysely<Database>,
-  type: ContentType,
-  query: Query,
-  { archived = false, saved = false } = {},
-) =>
-  paginate<EntryRow>(
-    db
-      .selectFrom('entries')
-      .where('type', '=', type.name)
-      .where('archived_at', archived ? 'is not' : 'is', null)
-      .$if(saved, (qb) => qb.where(isSaved)),
-    entrySubject(type),
-    query,
-  )
+// One page of a type's entries, from where they're read, such as their live copies
+export const listEntries = <Row>(from: SelectQueryBuilder<any, any, {}>, type: ContentType, query: Query) =>
+  paginate<Row>(from.where('type', '=', type.name), entrySubject(type), query)
 
 export const listMedia = (db: Kysely<Database>, query: Query) =>
   paginate<MediaRow>(db.selectFrom('media'), mediaSubject, query)

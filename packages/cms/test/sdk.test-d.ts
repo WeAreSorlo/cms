@@ -1,9 +1,34 @@
 import type { ContactFormValues, EntryAuthors, EntryBlog, EntryDocs, EntryHome } from './iight-types'
-import { type Media, type Paginated, type Submission, type With, createClient } from '@iight/sdk'
+import {
+  type Draft,
+  type Entry,
+  type Media,
+  type Paginated,
+  type Submission,
+  type With,
+  createClient,
+} from '@iight/sdk'
 import { expectTypeOf, test } from 'vitest'
 
 // Compile-time tests, which vitest typechecks rather than runs. The generated iight-types.d.ts types the SDK here.
 const cms = createClient({ url: 'http://localhost:3000', token: 'iight_key' })
+
+// A property a newer SDK could give every entry
+declare module '@iight/sdk' {
+  interface Entry {
+    addedLater?: true
+  }
+}
+
+test("generated entries build on the SDK's Entry, so what it gains reaches types pulled before it", () => {
+  expectTypeOf<EntryBlog['addedLater']>().toEqualTypeOf<true | undefined>()
+  expectTypeOf<EntryDocs['publishedAt']>().toEqualTypeOf<Entry['publishedAt']>()
+
+  // And each narrows what's its own
+  expectTypeOf<EntryBlog['type']>().toEqualTypeOf<'blog'>()
+  expectTypeOf<EntryBlog['uri']>().toEqualTypeOf<null>()
+  expectTypeOf<EntryDocs['position']>().toEqualTypeOf<number>()
+})
 
 test('results take their types from the generated file', () => {
   expectTypeOf(cms.entries('blog').paginate(10)).resolves.toEqualTypeOf<Paginated<EntryBlog>>()
@@ -138,4 +163,28 @@ test('submit() takes the values a form takes, and resolves what was stored', () 
   contact.submit({ name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' }, size: 'big' })
   // @ts-expect-error topics takes the form's choices
   contact.submit({ name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' }, topics: ['jobs'] })
+})
+
+test('a preview client types drafts, whose fields can be empty and which may never have been published', () => {
+  const preview = createClient({ url: 'http://localhost:3000', token: 'iight_key', preview: true })
+  const posts = preview.entries('blog')
+  expectTypeOf(posts.first()).resolves.toEqualTypeOf<Draft<EntryBlog> | null>()
+  expectTypeOf<Found<typeof posts>['slug']>().toEqualTypeOf<string | null>()
+  expectTypeOf<Found<typeof posts>['publishedAt']>().toEqualTypeOf<string | null>()
+  expectTypeOf<Values<typeof posts>['title']>().toEqualTypeOf<string | undefined>()
+
+  // Required fields inside lists and blocks can be empty too, but a block always names its layout
+  type Block = NonNullable<Values<typeof posts>['blocks']>[number]
+  expectTypeOf<Block['_layout']>().toEqualTypeOf<'text' | 'gallery'>()
+  expectTypeOf<Extract<Block, { _layout: 'text' }>['body']>().toEqualTypeOf<string | undefined>()
+
+  // Links resolve to drafts, and files stay as they are
+  const linked = preview.entries('blog').with('author', 'cover')
+  type Author = NonNullable<Values<typeof linked>['author']>
+  expectTypeOf<Author['values']['name']>().toEqualTypeOf<string | undefined>()
+  expectTypeOf<Author['publishedAt']>().toEqualTypeOf<string | null>()
+  expectTypeOf<Values<typeof linked>['cover']>().toEqualTypeOf<Media | null | undefined>()
+
+  // Without preview, every entry is published
+  expectTypeOf<Found<ReturnType<typeof cms.entries<'blog'>>>['publishedAt']>().toEqualTypeOf<string>()
 })

@@ -11,6 +11,8 @@ export interface Entry {
   values: Record<string, unknown>
   createdAt: string
   updatedAt: string
+  // When it was last published
+  publishedAt: string
 }
 
 // A file in the media library, as the delivery API returns it and with() resolves a media field
@@ -86,6 +88,31 @@ export type With<E extends Entry, K extends PropertyKey, D extends number = Defa
   ? E
   : Merge<E, Pick<ResolvedOf<E, D>, K & keyof ResolvedOf<E, D>>>
 
+// An entry as a preview reads it: its draft, which may never have been published, and whose fields can be empty at any
+// level, since drafts can be saved unfinished. Its links are to drafts too.
+export type Draft<E> = {
+  [P in keyof E]: P extends 'values' ? Unfinished<E[P]> : P extends 'slug' | 'uri' | 'publishedAt' ? E[P] | null : E[P]
+}
+
+// Values that can be missing anywhere, but for the _layout that names a flexible block's layout, with linked entries as
+// drafts and media files as they are
+type Unfinished<T> = T extends Entry
+  ? Draft<T>
+  : T extends Media
+    ? T
+    : T extends Array<infer I>
+      ? Array<Unfinished<I>>
+      : T extends object
+        ? { [K in keyof T as K extends '_layout' ? K : never]: T[K] } & {
+            [K in keyof T as K extends '_layout' ? never : K]?: Unfinished<T[K]>
+          }
+        : T
+
+// What a query finds: entries with the fields K resolved, D levels deep, or for a preview, their drafts
+type Result<E extends Entry, K extends PropertyKey, D extends number, P extends boolean> = P extends true
+  ? Draft<With<E, K, D>>
+  : With<E, K, D>
+
 // The fields with() can name: those that hold links, or any without pulled types
 type Linkable<E extends Entry> = [keyof ResolvedTypes<1>] extends [never] ? string : keyof ResolvedOf<E, 1> & string
 
@@ -152,8 +179,14 @@ interface Condition {
   value?: unknown
 }
 
-// A chainable query for one content type's entries, returning them with the fields K resolved, D levels deep
-class EntriesQuery<E extends Entry, K extends PropertyKey = never, D extends number = DefaultDepth> {
+// A chainable query for one content type's entries, returning them with the fields K resolved, D levels deep, or their
+// drafts when P is true
+class EntriesQuery<
+  E extends Entry,
+  K extends PropertyKey = never,
+  D extends number = DefaultDepth,
+  P extends boolean = false,
+> {
   #request: (params: URLSearchParams) => Promise<any>
   // Groups joined by OR, each a list of conditions that must all match, as the API takes them
   #where: Array<Array<Condition>> = []
@@ -195,17 +228,17 @@ class EntriesQuery<E extends Entry, K extends PropertyKey = never, D extends num
   // entries they link to come with their own links too, down to the depth.
   with<F extends Linkable<E> = never>(...fields: Array<F>) {
     for (const field of fields) this.#with.add(field)
-    return this as unknown as EntriesQuery<E, K | F, D>
+    return this as unknown as EntriesQuery<E, K | F, D, P>
   }
 
   // How many levels of links with() resolves, the CMS's delivery.depth if not given
   depth<N extends Depth>(depth: N) {
     this.#depth = depth
-    return this as unknown as EntriesQuery<E, K, N>
+    return this as unknown as EntriesQuery<E, K, N, P>
   }
 
   // One page of entries, with { data, pagination }
-  paginate(perPage = 15, page = 1): Promise<Paginated<With<E, K, D>>> {
+  paginate(perPage = 15, page = 1): Promise<Paginated<Result<E, K, D, P>>> {
     const params = new URLSearchParams({ page: String(page), perPage: String(perPage) })
     if (this.#where.length) params.set('where', JSON.stringify(this.#where))
     if (Object.keys(this.#order).length) params.set('order', JSON.stringify(this.#order))
@@ -215,13 +248,13 @@ class EntriesQuery<E extends Entry, K extends PropertyKey = never, D extends num
   }
 
   // The first matching entry, or null
-  async first(): Promise<With<E, K, D> | null> {
+  async first(): Promise<Result<E, K, D, P> | null> {
     return (await this.paginate(1)).data[0] ?? null
   }
 
   // Every matching entry, fetching the pages in turn
   async all() {
-    const entries: Array<With<E, K, D>> = []
+    const entries: Array<Result<E, K, D, P>> = []
     for (let page = 1, lastPage = 1; page <= lastPage; page++) {
       const { data, pagination } = await this.paginate(100, page)
       entries.push(...data)
@@ -231,17 +264,25 @@ class EntriesQuery<E extends Entry, K extends PropertyKey = never, D extends num
   }
 }
 
-export interface ClientOptions {
+export interface ClientOptions<Preview extends boolean = boolean> {
   // The CMS's address, such as https://cms.example.com
   url: string
   // A key from `iight make:api-key`, which entries need. Forms take submissions without one, so browsers can send
   // them, but a site's own server sends its key so that it isn't rate limited as one visitor.
   token?: string
+  // Reads drafts in place of what's live, for a site's preview, typing their values as unfinished. Every query sends
+  // status=draft, which needs a key from `iight make:api-key --preview`, so keep the client on a server.
+  preview?: Preview
   // In place of the global fetch, e.g. to add caching
   fetch?: typeof globalThis.fetch
 }
 
-export function createClient({ url, token, fetch = globalThis.fetch }: ClientOptions) {
+export function createClient<Preview extends boolean = false>({
+  url,
+  token,
+  preview,
+  fetch = globalThis.fetch,
+}: ClientOptions<Preview>) {
   // fetch is called on its own, since browsers refuse it as a method of another object
   const request = async (path: string, json?: unknown) => {
     const headers: Record<string, string> = { accept: 'application/json' }
@@ -265,9 +306,10 @@ export function createClient({ url, token, fetch = globalThis.fetch }: ClientOpt
   return {
     // A query for a content type's entries, such as cms.entries('blog')
     entries: <T extends keyof Registered & string>(type: T) =>
-      new EntriesQuery<Extract<Registered[T], Entry>>((params) =>
-        request(`/v1/entries/${encodeURIComponent(type)}?${params}`),
-      ),
+      new EntriesQuery<Extract<Registered[T], Entry>, never, DefaultDepth, Preview>((params) => {
+        if (preview) params.set('status', 'draft')
+        return request(`/v1/entries/${encodeURIComponent(type)}?${params}`)
+      }),
 
     // A form, by its name, such as cms.form('contact')
     form: <F extends keyof RegisteredForms & string>(form: F) => ({

@@ -48,11 +48,12 @@ beforeAll(async () => {
     ...Array.from({ length: 100 }, (_, i) => post(`Post ${i}`, `post-${i}`, { views: 0 }, '2026-04-01')),
   ]
   await db.insertInto('entries').values(posts).execute()
-  // Each with the version a save writes, since the delivery API serves saved entries only
+  // Each with the version a save writes and the live copy a publish makes, which the delivery API serves
   await db
     .insertInto('entry_versions')
     .values(posts.map(({ id, values }) => ({ entry_id: id, number: 1, values })))
     .execute()
+  await publishAll()
 
   const app = createApp(db, types)
   const { port } = await new Promise<AddressInfo>((resolve) => {
@@ -67,6 +68,15 @@ afterAll(async () => {
 })
 
 const slugs = (entries: Array<{ slug: string | null }>) => entries.map((entry) => entry.slug)
+
+// Publish every entry as it stands, as the migration that added live copies did
+async function publishAll() {
+  await db.deleteFrom('published_entries').execute()
+  await sql`
+    insert into published_entries (id, type, "values", parent_id, position, slug, uri, migration, created_at, updated_at, version)
+    select id, type, "values", parent_id, position, slug, uri, migration, created_at, updated_at, 1 from entries
+  `.execute(db)
+}
 
 test("the query builder sends the delivery API's query format", async () => {
   const requests: Array<URL> = []
@@ -153,11 +163,40 @@ test('with() and depth() send the fields and levels to resolve, and the reply ho
     .set({ values: sql`"values" || ${JSON.stringify({ author: author.id })}::jsonb` })
     .where('slug', '=', 'release-1')
     .execute()
+  await publishAll()
 
   const post = await cms.entries('blog').where('slug', '=', 'release-1').with('author').depth(1).first()
   expect(Object.fromEntries(requests[0].searchParams)).toMatchObject({ with: '["author"]', depth: '1' })
   expect(post?.values.author).toMatchObject({ id: author.id, type: 'authors', values: { name: 'Ada' } })
   expect((await cms.entries('blog').where('slug', '=', 'release-1').first())?.values.author).toBe(author.id)
+})
+
+test('a preview client reads drafts, sending status=draft with every query, which needs a preview key', async () => {
+  const requests: Array<URL> = []
+  const previewKey = await createApiKey(db, 'Previews', ['preview'])
+  const preview = createClient({
+    url,
+    token: previewKey,
+    preview: true,
+    fetch: (input, init) => {
+      requests.push(new URL(String(input)))
+      return fetch(input, init)
+    },
+  })
+
+  // A draft that's never been published, without the title that publishing needs
+  const draft = { id: uuidv7(), type: 'blog', slug: 'unfinished', values: { slug: 'unfinished' } }
+  await db.insertInto('entries').values(draft).execute()
+
+  const found = await preview.entries('blog').where('slug', '=', 'unfinished').first()
+  expect(requests[0].searchParams.get('status')).toBe('draft')
+  expect(found).toMatchObject({ id: draft.id, publishedAt: null, values: { slug: 'unfinished' } })
+  expect(await createClient({ url, token: key }).entries('blog').where('slug', '=', 'unfinished').first()).toBeNull()
+
+  await expect(createClient({ url, token: key, preview: true }).entries('blog').first()).rejects.toMatchObject({
+    status: 403,
+    message: "This key can't read drafts. Make one that can with iight make:api-key --preview.",
+  })
 })
 
 test("a failed request throws an IightError with the status and the API's message", async () => {

@@ -1,7 +1,7 @@
 import { flattenValidationReport, validateServerValues } from './core'
 import type { Database } from './db'
 import { type Migrations, loadMigrations } from './migrator'
-import { type EntryRow, isSaved } from './query'
+import { type EntryRow, type PublishedRow, isSaved } from './query'
 import { serverInputs } from './relations'
 import type { ContentType } from './types'
 import { Kysely, sql } from 'kysely'
@@ -147,7 +147,25 @@ async function stepsOf(migration: ContentMigration) {
 
 const batchSize = 500
 
-// Run a content migration's up or down on every entry, a batch at a time, inside the migrator's transaction.
+// Both hold entries' values: the drafts, and the live copies of those that are published (PLAN.md section 17)
+const tables = ['entries', 'published_entries'] as const
+
+// Call each with every row a query finds, a batch at a time in ID order, the query taking the last ID of the batch
+// before
+async function eachBatch<Row extends { id: string }>(
+  find: (after?: string) => Promise<Array<Row>>,
+  each: (rows: Array<Row>) => Promise<unknown>,
+) {
+  for (let after: string | undefined; ;) {
+    const rows = await find(after)
+    if (rows.length) await each(rows)
+    if (rows.length < batchSize) return
+    after = rows.at(-1)!.id
+  }
+}
+
+// Run a content migration's up or down on every entry, drafts and live copies alike, a batch at a time, inside the
+// migrator's transaction.
 // shortcut: the slug and uri columns aren't recomputed, so a hand-written change to slug values leaves them stale;
 // recompute them when a migration needs that.
 async function run(db: Kysely<Database>, migration: ContentMigration) {
@@ -155,31 +173,32 @@ async function run(db: Kysely<Database>, migration: ContentMigration) {
     if (step.rename !== undefined) {
       const taken = await db.selectFrom('entries').select('id').where('type', '=', step.rename).executeTakeFirst()
       if (taken) throw new Error(`Can't rename the type ${step.type} to ${step.rename}, which already has entries.`)
-      await db.updateTable('entries').set({ type: step.rename }).where('type', '=', step.type).execute()
+      for (const table of tables) {
+        await db.updateTable(table).set({ type: step.rename }).where('type', '=', step.type).execute()
+      }
       continue
     }
 
-    let after: string | undefined
-    for (;;) {
-      const rows = await db
-        .selectFrom('entries')
-        .select(['id', 'values'])
-        .where('type', '=', step.type)
-        .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
-        .orderBy('id')
-        .limit(batchSize)
-        .execute()
-      if (rows.length === 0) break
-
-      const changed = rows.map((row) => ({ id: row.id, values: step.change!(row.values) }))
-      await sql`
-        update entries set "values" = data."values"
-        from jsonb_to_recordset(${JSON.stringify(changed)}::jsonb) as data (id uuid, "values" jsonb)
-        where entries.id = data.id and entries."values" <> data."values"
-      `.execute(db)
-
-      if (rows.length < batchSize) break
-      after = rows.at(-1)!.id
+    for (const table of tables) {
+      await eachBatch(
+        (after) =>
+          db
+            .selectFrom(table)
+            .select(['id', 'values'])
+            .where('type', '=', step.type)
+            .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
+            .orderBy('id')
+            .limit(batchSize)
+            .execute(),
+        async (rows) => {
+          const changed = rows.map((row) => ({ id: row.id, values: step.change!(row.values) }))
+          await sql`
+            update ${sql.table(table)} target set "values" = data."values"
+            from jsonb_to_recordset(${JSON.stringify(changed)}::jsonb) as data (id uuid, "values" jsonb)
+            where target.id = data.id and target."values" <> data."values"
+          `.execute(db)
+        },
+      )
     }
   }
 }
@@ -212,15 +231,13 @@ export function contentMigrations(files: Record<string, ContentMigrationFile>): 
       {
         up: async (trx) => {
           await run(trx, file.up)
-          await trx.updateTable('entries').set({ migration: name }).execute()
+          for (const table of tables) await trx.updateTable(table).set({ migration: name }).execute()
         },
         down: async (trx) => {
           await run(trx, file.down)
           const applied = await appliedMigrations(trx, files)
-          await trx
-            .updateTable('entries')
-            .set({ migration: applied[applied.indexOf(name) - 1] ?? null })
-            .execute()
+          const before = applied[applied.indexOf(name) - 1] ?? null
+          for (const table of tables) await trx.updateTable(table).set({ migration: before }).execute()
         },
       },
     ]),
@@ -241,33 +258,52 @@ export async function catchUp(type: string, values: Values, migrations: Array<Co
   return values
 }
 
-// Every saved entry whose values no longer pass its type's checks, or whose type is gone, for `iight migrate --check`.
-// A singleton that's been opened but never saved can still lack required values, as it always did.
+// Every saved entry and every live copy whose values no longer pass its type's checks, or whose type is gone, for
+// `iight migrate --check`. Drafts can be unfinished, so they pass what a save checks, and live copies what a publish
+// does. A failure is of an entry's draft, or of its live copy when published is true.
 export async function checkEntries(db: Kysely<Database>, types: Map<string, ContentType>) {
-  const failures: Array<{ entry: EntryRow; messages: Record<string, Array<string>> }> = []
+  type Failure = { entry: EntryRow | PublishedRow; published: boolean; messages: Record<string, Array<string>> }
+  const failures: Array<Failure> = []
   const inputs = serverInputs(db, types)
-  let after: string | undefined
-  for (;;) {
-    const rows = await db
-      .selectFrom('entries')
-      .selectAll()
-      .where(isSaved)
-      .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
-      .orderBy('id')
-      .limit(batchSize)
-      .execute()
 
+  const check = (published: boolean) => async (rows: Array<EntryRow | PublishedRow>) => {
     for (const entry of rows) {
       const type = types.get(entry.type)
       if (!type) {
-        failures.push({ entry, messages: { type: [`There's no content type named ${entry.type} any more.`] } })
+        failures.push({
+          entry,
+          published,
+          messages: { type: [`There's no content type named ${entry.type} any more.`] },
+        })
         continue
       }
-      const report = await validateServerValues(type.fields, entry.values, inputs)
-      if (!report.isValid) failures.push({ entry, messages: flattenValidationReport(report).messages })
+      const report = await validateServerValues(type.fields, entry.values, inputs, { allowIncomplete: !published })
+      if (!report.isValid) failures.push({ entry, published, messages: flattenValidationReport(report).messages })
     }
-
-    if (rows.length < batchSize) return failures
-    after = rows.at(-1)!.id
   }
+
+  await eachBatch(
+    (after) =>
+      db
+        .selectFrom('entries')
+        .selectAll()
+        .where(isSaved)
+        .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
+        .orderBy('id')
+        .limit(batchSize)
+        .execute(),
+    check(false),
+  )
+  await eachBatch(
+    (after) =>
+      db
+        .selectFrom('published_entries')
+        .selectAll()
+        .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
+        .orderBy('id')
+        .limit(batchSize)
+        .execute(),
+    check(true),
+  )
+  return failures
 }

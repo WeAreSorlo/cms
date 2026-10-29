@@ -10,12 +10,13 @@ import {
   Notice,
   PageHeader,
   Pages,
+  StatusBadge,
   ThemeSwitch,
   useConfirm,
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
-import { ArrowDown, ArrowUp, Inbox } from 'lucide-react'
+import { Archive, ArrowDown, ArrowUp, CircleAlert, Inbox } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 const colours = [
@@ -57,6 +58,21 @@ const sampleFiles: Array<Media> = [
     alt: 'Terms',
     url: '',
   },
+]
+
+// The entry editor's action bar as an entry's status changes it, with an action under way and one that failed, and
+// for a type without drafts, whose Save publishes
+const actionBars = [
+  { label: 'A draft', live: false, drafts: true },
+  { label: 'Published, or changed since', live: true, drafts: true },
+  { label: 'While it publishes', live: true, drafts: true, busy: true },
+  {
+    label: "A publish that can't go ahead",
+    live: false,
+    drafts: true,
+    problem: '2 fields need fixing before this can be published.',
+  },
+  { label: 'A type without drafts', live: true, drafts: false },
 ]
 
 const buttons = [
@@ -301,6 +317,70 @@ export default function Design() {
           </Badge>
         ))}
       </div>
+
+      <h2>Publishing</h2>
+      <p>
+        An entry's status shows in its editor's header and in its list. Publish saves the form and makes it the live
+        copy, and Unpublish takes the live copy down once there is one. The versions list marks the version that's live.
+      </p>
+      <div className='actions'>
+        {(['draft', 'published', 'changed'] as const).map((status) => (
+          <StatusBadge key={status} status={status} />
+        ))}
+      </div>
+      {actionBars.map(({ label, live, drafts, busy, problem }) => (
+        <section key={label}>
+          <h3>{label}</h3>
+          <div className='cms-action-bar'>
+            {drafts && (
+              <button
+                type='button'
+                className='iight-button iight-button--primary'
+                aria-busy={busy}
+                onClick={() => toast('Published')}
+              >
+                {busy ? 'Publishing…' : 'Publish'}
+              </button>
+            )}
+            <button
+              type='button'
+              className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
+              onClick={() => toast('Saved')}
+            >
+              Save
+            </button>
+            {live && drafts && (
+              <button type='button' className='iight-button' onClick={() => toast('Unpublished')}>
+                Unpublish
+              </button>
+            )}
+            <button type='button' className='iight-button' onClick={() => toast('Archived')}>
+              <Archive /> Archive
+            </button>
+            {problem && (
+              <p className='cms-problem'>
+                <CircleAlert /> {problem}
+              </p>
+            )}
+          </div>
+        </section>
+      ))}
+      <h3>Versions</h3>
+      <ol className='cms-versions'>
+        {[3, 2, 1].map((number) => (
+          <li key={number}>
+            Version {number}
+            <span className='cms-muted'>28/10/2026, 12:0{number}:00</span>
+            {number === 3 && <Badge tone='accent'>Current</Badge>}
+            {number === 2 && <StatusBadge status='published' />}
+            {number < 3 && (
+              <button type='button' className='iight-button' onClick={() => toast(`Restored version ${number}`)}>
+                Restore
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
 
       <h2>Media cards</h2>
       <ul className='cms-media-grid'>

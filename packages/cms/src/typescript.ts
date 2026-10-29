@@ -42,6 +42,8 @@ export function typesFile(
         ? 'string'
         : 'string | null'
 
+    // An entry is the SDK's Entry with what this type narrows, so what the SDK adds to every entry reaches files pulled
+    // before it
     return [
       schemaToTypeScript(type.fields, cmsInputs, { name: `${type.name} values` }),
       '',
@@ -50,8 +52,7 @@ export function typesFile(
         '<Depth extends number> = ',
       ),
       '',
-      `export type Entry${name} = {`,
-      '  id: string',
+      `export type Entry${name} = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'position' | 'values'> & {`,
       `  type: ${JSON.stringify(type.name)}`,
       `  slug: ${slug}`,
       // A page's uri is its slug after its parent's, so it's there when the slug is
@@ -59,8 +60,6 @@ export function typesFile(
       `  parentId: ${hierarchical ? 'string | null' : 'null'}`,
       `  position: ${hierarchical ? 'number' : 'null'}`,
       `  values: ${name}Values`,
-      '  createdAt: string',
-      '  updatedAt: string',
       '}',
       '',
     ].join('\n')
@@ -75,7 +74,7 @@ export function typesFile(
   return [
     '// Generated from the CMS by `npx iight types pull`. Pull again rather than editing it.',
     '',
-    "import type { Linked, Media } from '@iight/sdk'",
+    "import type { Entry, Linked, Media } from '@iight/sdk'",
     '',
     ...declarations,
     ...formDeclarations,

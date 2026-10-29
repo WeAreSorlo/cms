@@ -12,6 +12,9 @@ export interface ContentType {
   label: string
   singular?: string
   structure: 'collection' | 'hierarchical' | 'singleton'
+  // Whether entries are saved as drafts and published when they're ready, true if not given. Without drafts, every save
+  // publishes (PLAN.md section 17).
+  drafts?: boolean
   icon?: string
   titleField?: string
   slugField?: string
@@ -25,6 +28,7 @@ const keys = [
   'label',
   'singular',
   'structure',
+  'drafts',
   'icon',
   'titleField',
   'slugField',
@@ -119,6 +123,7 @@ export function checkType(type: any, file: string, typeIds?: Set<unknown>) {
     if (type[key] !== undefined && !isText(type[key])) problems.push(`"${key}" must be text.`)
   }
   if (!structures.includes(type.structure)) problems.push('"structure" must be collection, hierarchical or singleton.')
+  if (type.drafts !== undefined && typeof type.drafts !== 'boolean') problems.push('"drafts" must be true or false.')
 
   checkNodes(type.fields, 'field', '', new Set(), problems, cmsInputs, typeIds)
 

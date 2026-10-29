@@ -79,7 +79,10 @@ const commands: Record<string, Command> = {
     },
   },
   'make:user': { description: 'Create an admin user', run: makeUser },
-  'make:api-key': { description: 'Create a key for the delivery API', run: makeApiKey },
+  'make:api-key': {
+    description: 'Create a key for the delivery API, or with --preview, one that can read drafts',
+    run: makeApiKey,
+  },
 }
 
 // Load the site project's content types, or list their problems and stop
@@ -103,18 +106,20 @@ async function afterContentMigrations(db: Kysely<Database>, names: Array<string>
   if (names.some((name) => Object.hasOwn(content, name))) await rebuildRelations(db, await loadProjectTypes())
 }
 
-// List every entry whose values no longer pass, such as after a field's choices narrowed, failing if there are any
+// List every entry whose values no longer pass, in its draft or its live copy, such as after a field's choices
+// narrowed, failing if there are any
 async function check(db: Kysely<Database>) {
   const types = await loadProjectTypes()
   const failures = await checkEntries(db, types)
-  for (const { entry, messages } of failures) {
+  for (const { entry, published, messages } of failures) {
     const titleField = types.get(entry.type)?.titleField
     const title = titleField && entry.values[titleField] ? ` ${entry.values[titleField]}` : ''
-    console.log(`${entry.type} ${entry.id}${title}${entry.archived_at ? ' (archived)' : ''}`)
+    const which = published ? ' (live copy)' : 'archived_at' in entry && entry.archived_at ? ' (archived)' : ''
+    console.log(`${entry.type} ${entry.id}${title}${which}`)
     for (const [path, list] of Object.entries(messages)) console.log(`  ${path}: ${list.join(' ')}`)
   }
 
-  const count = failures.length
+  const count = new Set(failures.map(({ entry }) => entry.id)).size
   console.log(count ? `${count} ${count === 1 ? "entry doesn't" : "entries don't"} pass.` : 'Every entry passes.')
   if (count) process.exitCode = 1
 }
@@ -207,15 +212,19 @@ async function makeUser(db: Kysely<Database>) {
   console.log(`Created ${email}, who can now sign in at /admin/.`)
 }
 
-async function makeApiKey(db: Kysely<Database>) {
+// A preview key reads drafts, so it belongs on a server, such as the one behind a site's preview mode
+async function makeApiKey(db: Kysely<Database>, args: Array<string>) {
+  const preview = args.includes('--preview')
   const prompt = createPrompt()
-  const values = { name: (await prompt.ask('Name, such as Website: ')).trim() }
+  const values = { name: (await prompt.ask(`Name, such as ${preview ? 'Previews' : 'Website'}: `)).trim() }
   prompt.close()
 
   if (!(await validates(apiKeySchema, values))) return
-  console.log(
-    `Created the key ${values.name}. Copy it now, since it can't be shown again:\n${await createApiKey(db, values.name)}`,
-  )
+  const key = await createApiKey(db, values.name, preview ? ['preview'] : [])
+  const created = preview
+    ? `Created the preview key ${values.name}. It can read drafts, so keep it on a server.`
+    : `Created the key ${values.name}.`
+  console.log(`${created} Copy it now, since it can't be shown again:\n${key}`)
 }
 
 // Run the same core validation a form would, printing what's wrong

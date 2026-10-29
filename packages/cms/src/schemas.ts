@@ -54,6 +54,8 @@ export const formSchema: Array<FieldSchema> = [
 export const events = [
   { value: 'entry.created', label: 'Entry created' },
   { value: 'entry.updated', label: 'Entry updated' },
+  { value: 'entry.published', label: 'Entry published' },
+  { value: 'entry.unpublished', label: 'Entry unpublished' },
   { value: 'entry.archived', label: 'Entry archived' },
   { value: 'entry.restored', label: 'Entry restored' },
   { value: 'entry.deleted', label: 'Entry deleted' },
@@ -172,6 +174,14 @@ export function typeSchema(fields: Array<FieldSchema>): Array<FieldSchema> {
       required: true,
       width: 50,
       options: { choices: structures },
+    },
+    {
+      name: 'drafts',
+      label: 'Drafts',
+      type: 'boolean',
+      defaultValue: true,
+      instructions: 'Without drafts, saving an entry publishes it, so a save runs every check that publishing does.',
+      options: { message: "Save entries as drafts, and publish them when they're ready" },
     },
     {
       name: 'titleField',

@@ -18,7 +18,8 @@ export function sectionOf(hash: string) {
 
 export const SectionContext = createContext((section: string) => {})
 
-// An entry as the admin API returns it
+// An entry as the admin API returns it. It's a draft until it's published, then published, or changed once a newer
+// version is saved, and publishedVersion is the number of the version that's live.
 export interface Entry {
   id: string
   type: string
@@ -29,10 +30,15 @@ export interface Entry {
   values: Record<string, any>
   createdAt: string
   updatedAt: string
+  publishedAt: string | null
   archivedAt: string | null
   createdBy: string | null
   updatedBy: string | null
+  status: Status
+  publishedVersion: number | null
 }
+
+export type Status = 'draft' | 'published' | 'changed'
 
 export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 

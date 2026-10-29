@@ -1,4 +1,5 @@
-import Form, { FieldSchema, Modal } from 'iight'
+import type { Status } from './api'
+import Form, { FieldSchema, Modal, ValidationReport, flattenValidationReport } from 'iight'
 import {
   ChevronLeft,
   ChevronRight,
@@ -113,6 +114,17 @@ export const Badge = ({
   children: ReactNode
 }) => <span className={`cms-badge cms-badge--${tone}`}>{children}</span>
 
+const statuses = {
+  draft: { tone: 'neutral', label: 'Draft' },
+  published: { tone: 'success', label: 'Published' },
+  changed: { tone: 'warning', label: 'Changed' },
+} as const
+
+// What's live of an entry: nothing yet, its draft as it stands, or an older version than its draft
+export const StatusBadge = ({ status }: { status: Status }) => (
+  <Badge tone={statuses[status].tone}>{statuses[status].label}</Badge>
+)
+
 // What a page shows when it has nothing to list, with the action that fills it
 export const EmptyState = ({
   icon,
@@ -217,21 +229,26 @@ export const RouteTabs = ({
   </nav>
 )
 
-// After a form fails its checks: moves focus to the first field that failed, and says how many need fixing. A form
-// marks its fields a render or two after it's checked, so this waits up to half a second for them. The innermost
-// fields count, so a group with a bad field counts once.
-export async function focusInvalid(area: HTMLElement | null) {
+// After a form fails its checks: moves focus to the first field that failed, and says how many need fixing before it
+// can be saved, or published. A form marks its fields a render or two after it's checked, so this waits up to half a
+// second for them. The innermost fields count, so a group with a bad field counts once. Given the report of a check
+// with allowIncomplete, which still shows every field's messages, only the fields showing the report's messages count.
+export async function focusInvalid(area: HTMLElement | null, action = 'saved', report?: ValidationReport) {
+  const reported = report && new Set(Object.values(flattenValidationReport(report).messages).flat())
+  const fails = (field: Element) =>
+    !reported ||
+    [...field.querySelectorAll(':scope > .iight-messages > li')].some((item) => reported.has(item.textContent!))
+
   let invalid: Array<Element> = []
   for (let tries = 0; tries < 30 && !invalid.length; tries++) {
     await new Promise((resolve) => setTimeout(resolve, 16))
-    invalid = [...(area?.querySelectorAll('.iight-invalid') ?? [])].filter(
-      (field) => !field.querySelector('.iight-invalid'),
-    )
+    const failed = [...(area?.querySelectorAll('.iight-invalid') ?? [])].filter(fails)
+    invalid = failed.filter((field) => !failed.some((other) => other !== field && field.contains(other)))
   }
   invalid[0]?.querySelector<HTMLElement>('input, select, textarea, button')?.focus()
   return invalid.length > 1
-    ? `${invalid.length} fields need fixing before this can be saved.`
-    : 'A field needs fixing before this can be saved.'
+    ? `${invalid.length} fields need fixing before this can be ${action}.`
+    : `A field needs fixing before this can be ${action}.`
 }
 
 const ToastContext = createContext((message: string) => {})

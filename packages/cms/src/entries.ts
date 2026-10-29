@@ -2,8 +2,9 @@ import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
 import { isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { addEvents } from './events'
-import { EntryRow, listEntries, parseQuery, toAdminEntry, usedBy } from './query'
+import { EntryRow, StatusRow, listEntries, parseQuery, toAdminEntry, usedBy, withStatus } from './query'
 import { cmsInputs, saveRelations, serverInputs } from './relations'
+import type { EventName } from './schemas'
 import type { ContentType } from './types'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
@@ -13,6 +14,8 @@ import { Kysely, sql } from 'kysely'
 export type AdminEnv = { Variables: { user: { id: string; email: string; name: string } } }
 
 const slugTaken = 'Another entry here already uses this slug.'
+const liveSlugTaken = 'A published entry here already uses this slug.'
+const unpublishedParent = "Its parent isn't published. Publish the parent first."
 
 // The entry and everything under it, as a "tree" for the statement that follows
 const tree = (id: string) => sql`
@@ -22,8 +25,96 @@ const tree = (id: string) => sql`
     select entries.id from entries join tree on entries.parent_id = tree.id
   )`
 
-// Each changed entry's event data
-const entryEvents = (rows: Array<EntryRow>) => rows.map((row) => ({ entry: toAdminEntry(row) }))
+// Writes an event for each changed entry, with the entry as the admin API returns it once the change is made
+async function addEntryEvents(trx: Kysely<Database>, name: EventName, rows: Array<{ id: string }>) {
+  const ids = rows.map((row) => row.id)
+  const changed = ids.length ? await withStatus(trx).selectAll().where('id', 'in', ids).execute() : []
+  await addEvents(
+    trx,
+    name,
+    changed.map((row) => ({ entry: toAdminEntry(row) })),
+  )
+}
+
+// Gives the pages under an entry the uris its own gives them, among the drafts or the live copies, returning the pages
+// whose uri changed
+async function followUri(trx: Kysely<Database>, table: 'entries' | 'published_entries', id: string) {
+  const { rows } = await sql<{ id: string }>`
+    with recursive tree as (
+      select id, uri from ${sql.table(table)} where id = ${id}
+      union all
+      select page.id, case when tree.uri is null or page.slug is null then null else tree.uri || '/' || page.slug end
+      from ${sql.table(table)} page join tree on page.parent_id = tree.id
+    )
+    update ${sql.table(table)} page set uri = tree.uri from tree
+    where page.id = tree.id and page.id <> ${id} and page.uri is distinct from tree.uri
+    returning page.id
+  `.execute(trx)
+  return rows
+}
+
+// Takes entries off the live site, with the live pages under them
+async function unpublish(trx: Kysely<Database>, ids: Array<string>) {
+  if (!ids.length) return
+  const { rows } = await sql<{ id: string }>`
+    with recursive live as (
+      select id from published_entries where id = any(${ids}::uuid[])
+      union
+      select page.id from published_entries page join live on page.parent_id = live.id
+    )
+    delete from published_entries using live where published_entries.id = live.id returning published_entries.id
+  `.execute(trx)
+  await addEntryEvents(trx, 'entry.unpublished', rows)
+}
+
+// Makes what was just saved the entry's live copy, and has the live pages under it follow its live uri, which comes
+// from its live parents' slugs. A page goes live only under a live parent that isn't under it on the live site.
+async function goLive(trx: Kysely<Database>, type: ContentType, row: EntryRow, version: number, user: string) {
+  let uri = row.uri
+  if (type.structure === 'hierarchical') {
+    // One publish of the type at a time, so two can't each put a page under the other
+    await sql`select pg_advisory_xact_lock(hashtext(${`publish ${type.name}`}))`.execute(trx)
+    if (row.parent_id) {
+      const { rows: ancestors } = await sql<{ id: string; uri: string | null }>`
+        with recursive ancestors as (
+          select id, parent_id, uri, 0 as depth from published_entries where id = ${row.parent_id}
+          union all
+          select page.id, page.parent_id, page.uri, depth + 1
+          from published_entries page join ancestors on page.id = ancestors.parent_id
+        )
+        select id, uri from ancestors order by depth
+      `.execute(trx)
+      if (!ancestors.length) throw new HTTPException(409, { message: unpublishedParent })
+      if (ancestors.some((ancestor) => ancestor.id === row.id)) {
+        throw new HTTPException(409, { message: 'Its parent is under it on the live site. Publish the parent first.' })
+      }
+      uri = row.slug && ancestors[0].uri && `${ancestors[0].uri}/${row.slug}`
+    }
+  }
+
+  const live = {
+    type: row.type,
+    values: row.values,
+    parent_id: row.parent_id,
+    position: row.position,
+    slug: row.slug,
+    uri,
+    migration: row.migration,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    version,
+    published_at: sql<Date>`now()`,
+    published_by: user,
+  }
+  await trx
+    .insertInto('published_entries')
+    .values({ id: row.id, ...live })
+    .onConflict((oc) => oc.column('id').doUpdateSet(live))
+    .execute()
+
+  const moved = type.structure === 'hierarchical' ? await followUri(trx, 'published_entries', row.id) : []
+  await addEntryEvents(trx, 'entry.published', [row, ...moved])
+}
 
 // The admin API for entries. Every route needs a session, which createApp checks
 export function entryRoutes(
@@ -45,19 +136,18 @@ export function entryRoutes(
 
   // An entry, archived or not, with its content type
   const find = async (id: string) => {
-    const row = isUuid(id)
-      ? await db.selectFrom('entries').selectAll().where('id', '=', id).executeTakeFirst()
-      : undefined
+    const row = isUuid(id) ? await withStatus(db).selectAll().where('id', '=', id).executeTakeFirst() : undefined
     const type = row && types.get(row.type)
     if (!row || !type) throw new HTTPException(404)
     return { row, type }
   }
 
-  const reply = async (c: Context<AdminEnv>, id: string) => c.json({ data: toAdminEntry((await find(id)).row) })
+  const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200) =>
+    c.json({ data: toAdminEntry((await find(id)).row) }, status)
 
   // The inputs' server checks, with the type's slug field also checking that no sibling has the slug, archived ones
-  // included. Built per request, since the check needs the entry and its parent.
-  const checkInputs = (type: ContentType, id: string | null, parentId: string | null) => {
+  // included, and for a publish, no live sibling. Built per request, since the check needs the entry and its parent.
+  const checkInputs = (type: ContentType, id: string | null, parentId: string | null, publish: boolean) => {
     const inputs = serverInputs(db, types)
     const slugField = type.fields.find((field) => field.name === type.slugField)
     if (!slugField) return inputs
@@ -76,14 +166,31 @@ export function entryRoutes(
         .$if(id !== null, (qb) => qb.where('id', '!=', id!))
         .executeTakeFirst()
 
-      if (!sibling) return validation
-      return validationError(value, sibling.archived_at ? 'An archived entry here already uses this slug.' : slugTaken)
+      if (sibling) {
+        return validationError(
+          value,
+          sibling.archived_at ? 'An archived entry here already uses this slug.' : slugTaken,
+        )
+      }
+
+      // A live entry keeps its slug until it's published again, so a publish can clash with one that no draft has
+      const live =
+        publish &&
+        (await db
+          .selectFrom('published_entries')
+          .select('id')
+          .where('type', '=', type.name)
+          .where('parent_id', parentId === null ? 'is' : '=', parentId)
+          .where('slug', '=', String(value))
+          .$if(id !== null, (qb) => qb.where('id', '!=', id!))
+          .executeTakeFirst())
+      return live ? validationError(value, liveSlugTaken) : validation
     }
 
     return { ...inputs, identifier: { ...identifier, validateServerValue } }
   }
 
-  // A parent must be a live entry of the same type, and neither the entry nor one of its descendants
+  // A parent must be an entry of the same type that isn't archived, and neither the entry nor one of its descendants
   const checkParent = async (type: ContentType, parentId: unknown, id?: string) => {
     const parent = isUuid(parentId)
       ? await db
@@ -111,13 +218,16 @@ export function entryRoutes(
       ).rows[0].loops
 
     if (!parent || loops) {
-      throw new HTTPException(400, { message: 'The parent must be another live entry of this type, outside this one.' })
+      throw new HTTPException(400, {
+        message: "The parent must be another entry of this type that isn't archived, outside this one.",
+      })
     }
     return parent
   }
 
-  // Create or update an entry from { values, parentId }, saving a version of its values
-  const save = async (c: Context<AdminEnv>, type: ContentType, existing?: EntryRow) => {
+  // Create or update an entry from { values, parentId }, saving a version of its values. With publish: true, it also
+  // runs the checks a publish needs and makes what it saves the live copy, or does neither.
+  const save = async (c: Context<AdminEnv>, type: ContentType, existing?: StatusRow) => {
     // The types already have a pending migration's change, so saving now would mix the old fields' values with the new
     const files = await migrations()
     const applied = await appliedMigrations(db, files)
@@ -130,12 +240,16 @@ export function entryRoutes(
       })
     }
 
+    // A type without drafts publishes every save
     const body = await c.req.json().catch(() => ({}))
+    const publish = type.drafts === false || body?.publish === true
     const parentId: string | null = type.structure === 'hierarchical' ? (body?.parentId ?? null) : null
     const parent = parentId === null ? undefined : await checkParent(type, parentId, existing?.id)
 
+    // A draft can be unfinished, with required fields left empty, but a publish runs every check
     const values = pickValues(type.fields, body?.values ?? {}, cmsInputs)
-    const report = await validateServerValues(type.fields, values, checkInputs(type, existing?.id ?? null, parentId))
+    const inputs = checkInputs(type, existing?.id ?? null, parentId, publish)
+    const report = await validateServerValues(type.fields, values, inputs, { allowIncomplete: !publish })
     if (!report.isValid) return c.json(report, 422)
 
     const slug: string | null = (type.slugField && values[type.slugField]) || null
@@ -175,7 +289,7 @@ export function entryRoutes(
               .executeTakeFirstOrThrow()
 
         // The update above locks the entry, so concurrent saves number their versions in turn
-        await trx
+        const { number } = await trx
           .insertInto('entry_versions')
           .values({
             entry_id: row.id,
@@ -184,35 +298,31 @@ export function entryRoutes(
             migration,
             created_by: user,
           })
-          .execute()
+          .returning('number')
+          .executeTakeFirstOrThrow()
         await saveRelations(trx, type, row.id, values)
-        await addEvents(trx, existing ? 'entry.updated' : 'entry.created', entryEvents([row]))
+        await addEntryEvents(trx, existing ? 'entry.updated' : 'entry.created', [row])
 
         // A new slug or parent changes the uri of every page under the entry
         if (existing && existing.uri !== uri) {
-          const { rows } = await sql<EntryRow>`
-            with recursive tree as (
-              select id, uri from entries where id = ${row.id}
-              union all
-              select entries.id, case when tree.uri is null or entries.slug is null then null
-                else tree.uri || '/' || entries.slug end
-              from entries join tree on entries.parent_id = tree.id
-            )
-            update entries set uri = tree.uri from tree
-            where entries.id = tree.id and entries.id <> ${row.id} and entries.uri is distinct from tree.uri
-            returning entries.*
-          `.execute(trx)
-          await addEvents(trx, 'entry.updated', entryEvents(rows))
+          await addEntryEvents(trx, 'entry.updated', await followUri(trx, 'entries', row.id))
         }
 
+        if (publish) await goLive(trx, type, row, number, user)
         return row
       })
 
-      return c.json({ data: toAdminEntry(row) }, existing ? 200 : 201)
+      return reply(c, row.id, existing ? 200 : 201)
     } catch (error) {
-      // Two saves can pass the slug check at the same moment, and then the index stops the second
-      if ((error as { constraint?: string }).constraint !== 'entries_slug_unique') throw error
-      const fields = { ...report.fields, [type.slugField!]: { isValid: false, messages: [slugTaken] } }
+      const constraint = (error as { constraint?: string }).constraint
+      // Its live parent was unpublished while it was being published
+      if (constraint === 'published_entries_parent_id_fkey')
+        throw new HTTPException(409, { message: unpublishedParent })
+
+      // Two saves can pass a slug check at the same moment, and then an index stops the second
+      const message = { entries_slug_unique: slugTaken, published_entries_slug_unique: liveSlugTaken }[constraint!]
+      if (!message) throw error
+      const fields = { ...report.fields, [type.slugField!]: { isValid: false, messages: [message] } }
       return c.json({ isValid: false, fields }, 422)
     }
   }
@@ -220,7 +330,9 @@ export function entryRoutes(
   app.get('/types/:type/entries', async (c) => {
     const type = typeNamed(c.req.param('type'))
     const query = parseQuery(type, c.req.query())
-    const { data, pagination } = await listEntries(db, type, query, { archived: c.req.query('archived') === 'true' })
+    const archived = c.req.query('archived') === 'true'
+    const from = withStatus(db).where('archived_at', archived ? 'is not' : 'is', null)
+    const { data, pagination } = await listEntries<StatusRow>(from, type, query)
     return c.json({ data: data.map(toAdminEntry), pagination })
   })
 
@@ -238,7 +350,7 @@ export function entryRoutes(
     const row = await db.transaction().execute(async (trx) => {
       // Two admins opening a new singleton at once still make one entry
       await sql`select pg_advisory_xact_lock(hashtext(${type.name}))`.execute(trx)
-      const found = await trx.selectFrom('entries').selectAll().where('type', '=', type.name).executeTakeFirst()
+      const found = await trx.selectFrom('entries').select('id').where('type', '=', type.name).executeTakeFirst()
       if (found) return found
 
       const values = pickValues(type.fields, {}, cmsInputs)
@@ -253,11 +365,11 @@ export function entryRoutes(
           created_by: user,
           updated_by: user,
         })
-        .returningAll()
+        .returning('id')
         .executeTakeFirstOrThrow()
     })
 
-    return c.json({ data: toAdminEntry(row) })
+    return reply(c, row.id)
   })
 
   app.get('/entries/:id', (c) => reply(c, c.req.param('id')))
@@ -268,12 +380,26 @@ export function entryRoutes(
     return save(c, type, row)
   })
 
-  // Move an entry among its siblings, numbering them from 0 in their new order
+  // Take an entry off the live site, with the live pages under it, keeping its draft
+  app.post('/entries/:id/unpublish', async (c) => {
+    const { row, type } = await find(c.req.param('id'))
+    if (type.drafts === false) {
+      throw new HTTPException(409, {
+        message: `${type.label} has no drafts, so its entries are live until they're archived.`,
+      })
+    }
+    await db.transaction().execute((trx) => unpublish(trx, [row.id]))
+    return reply(c, row.id)
+  })
+
+  // Move an entry among its siblings, numbering them from 0 in their new order. The live order changes at once.
   app.put('/entries/:id/position', async (c) => {
     const { row, type } = await find(c.req.param('id'))
     const { position } = await c.req.json().catch(() => ({}))
     if (type.structure !== 'hierarchical' || row.archived_at) {
-      throw new HTTPException(409, { message: 'Only live entries of a hierarchical type have a position.' })
+      throw new HTTPException(409, {
+        message: "Only a hierarchical type's entries that aren't archived have a position.",
+      })
     }
     if (!Number.isInteger(position) || position < 0) {
       throw new HTTPException(400, { message: 'position must be a whole number from 0.' })
@@ -293,30 +419,45 @@ export function entryRoutes(
     ids.splice(position, 0, row.id)
 
     await db.transaction().execute(async (trx) => {
-      const { rows } = await sql<EntryRow>`
+      const { rows } = await sql<{ id: string }>`
         update entries set position = ordered.position - 1
         from unnest(${ids}::uuid[]) with ordinality as ordered (id, position)
         where entries.id = ordered.id and entries.position is distinct from ordered.position - 1
-        returning entries.*
+        returning entries.id
       `.execute(trx)
-      await addEvents(trx, 'entry.updated', entryEvents(rows))
+      await addEntryEvents(trx, 'entry.updated', rows)
+
+      // The live pages that are siblings on the live site too take the same order
+      const live = await sql<{ id: string }>`
+        update published_entries page set position = entries.position from entries
+        where page.id = entries.id and entries.id = any(${ids}::uuid[])
+          and page.parent_id is not distinct from entries.parent_id and page.position is distinct from entries.position
+        returning page.id
+      `.execute(trx)
+      await addEntryEvents(trx, 'entry.published', live.rows)
     })
     return reply(c, row.id)
   })
 
-  // Archive an entry with its live descendants, stamped with the same time so restoring brings back just those
+  // Archive an entry with its descendants that aren't archived, stamped with the same time so restoring brings back
+  // just those. It takes them off the live site, with the live pages under them.
   app.post('/entries/:id/archive', async (c) => {
     const { row } = await find(c.req.param('id'))
     await db.transaction().execute(async (trx) => {
-      const { rows } = await sql<EntryRow>`${tree(row.id)}
+      const { rows } = await sql<{ id: string }>`${tree(row.id)}
         update entries set archived_at = now() from tree where entries.id = tree.id and entries.archived_at is null
-        returning entries.*
+        returning entries.id
       `.execute(trx)
-      await addEvents(trx, 'entry.archived', entryEvents(rows))
+      await unpublish(
+        trx,
+        rows.map((row) => row.id),
+      )
+      await addEntryEvents(trx, 'entry.archived', rows)
     })
     return reply(c, row.id)
   })
 
+  // Restoring gives back drafts, to publish again
   app.post('/entries/:id/restore', async (c) => {
     const { row } = await find(c.req.param('id'))
     const parent = row.parent_id
@@ -326,12 +467,12 @@ export function entryRoutes(
       throw new HTTPException(409, { message: 'Its parent is archived. Restore the parent first.' })
 
     await db.transaction().execute(async (trx) => {
-      const { rows } = await sql<EntryRow>`${tree(row.id)}
+      const { rows } = await sql<{ id: string }>`${tree(row.id)}
         update entries set archived_at = null from tree
         where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})
-        returning entries.*
+        returning entries.id
       `.execute(trx)
-      await addEvents(trx, 'entry.restored', entryEvents(rows))
+      await addEntryEvents(trx, 'entry.restored', rows)
     })
     return reply(c, row.id)
   })
@@ -345,6 +486,8 @@ export function entryRoutes(
   // Delete an archived entry for good, with its descendants, which are archived too, and its versions. Links from
   // entries outside it would be left broken, so they must go first.
   // shortcut: a save that links the entry while it's being deleted can slip past the check, lock it when that matters
+  // shortcut: only drafts' links count, so a live copy can keep one its draft has dropped, which with() then leaves out;
+  // record live copies' links in entry_relations too when that matters
   app.delete('/entries/:id', async (c) => {
     const { row, type } = await find(c.req.param('id'))
     if (!row.archived_at) throw new HTTPException(409, { message: 'Archive the entry before deleting it.' })
@@ -366,7 +509,13 @@ export function entryRoutes(
       const { rows } = await sql<EntryRow>`${tree(row.id)}
         delete from entries using tree where entries.id = tree.id returning entries.*
       `.execute(trx)
-      await addEvents(trx, 'entry.deleted', entryEvents(rows))
+      // As they were left: archived, so not live, and with their versions gone
+      const gone = rows.map((row) => ({ ...row, published_at: null, published_version: null, version: null }))
+      await addEvents(
+        trx,
+        'entry.deleted',
+        gone.map((row) => ({ entry: toAdminEntry(row) })),
+      )
     })
     return c.body(null, 204)
   })

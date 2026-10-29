@@ -22,12 +22,13 @@ import {
   PageHeader,
   Pages,
   Pagination,
+  StatusBadge,
   TypeIcon,
   focusInvalid,
   useConfirm,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle } from 'iight'
+import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown, CircleAlert, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -73,6 +74,8 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
   const [sort, setSort] = useState<{ name: string; direction: 'asc' | 'desc' }>()
   const [error, setError] = useState('')
   const ordered = type.structure === 'hierarchical' && !archived
+  // Archived entries are never live, and without drafts, saved ones always are
+  const statuses = !archived && type.drafts !== false
   const singular = type.singular ?? type.label
 
   const columns = (type.listColumns ?? [type.titleField ?? type.fields[0]?.name]).map((name) => {
@@ -180,6 +183,7 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
                     </th>
                   )
                 })}
+                {statuses && <th>Status</th>}
                 {ordered && <th>Order</th>}
               </tr>
             </thead>
@@ -197,6 +201,11 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
                       )}
                     </td>
                   ))}
+                  {statuses && (
+                    <td>
+                      <StatusBadge status={entry.status} />
+                    </td>
+                  )}
                   {ordered && (
                     <td>
                       <IconButton label='Move up' disabled={index === 0} onClick={() => move(entry, index - 1)}>
@@ -228,9 +237,12 @@ interface Version {
   createdAt: string
 }
 
-// Create or edit an entry with its type's fields, see the entries that link to it, and see and restore its versions
+// Create, edit and publish an entry with its type's fields, see the entries that link to it, and see and restore its
+// versions
 export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?: Entry }) {
   const form = useRef<FormHandle>(null)
+  // Where focus goes once Unpublish, which only a live entry has, goes
+  const publishButton = useRef<HTMLButtonElement>(null)
   // Around the forms, for finding the fields that stop a save
   const fields = useRef<HTMLDivElement>(null)
   const inputs = useInputs()
@@ -255,6 +267,8 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   // The action under way, such as save
   const [busy, setBusy] = useState<string>()
   const hierarchical = type.structure === 'hierarchical'
+  // Without drafts, Save publishes, so it runs every check, and an entry has no status to show
+  const drafts = type.drafts !== false
 
   const loadVersions = useCallback(async () => {
     if (entry) setVersions((await api('GET', `/entries/${entry.id}/versions`)).body.data)
@@ -309,27 +323,38 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
     }
   }
 
-  // Once the form has shown its messages
-  const showInvalid = () => focusInvalid(fields.current).then(setProblem)
+  // Once the form has shown its messages. A draft's report leaves out what only a publish needs.
+  const showInvalid = (publish: boolean, report: ValidationReport) =>
+    focusInvalid(fields.current, publish ? 'published' : 'saved', publish ? undefined : report).then(setProblem)
 
-  const save = () =>
-    act('save', async () => {
-      if (!form.current?.validate().isValid) return showInvalid()
-      const body = { values, parentId }
+  // Save the form as the draft, and with publish, make it the live copy too. A draft can be unfinished, and its fields
+  // still show what a publish needs, while a publish runs every check.
+  const save = (publish: boolean) =>
+    act(publish ? 'publish' : 'save', async () => {
+      const checked = form.current!.validate({ allowIncomplete: drafts && !publish })
+      if (!checked.isValid) return showInvalid(publish, checked)
+      const body = { values, parentId, publish }
       const { status, body: reply } = entry
         ? await api('PUT', `/entries/${entry.id}`, body)
         : await api('POST', `/types/${type.name}/entries`, body)
 
       if (status === 422) {
-        form.current.applyReport(reply)
-        return showInvalid()
+        form.current!.applyReport(reply)
+        return showInvalid(publish, reply)
       }
-      toast('Saved')
+      toast(publish ? 'Published' : 'Saved')
       if (!entry) return void (location.hash = `#/entries/${reply.data.id}`)
 
       setEntry(reply.data)
       setRestoring(undefined)
       await loadVersions()
+    })
+
+  const unpublish = () =>
+    act('unpublish', async () => {
+      setEntry((await api('POST', `/entries/${entry!.id}/unpublish`)).body.data)
+      toast('Unpublished')
+      publishButton.current?.focus()
     })
 
   // Put an old version's values in the form, for saving as the newest version
@@ -381,7 +406,9 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
       <PageHeader
         back={type.structure !== 'singleton' ? { href: `#/types/${type.name}`, label: type.label } : undefined}
         title={entry ? titleOf(type, entry) : `New ${type.singular ?? type.label}`}
-        meta={archived && <Badge tone='warning'>Archived</Badge>}
+        meta={
+          archived ? <Badge tone='warning'>Archived</Badge> : drafts && entry && <StatusBadge status={entry.status} />
+        }
       />
 
       <div className='cms-editor__body'>
@@ -417,14 +444,12 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
                     <li key={version.number}>
                       Version {version.number}
                       <span className='cms-muted'>{date(version.createdAt)}</span>
-                      {index === 0 ? (
-                        <Badge tone='accent'>Current</Badge>
-                      ) : (
-                        !archived && (
-                          <button type='button' className='iight-button' onClick={() => restore(version)}>
-                            Restore
-                          </button>
-                        )
+                      {index === 0 && <Badge tone='accent'>Current</Badge>}
+                      {drafts && version.number === entry.publishedVersion && <StatusBadge status='published' />}
+                      {index > 0 && !archived && (
+                        <button type='button' className='iight-button' onClick={() => restore(version)}>
+                          Restore
+                        </button>
                       )}
                     </li>
                   ))}
@@ -437,14 +462,32 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
       <div className='cms-action-bar'>
         {!archived && (
-          <button
-            type='button'
-            className='iight-button iight-button--primary'
-            aria-busy={busy === 'save'}
-            onClick={save}
-          >
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
+          <>
+            {drafts && (
+              <button
+                ref={publishButton}
+                type='button'
+                className='iight-button iight-button--primary'
+                aria-busy={busy === 'publish'}
+                onClick={() => save(true)}
+              >
+                {busy === 'publish' ? 'Publishing…' : 'Publish'}
+              </button>
+            )}
+            <button
+              type='button'
+              className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
+              aria-busy={busy === 'save'}
+              onClick={() => save(false)}
+            >
+              {busy === 'save' ? 'Saving…' : 'Save'}
+            </button>
+            {drafts && entry && entry.status !== 'draft' && (
+              <button type='button' className='iight-button' aria-busy={busy === 'unpublish'} onClick={unpublish}>
+                {busy === 'unpublish' ? 'Unpublishing…' : 'Unpublish'}
+              </button>
+            )}
+          </>
         )}
         {/* One button for both, so it keeps focus when an entry is archived or restored */}
         {entry && (

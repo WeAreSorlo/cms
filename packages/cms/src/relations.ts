@@ -3,7 +3,7 @@ import { inputs, pickValues, validationError } from './core'
 import { Database, isUuid } from './db'
 import { allows, holdsOne, idsOf, linkFields, media, relationship } from './fields'
 import { toMedia } from './media'
-import { isSaved, toEntry } from './query'
+import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
 import { HTTPException } from 'hono/http-exception'
 import type { Input, InputPickValue, InputSchema } from 'iight'
@@ -180,8 +180,8 @@ type Entry = ReturnType<typeof toEntry>
 // Swap the IDs in some fields of entries for what they link to, as the delivery API's with does. The named fields go
 // first, then every link of the entries they hold, a level at a time down to depth. Each level loads its entries in one
 // query and its media in another, whatever their types, and pickValues walks the groups, repeaters and flexible blocks
-// in between (PLAN.md section 12, change 4). Entries the delivery API doesn't serve, such as archived ones, are left
-// out, which is null in a field that holds one.
+// in between (PLAN.md section 12, change 4). Links go to live copies, or for a preview, to drafts. Entries the delivery
+// API doesn't serve, such as unpublished or archived ones, are left out, which is null in a field that holds one.
 export async function resolveLinks(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
@@ -189,6 +189,7 @@ export async function resolveLinks(
   entries: Array<Entry>,
   names: Array<string>,
   depth: number,
+  draft = false,
 ) {
   let level = entries.map((entry) => ({ entry, names: names as Array<string> | undefined }))
   for (let remaining = depth; remaining > 0 && level.length > 0; remaining--) {
@@ -215,14 +216,12 @@ export async function resolveLinks(
     const linked = new Map(
       (entryIds.size === 0
         ? []
-        : await db
-            .selectFrom('entries')
+        : await deliveredEntries(db, draft)
             .selectAll()
+            .$castTo<Delivered>()
             .where(among(entryIds))
             // Entries of a type that's been removed stay in the database, but the API doesn't serve them
             .where('type', 'in', [...types.keys()])
-            .where('archived_at', 'is', null)
-            .where(isSaved)
             .execute()
       ).map((row) => [row.id, toEntry(row)]),
     )

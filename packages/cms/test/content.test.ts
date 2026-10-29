@@ -174,6 +174,48 @@ describe('running content migrations', () => {
     expect((await db.selectFrom('entries').select('values').execute()).every((row) => row.values.title)).toBe(true)
   })
 
+  test('change the live copies of published entries too', async () => {
+    const id = uuidv7()
+    await db
+      .insertInto('entries')
+      .values({ id, type: 'posts', values: { title: 'Draft' } })
+      .execute()
+    const now = new Date()
+    await db
+      .insertInto('published_entries')
+      .values({ id, type: 'posts', values: { title: 'Live' }, created_at: now, updated_at: now, version: 1 })
+      .execute()
+    const both = async () => [
+      await db.selectFrom('entries').select(['type', 'values', 'migration']).executeTakeFirstOrThrow(),
+      await db.selectFrom('published_entries').select(['type', 'values', 'migration']).executeTakeFirstOrThrow(),
+    ]
+
+    const name = 'content_2026_01_01_000000_blog'
+    const files = {
+      [name]: {
+        up: ({ entries }) => {
+          entries.renameType('posts', 'blog')
+          entries.renameField('blog', 'title', 'headline')
+        },
+        down: ({ entries }) => {
+          entries.renameField('blog', 'headline', 'title')
+          entries.renameType('blog', 'posts')
+        },
+      } satisfies ContentMigrationFile,
+    }
+    await migrate(db, contentMigrations(files))
+    expect(await both()).toEqual([
+      { type: 'blog', values: { headline: 'Draft' }, migration: name },
+      { type: 'blog', values: { headline: 'Live' }, migration: name },
+    ])
+
+    await rollback(db, contentMigrations(files))
+    expect(await both()).toEqual([
+      { type: 'posts', values: { title: 'Draft' }, migration: null },
+      { type: 'posts', values: { title: 'Live' }, migration: null },
+    ])
+  })
+
   test("won't rename a type onto one that has entries", async () => {
     await insert(1, 'posts')
     await insert(1)
@@ -187,28 +229,39 @@ describe('running content migrations', () => {
   })
 })
 
-test('--check lists the saved entries that no longer pass, and those of types that are gone', async () => {
+test('--check lists the saved entries and live copies that no longer pass, and those of types that are gone', async () => {
   const entry = (type: string, values: object, archived = false) => ({
     id: uuidv7(),
     type,
     values,
     archived_at: archived ? new Date() : null,
   })
+  // Drafts can be unfinished, so the second fails only for its related posts
   const rows = [
     entry('blog', { title: 'Fine', slug: 'fine' }),
-    entry('blog', { slug: 'no-title' }, true),
+    entry('blog', { slug: 'no-title', related: 'nope' }, true),
     entry('events', { name: 'Gone' }),
-    entry('home', {}),
+    entry('home', { intro: ['Not text'] }),
   ]
   await db.insertInto('entries').values(rows).execute()
   // Every save writes a version, but opening a singleton doesn't
   const saved = rows.slice(0, 3).map((row) => ({ entry_id: row.id, number: 1, values: row.values }))
   await db.insertInto('entry_versions').values(saved).execute()
+  // The fine entry's live copy is from before its title was required
+  const now = new Date()
+  await db
+    .insertInto('published_entries')
+    .values({ id: rows[0].id, type: 'blog', values: { slug: 'fine' }, created_at: now, updated_at: now, version: 1 })
+    .execute()
 
   // IDs made in the same millisecond needn't sort in the order they were made
   const failures = await checkEntries(db, types)
-  expect(Object.fromEntries(failures.map(({ entry, messages }) => [entry.id, messages]))).toEqual({
-    [rows[1].id]: { title: ['This field is required.'] },
-    [rows[2].id]: { type: ["There's no content type named events any more."] },
-  })
+  expect(failures.map(({ entry, published, messages }) => [entry.id, published, messages])).toEqual(
+    expect.arrayContaining([
+      [rows[1].id, false, { related: ['Invalid value.'] }],
+      [rows[2].id, false, { type: ["There's no content type named events any more."] }],
+      [rows[0].id, true, { title: ['This field is required.'] }],
+    ]),
+  )
+  expect(failures).toHaveLength(3)
 })

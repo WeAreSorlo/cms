@@ -1,6 +1,6 @@
 // Generated from the CMS by `npx iight types pull`. Pull again rather than editing it.
 
-import type { Linked, Media } from '@iight/sdk'
+import type { Entry, Linked, Media } from '@iight/sdk'
 
 export type BlogValues = {
   title: string
@@ -37,16 +37,13 @@ export type BlogResolvedValues<Depth extends number> = {
   }>
 }
 
-export type EntryBlog = {
-  id: string
+export type EntryBlog = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'position' | 'values'> & {
   type: "blog"
   slug: string
   uri: null
   parentId: null
   position: null
   values: BlogValues
-  createdAt: string
-  updatedAt: string
 }
 
 export type DocsValues = {
@@ -56,16 +53,13 @@ export type DocsValues = {
 
 export type DocsResolvedValues<Depth extends number> = {}
 
-export type EntryDocs = {
-  id: string
+export type EntryDocs = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'position' | 'values'> & {
   type: "docs"
   slug: string
   uri: string
   parentId: string | null
   position: number
   values: DocsValues
-  createdAt: string
-  updatedAt: string
 }
 
 export type HomeValues = {
@@ -75,16 +69,13 @@ export type HomeValues = {
 
 export type HomeResolvedValues<Depth extends number> = {}
 
-export type EntryHome = {
-  id: string
+export type EntryHome = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'position' | 'values'> & {
   type: "home"
   slug: null
   uri: null
   parentId: null
   position: null
   values: HomeValues
-  createdAt: string
-  updatedAt: string
 }
 
 export type AuthorsValues = {
@@ -96,16 +87,13 @@ export type AuthorsResolvedValues<Depth extends number> = {
   avatar?: Media | null
 }
 
-export type EntryAuthors = {
-  id: string
+export type EntryAuthors = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'position' | 'values'> & {
   type: "authors"
   slug: null
   uri: null
   parentId: null
   position: null
   values: AuthorsValues
-  createdAt: string
-  updatedAt: string
 }
 
 export type ContactFormValues = {
