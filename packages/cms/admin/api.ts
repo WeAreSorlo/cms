@@ -16,7 +16,7 @@ export const GroupsContext = createContext(new Map<string, SharedGroup>())
 export function sectionOf(hash: string) {
   const [section, name] = hash.replace(/^#\/?/, '').split('/')
   if (section === 'types' && name) return `types/${name}`
-  return ['media', 'forms', 'automations', 'schema', 'groups'].includes(section) ? section : undefined
+  return ['media', 'forms', 'automations', 'schema', 'groups', 'keys'].includes(section) ? section : undefined
 }
 
 export const SectionContext = createContext((section: string) => {})

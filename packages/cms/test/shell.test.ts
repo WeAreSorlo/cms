@@ -10,6 +10,7 @@ test("finds the nav item a page's URL belongs to", () => {
   expect(sectionOf('#/schema/blog')).toBe('schema')
   expect(sectionOf('#/groups/seo')).toBe('groups')
   expect(sectionOf('#/media')).toBe('media')
+  expect(sectionOf('#/keys/new')).toBe('keys')
 
   // An entry's page names its type once it loads
   expect(sectionOf('#/entries/01a182d3')).toBeUndefined()

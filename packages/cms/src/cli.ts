@@ -9,7 +9,7 @@ import { makeMigration } from './makeMigration'
 import { loadMigrations, migrate, migrationsDir, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
 import { rebuildRelations } from './relations'
-import { apiKeySchema, userSchema } from './schemas'
+import { apiKeySchema, apiKeyScopes, userSchema } from './schemas'
 import { loadSchema } from './types'
 import type { FieldSchema } from 'iight'
 import { Kysely } from 'kysely'
@@ -80,7 +80,7 @@ const commands: Record<string, Command> = {
   },
   'make:user': { description: 'Create an admin user', run: makeUser },
   'make:api-key': {
-    description: 'Create a key for the delivery API, or with --preview, one that can read drafts',
+    description: 'Create a key for the delivery API, and with --preview, --types or --submit, one that can do more',
     run: makeApiKey,
   },
 }
@@ -218,13 +218,14 @@ async function makeUser(db: Kysely<Database>) {
 
 // A preview key reads drafts, so it belongs on a server, such as the one behind a site's preview mode
 async function makeApiKey(db: Kysely<Database>, args: Array<string>) {
-  const preview = args.includes('--preview')
+  const scopes = apiKeyScopes.map(({ value }) => value).filter((scope) => args.includes(`--${scope}`))
+  const preview = scopes.includes('preview')
   const prompt = createPrompt()
   const values = { name: (await prompt.ask(`Name, such as ${preview ? 'Previews' : 'Website'}: `)).trim() }
   prompt.close()
 
   if (!(await validates(apiKeySchema, values))) return
-  const key = await createApiKey(db, values.name, preview ? ['preview'] : [])
+  const key = await createApiKey(db, values.name, scopes)
   const created = preview
     ? `Created the preview key ${values.name}. It can read drafts, so keep it on a server.`
     : `Created the key ${values.name}.`

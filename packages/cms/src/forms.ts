@@ -1,7 +1,7 @@
 import type { FormOptions } from '.'
 import { flattenValidationReport, inputs, isEmptyValue, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
-import { sendsApiKey } from './delivery'
+import { keyOf } from './delivery'
 import { embedHtml, escapeHtml, honeypot, page } from './embed'
 import type { AdminEnv } from './entries'
 import { addEvents } from './events'
@@ -316,9 +316,9 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
         reply(c, 413, { message: 'The submission is too large.' }, 'Too large', '<p>The submission is too large.</p>'),
     }),
     async (c) => {
-      // A site's own server sends its key, and posts for all its visitors
+      // A site's own server sends a key with the submit scope, and posts for all its visitors
       const ip = clientIp(c)
-      const seconds = (await sendsApiKey(db, c)) ? 0 : wait(ip ?? '')
+      const seconds = (await keyOf(db, c))?.scopes.includes('submit') ? 0 : wait(ip ?? '')
       if (seconds) {
         c.header('retry-after', String(seconds))
         const message = 'Too many submissions. Wait a few minutes, then send it again.'

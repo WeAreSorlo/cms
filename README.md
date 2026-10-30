@@ -20,7 +20,7 @@ npm run db          # Postgres 17 on localhost:5432
 cd playground
 npx iight migrate
 npx iight make:user
-npx iight make:api-key   # a key for the delivery API
+npx iight make:api-key --types   # a key for the delivery API that can pull types
 npm run dev         # the admin is at http://localhost:3000/admin/
 ```
 
@@ -42,7 +42,7 @@ Run it from a site project, where it reads `iight.config.ts`.
 | `iight migrate:status`        | Lists the migrations of both kinds, and the batch each ran in                                                                                                                      |
 | `iight make:migration [name]` | Writes a content migration for the changes to `schema/types`, named after the types it changes unless you give a name                                                              |
 | `iight make:user`             | Creates an admin user                                                                                                                                                              |
-| `iight make:api-key`          | Creates a key for the delivery API, shown just once. With `--preview`, the key can read drafts                                                                                     |
+| `iight make:api-key`          | Creates a key for the delivery API, shown just once. `--preview`, `--types` and `--submit` give it those [permissions](#api-keys)                                                  |
 
 `iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine. It serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin.
 
@@ -151,7 +151,7 @@ Every entry has a draft, and once it's published, a live copy, which is what the
 
 ### Previews
 
-A preview reads drafts in place of live copies, for a site's preview mode. It needs a key from `iight make:api-key --preview`, which can add `status=draft` to any delivery route. It then reads every entry that isn't archived, published or not, with links resolved to drafts. Other keys get a 403 for it. Plain keys can sit in frontends, since they only ever see what's live, but keep preview keys on a server. The SDK's `createClient({ preview: true })` sends `status=draft` with every query.
+A preview reads drafts in place of live copies, for a site's preview mode. It needs a key with the `preview` [permission](#api-keys), which can add `status=draft` to any delivery route. It then reads every entry that isn't archived, published or not, with links resolved to drafts. Other keys get a 403 for it. Plain keys can sit in frontends, since they only ever see what's live, but keep preview keys on a server. The SDK's `createClient({ preview: true })` sends `status=draft` with every query.
 
 ## Bulk editing
 
@@ -274,7 +274,7 @@ Forms live in the database rather than in `schema/`, since marketers make them i
 Spam is kept out of the inbox in two ways:
 
 - **A honeypot.** The pasted HTML has a field named `_website`, off screen and out of reach of screen readers and the keyboard. A submission that fills it in is kept as spam and gets the reply any other gets, so a bot can't tell. Field names start with a letter, so no field can take the name.
-- **A rate limit.** Each IP address can make 10 posts in 10 minutes, valid or not, and is then refused with a 429 and `Retry-After` until the time is up. Requests that send a delivery API key aren't limited, so a site's own server can submit for all its visitors. Behind a proxy on a private network, such as a load balancer, the address is the one the proxy forwarded for in `X-Forwarded-For`, which the CMS believes from no one else.
+- **A rate limit.** Each IP address can make 10 posts in 10 minutes, valid or not, and is then refused with a 429 and `Retry-After` until the time is up. Requests that send an API key with the `submit` [permission](#api-keys) aren't limited, so a site's own server can submit for all its visitors. Other keys count as anyone, since they can sit in a site's pages. Behind a proxy on a private network, such as a load balancer, the address is the one the proxy forwarded for in `X-Forwarded-For`, which the CMS believes from no one else.
 
 Any site's JavaScript can call the form routes, unless `forms.origins` in `iight.config.ts` lists the sites that can.
 
@@ -468,6 +468,10 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `PUT /api/automations/:id`              | Saves `{ name, triggers, conditions, actions }`                                                                                                                                                                                                           |
 | `DELETE /api/automations/:id`           | Deletes an automation, with its runs, including those still to come                                                                                                                                                                                       |
 | `GET /api/automations/:id/runs`         | Lists its runs, each a try of one of its actions with its event, taking `order`, `page` and `perPage`                                                                                                                                                     |
+| `GET /api/keys`                         | Lists the [API keys](#api-keys), each as `{ id, name, scopes, createdAt, createdBy, lastUsedAt }`. `createdBy` is `{ id, name }`, or null for a key from the CLI or one whose user is deleted, and `lastUsedAt` is null until the key is used             |
+| `POST /api/keys`                        | Makes a key from `{ name, scopes }`. Replies 201 with `{ data: key }`, whose `token` is the key itself, in this reply and no other, or 422 with core's report                                                                                             |
+| `PUT /api/keys/:id`                     | Saves `{ name, scopes }`, keeping the key itself                                                                                                                                                                                                          |
+| `DELETE /api/keys/:id`                  | Revokes a key, which gets 401s from then on                                                                                                                                                                                                               |
 
 The type and shared group routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
@@ -505,19 +509,33 @@ Each entry saves on its own, in the order sent, through the same code as `PUT /a
 
 The whole request replies 400 unless it lists 1 to 100 entries as `{ id, values }`, each once, 404 for an unknown type, and 409 for a singleton or while a content migration hasn't run.
 
+### API keys
+
+The delivery API, `GET /types` and the SDK take a key, sent as `Authorization: Bearer <key>`. Make one on the admin's API keys page, which anyone signed in can use, under `iight start` too, or with `iight make:api-key`. Every key reads live entries and media, and its permissions, which the admin API calls `scopes`, add to that:
+
+| Permission | Flag        | What it adds                                                                                                       |
+| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| `preview`  | `--preview` | Reads drafts with `status=draft`, as [Previews](#previews) describes. Other keys get a 403                         |
+| `types`    | `--types`   | `GET /types`, which `npx iight types pull` reads. Other keys get a 403                                             |
+| `submit`   | `--submit`  | Posts to forms without the [rate limit](#submissions), for a site's own server. Other keys are limited like anyone |
+
+Keep a key that can preview or submit on a server, out of a site's pages. Keys made before 30 October 2026 have `types` and `submit`, since every key could do both then.
+
+The admin lists each key's permissions, who made it and when, and when it was last used, which is written at most once a minute. Keys from `make:api-key` say the CLI made them. A key shows once, when it's made, since only its hash is stored, so a lost key means making another. Editing a key changes its name and permissions and keeps the key itself. Revoking one deletes it, and from then on it gets 401s.
+
 ### The delivery API
 
-It's read-only, and serves media and the live copies of published entries, or with a preview key and `status=draft`, drafts (see [Previews](#previews)). It needs a key from `iight make:api-key`, sent as `Authorization: Bearer <key>`.
+It's read-only, and serves media and the live copies of published entries, or with a preview key and `status=draft`, drafts (see [Previews](#previews)). It needs an [API key](#api-keys), sent as `Authorization: Bearer <key>`.
 
-| Route                              | What it does                                                                                 |
-| ---------------------------------- | -------------------------------------------------------------------------------------------- |
-| `GET /v1/entries/:type`            | Lists entries. A singleton is a list of one                                                  |
-| `GET /v1/entries/:type/:id`        | Replies an entry by ID                                                                       |
-| `GET /v1/entries/:type/slug/:slug` | Replies a top-level entry by slug                                                            |
-| `GET /v1/entries/:type/uri/*`      | Replies a hierarchical page by `uri`, as in `/v1/entries/docs/uri/install`                   |
-| `GET /v1/media`                    | Lists media                                                                                  |
-| `GET /v1/media/:id`                | Replies a media file by ID                                                                   |
-| `GET /types`                       | Replies the TypeScript types of these entries and of the forms' values, as text, for the SDK |
+| Route                              | What it does                                                                                                                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/entries/:type`            | Lists entries. A singleton is a list of one                                                                                              |
+| `GET /v1/entries/:type/:id`        | Replies an entry by ID                                                                                                                   |
+| `GET /v1/entries/:type/slug/:slug` | Replies a top-level entry by slug                                                                                                        |
+| `GET /v1/entries/:type/uri/*`      | Replies a hierarchical page by `uri`, as in `/v1/entries/docs/uri/install`                                                               |
+| `GET /v1/media`                    | Lists media                                                                                                                              |
+| `GET /v1/media/:id`                | Replies a media file by ID                                                                                                               |
+| `GET /types`                       | Replies the TypeScript types of these entries and of the forms' values, as text, for the SDK. It needs a key with the `types` permission |
 
 The form routes are public, and need no key. `:form` is a form's ID or its name.
 
@@ -595,11 +613,11 @@ const cms = createClient({ url: 'https://cms.example.com' })
 await cms.form('contact_us').submit({ name: 'Ada', email: 'ada@example.com' })
 ```
 
-The `token` is optional, since submitting needs none, but entries do. A site's own server sends its key when it submits for its visitors, so they aren't rate limited as one IP address.
+The `token` is optional, since submitting needs none, but entries do. A site's own server sends a key with the `submit` permission when it submits for its visitors, so they aren't rate limited as one IP address.
 
-`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Each shared group's values get a type of their own, such as `GroupSeo`, and `GroupSeoResolved<Depth>`, every field with its links resolved, when it holds relationship or media fields. The types that use it refer to them, so one component can take a group's values from every type that has it. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and a key with the `types` permission from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Each shared group's values get a type of their own, such as `GroupSeo`, and `GroupSeoResolved<Depth>`, every field with its links resolved, when it holds relationship or media fields. The types that use it refer to them, so one component can take a group's values from every type that has it. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
 
-A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key`:
+A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key --types`:
 
 ```bash
 cd playground

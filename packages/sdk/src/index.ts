@@ -268,7 +268,7 @@ export interface ClientOptions<Preview extends boolean = boolean> {
   // The CMS's address, such as https://cms.example.com
   url: string
   // A key from `iight make:api-key`, which entries need. Forms take submissions without one, so browsers can send
-  // them, but a site's own server sends its key so that it isn't rate limited as one visitor.
+  // them, but a site's own server sends one from `iight make:api-key --submit`, so it isn't rate limited as one visitor.
   token?: string
   // Reads drafts in place of what's live, for a site's preview, typing their values as unfinished. Every query sends
   // status=draft, which needs a key from `iight make:api-key --preview`, so keep the client on a server.

@@ -74,8 +74,13 @@ export interface Database {
     id: string
     name: string
     token_hash: string
-    // What the key can do besides reading live content, such as preview, which reads drafts
+    // What the key can do besides reading live content: preview reads drafts, types pulls types, and submit skips the
+    // forms rate limit
     scopes: Generated<Array<string>>
+    // Null for keys from iight make:api-key
+    created_by: string | null
+    // Written at most once a minute
+    last_used_at: Date | null
     created_at: Generated<Date>
   }
   media: {

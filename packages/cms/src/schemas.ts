@@ -13,8 +13,26 @@ export const userSchema: Array<FieldSchema> = [
   { name: 'password', label: 'Password', type: 'password', required: true, options: { minLength: 8 } },
 ]
 
-// Asked for by iight make:api-key
-export const apiKeySchema: Array<FieldSchema> = [{ name: 'name', label: 'Name', type: 'text', required: true }]
+// What a key can do besides reading live content and media (PLAN.md section 16), each a flag of iight make:api-key
+export const apiKeyScopes = [
+  { value: 'preview', label: 'Preview: read drafts, with status=draft' },
+  { value: 'types', label: 'Types: pull TypeScript types for the SDK, from GET /types' },
+  { value: 'submit', label: 'Submit: post to forms without the rate limit' },
+]
+
+// A key's name and scopes, asked for by iight make:api-key, whose flags give the scopes, and edited on the admin's API
+// keys page, whose routes check it
+export const apiKeySchema: Array<FieldSchema> = [
+  { name: 'name', label: 'Name', type: 'text', required: true, options: { placeholder: 'Website' } },
+  {
+    name: 'scopes',
+    label: 'Permissions',
+    type: 'checkbox',
+    instructions:
+      "Every key reads published content and media. Keep a key that previews or submits on a server, out of a site's pages.",
+    options: { choices: apiKeyScopes },
+  },
+]
 
 // A media file's details, edited in the admin's media library and checked by PUT /api/media/:id
 export const mediaSchema: Array<FieldSchema> = [

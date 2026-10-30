@@ -10,7 +10,7 @@ const file = 'src/iight-types.d.ts'
 async function pull(check: boolean) {
   const { IIGHT_URL: url, IIGHT_TOKEN: token } = process.env
   if (!url || !token) {
-    throw new Error("Set IIGHT_URL to the CMS's address, and IIGHT_TOKEN to a key from `iight make:api-key`.")
+    throw new Error("Set IIGHT_URL to the CMS's address, and IIGHT_TOKEN to a key from `iight make:api-key --types`.")
   }
 
   const response = await fetch(`${url.replace(/\/+$/, '')}/types`, {

@@ -1,44 +1,145 @@
 import type { DeliveryOptions } from '.'
+import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
+import type { AdminEnv } from './entries'
 import { findMedia, origin, toMedia } from './media'
 import { hashToken } from './passwords'
 import { Delivered, deliveredEntries, listEntries, listMedia, parseMediaQuery, parseQuery, toEntry } from './query'
 import { parseWith, resolveLinks } from './relations'
+import { apiKeySchema, apiKeyScopes } from './schemas'
 import type { ContentType } from './types'
 import { Context, Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { Kysely } from 'kysely'
+import { Kysely, sql } from 'kysely'
 import { randomBytes } from 'node:crypto'
 
-// A new key for the delivery API, which reads what's live, and with the preview scope, drafts too. Only its hash is
-// stored, so this is the one time it can be shown.
-export async function createApiKey(db: Kysely<Database>, name: string, scopes: Array<string> = []) {
-  const key = `iight_${randomBytes(32).toString('base64url')}`
+// A new key for the delivery API, which reads what's live, and more with its scopes, such as drafts with preview. Only
+// its hash is stored, so this is the one time it can be shown. Keys from the CLI have no user.
+async function makeKey(db: Kysely<Database>, name: string, scopes: Array<string>, createdBy: string | null) {
+  const token = `iight_${randomBytes(32).toString('base64url')}`
+  const id = uuidv7()
   await db
     .insertInto('api_keys')
-    .values({ id: uuidv7(), name, token_hash: hashToken(key), scopes })
+    .values({ id, name, token_hash: hashToken(token), scopes, created_by: createdBy })
     .execute()
-  return key
+  return { id, token }
 }
 
-// The key a request sends for the delivery API, as Authorization: Bearer <key>
-async function keyOf(db: Kysely<Database>, c: Context) {
+export const createApiKey = async (db: Kysely<Database>, name: string, scopes: Array<string> = []) =>
+  (await makeKey(db, name, scopes, null)).token
+
+// When this process last wrote each key's last_used_at, so reads don't each write it
+const writtenAt = new Map<string, number>()
+
+// The key a request sends for the delivery API, as Authorization: Bearer <key>, marked as used once a minute. Other
+// processes mark it too, so the database only takes a time a minute after the last.
+export async function keyOf(db: Kysely<Database>, c: Context) {
   const key = c.req.header('authorization')?.match(/^Bearer (\S+)$/)?.[1]
-  return key
-    ? await db.selectFrom('api_keys').select('scopes').where('token_hash', '=', hashToken(key)).executeTakeFirst()
+  const found = key
+    ? await db
+        .selectFrom('api_keys')
+        .select(['id', 'scopes'])
+        .where('token_hash', '=', hashToken(key))
+        .executeTakeFirst()
     : undefined
+  if (found && Date.now() - (writtenAt.get(found.id) ?? 0) >= 60_000) {
+    writtenAt.set(found.id, Date.now())
+    await db
+      .updateTable('api_keys')
+      .set({ last_used_at: sql`now()` })
+      .where('id', '=', found.id)
+      .where((eb) =>
+        eb.or([eb('last_used_at', 'is', null), eb('last_used_at', '<=', sql<Date>`now() - interval '1 minute'`)]),
+      )
+      .execute()
+  }
+  return found
 }
 
-// Whether a request sends a key for the delivery API
-export const sendsApiKey = async (db: Kysely<Database>, c: Context) => !!(await keyOf(db, c))
-
-// Lets a request through when it sends a key for the delivery API
+// Lets a request through when it sends a key for the delivery API with a scope, replying 403 with the message without
 export const apiKey =
-  (db: Kysely<Database>): MiddlewareHandler =>
+  (db: Kysely<Database>, scope: string, message: string): MiddlewareHandler =>
   async (c, next) => {
-    if (!(await sendsApiKey(db, c))) return c.json({ message: 'Unauthenticated.' }, 401)
+    const found = await keyOf(db, c)
+    if (!found) return c.json({ message: 'Unauthenticated.' }, 401)
+    if (!found.scopes.includes(scope)) return c.json({ message }, 403)
     await next()
   }
+
+// The admin's API keys page, where anyone signed in manages keys. A key's token is in the reply that makes it, and no
+// other, since only its hash is stored. Revoking a key deletes it, so it's refused from then on.
+export function keyRoutes(db: Kysely<Database>) {
+  const app = new Hono<AdminEnv>()
+
+  // Every key, or the one with an ID, as the routes reply them, with the user who made each, or null for the CLI
+  const keys = async (id?: string) => {
+    const rows = await db
+      .selectFrom('api_keys')
+      .leftJoin('users', 'users.id', 'api_keys.created_by')
+      .select([
+        'api_keys.id',
+        'api_keys.name',
+        'scopes',
+        'api_keys.created_at',
+        'last_used_at',
+        'users.id as user_id',
+        'users.name as user_name',
+      ])
+      .$if(id !== undefined, (qb) => qb.where('api_keys.id', '=', id!))
+      .orderBy('api_keys.name')
+      .orderBy('api_keys.id')
+      .execute()
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      scopes: row.scopes,
+      createdAt: row.created_at,
+      createdBy: row.user_id ? { id: row.user_id, name: row.user_name } : null,
+      lastUsedAt: row.last_used_at,
+    }))
+  }
+
+  const find = async (id: string) => {
+    const [key] = isUuid(id) ? await keys(id) : []
+    if (!key) throw new HTTPException(404)
+    return key
+  }
+
+  // A key's name and scopes from the request, the scopes in the checkbox's order, or core's report
+  const read = async (c: Context) => {
+    const values = pickValues(apiKeySchema, (await c.req.json().catch(() => null)) ?? {}, inputs)
+    const report = await validateServerValues(apiKeySchema, values, inputs)
+    if (!report.isValid) return { report }
+    const scopes = apiKeyScopes.map(({ value }) => value).filter((scope) => values.scopes?.includes(scope))
+    return { report, key: { name: values.name as string, scopes } }
+  }
+
+  // shortcut: every key, unpaged, page them when sites have hundreds
+  app.get('/keys', async (c) => c.json({ data: await keys() }))
+
+  app.post('/keys', async (c) => {
+    const { report, key } = await read(c)
+    if (!key) return c.json(report, 422)
+    const { id, token } = await makeKey(db, key.name, key.scopes, c.var.user.id)
+    return c.json({ data: { ...(await find(id)), token } }, 201)
+  })
+
+  app.put('/keys/:id', async (c) => {
+    const { id } = await find(c.req.param('id'))
+    const { report, key } = await read(c)
+    if (!key) return c.json(report, 422)
+    await db.updateTable('api_keys').set(key).where('id', '=', id).execute()
+    return c.json({ data: await find(id) })
+  })
+
+  app.delete('/keys/:id', async (c) => {
+    const { id } = await find(c.req.param('id'))
+    await db.deleteFrom('api_keys').where('id', '=', id).execute()
+    return c.body(null, 204)
+  })
+
+  return app
+}
 
 // Whether a request reads drafts in place of what's live
 type DeliveryEnv = { Variables: { draft: boolean } }

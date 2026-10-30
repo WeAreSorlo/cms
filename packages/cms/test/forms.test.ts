@@ -334,7 +334,7 @@ test('archives and restores submissions, and marks them as spam or not by hand',
   expect(await ids('?spam=true')).toEqual([])
 })
 
-test("limits each address's posts, valid or not, except requests that send an API key", async () => {
+test("limits each address's posts, valid or not, except requests that send a key that can submit", async () => {
   vi.useFakeTimers({ toFake: ['Date'] })
   await createForm()
   const limited = createApp(db, types, { forms: { rateLimit: { posts: 2, minutes: 5 } } })
@@ -348,10 +348,13 @@ test("limits each address's posts, valid or not, except requests that send an AP
   expect(refused.body).toEqual({ message: 'Too many submissions. Wait a few minutes, then send it again.' })
   expect((await post('contact', [], '198.51.100.1', limited)).html).toContain('<h1>Too many submissions</h1>')
 
-  // Other addresses have their own count, and a site's own server sends its key
+  // Other addresses have their own count, and a site's own server sends a key with the submit scope
   expect((await from('198.51.100.2')).status).toBe(201)
-  const key = await createApiKey(db, 'Website')
+  const key = await createApiKey(db, 'Server', ['submit'])
   expect((await from('198.51.100.1', { authorization: `Bearer ${key}` })).status).toBe(201)
+  // Any other key counts as anyone, since it can sit in a site's pages
+  const reader = await createApiKey(db, 'Website', ['preview', 'types'])
+  expect((await from('198.51.100.1', { authorization: `Bearer ${reader}` })).status).toBe(429)
   expect((await from('198.51.100.1', { authorization: 'Bearer nope' })).status).toBe(429)
 
   vi.advanceTimersByTime(5 * 60 * 1000)

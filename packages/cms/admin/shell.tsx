@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Component,
   Images,
+  KeyRound,
   LogOut,
   LucideProvider,
   Menu,
@@ -90,6 +91,7 @@ export function Shell({
     [
       { section: 'schema', label: 'Content types', icon: <Blocks /> },
       { section: 'groups', label: 'Shared groups', icon: <Component /> },
+      { section: 'keys', label: 'API keys', icon: <KeyRound /> },
     ],
   ]
 

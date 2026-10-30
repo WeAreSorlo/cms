@@ -109,6 +109,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_28_000011_create_automations_table',
     '2026_10_28_000012_create_automation_runs_table',
     '2026_10_28_000013_create_published_entries_table',
+    '2026_10_30_000014_add_api_key_permissions',
   ])
 
   await migrate(db, migrations)
@@ -170,7 +171,7 @@ test('the migration that adds live copies publishes every saved entry that is no
     ])
     .execute()
 
-  await migrate(db, migrations)
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name <= published)))
   const live = await db.selectFrom('published_entries').selectAll().execute()
   expect(live.map((row) => row.id).sort()).toEqual([post.id, guide.id, install.id].sort())
   expect(live.find((row) => row.id === post.id)).toMatchObject({
@@ -188,4 +189,30 @@ test('the migration that adds live copies publishes every saved entry that is no
   expect(await rollback(db, migrations)).toEqual([published])
   expect(await tables()).not.toContain('published_entries')
   expect(await db.selectFrom('entries').select('id').execute()).toHaveLength(5)
+})
+
+test('the migration that adds key permissions gives every key types and submit, which every key could do before', async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const permissions = '2026_10_30_000014_add_api_key_permissions'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < permissions)))
+  await db
+    .insertInto('api_keys')
+    .values([
+      { id: uuidv7(), name: 'Website', token_hash: 'a' },
+      { id: uuidv7(), name: 'Previews', token_hash: 'b', scopes: ['preview'] },
+    ])
+    .execute()
+
+  await migrate(db, migrations)
+  const keys = () => db.selectFrom('api_keys').selectAll().orderBy('name').execute()
+  expect(await keys()).toMatchObject([
+    { name: 'Previews', scopes: ['preview', 'types', 'submit'], created_by: null, last_used_at: null },
+    { name: 'Website', scopes: ['types', 'submit'], created_by: null, last_used_at: null },
+  ])
+
+  expect(await rollback(db, migrations)).toEqual([permissions])
+  expect((await keys()).map(({ scopes, ...rest }) => [scopes, Object.keys(rest)])).toEqual([
+    [['preview'], ['id', 'name', 'token_hash', 'created_at']],
+    [[], ['id', 'name', 'token_hash', 'created_at']],
+  ])
 })

@@ -6,6 +6,7 @@ import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { GroupEditor, GroupList } from './groups'
+import { KeyEditor, KeyList, KeyPage } from './keys'
 import { MediaLibrary } from './media'
 import { Shell } from './shell'
 import './theme.scss'
@@ -86,7 +87,7 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 }
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>, #/media,
-// #/forms/<id>/inbox, #/automations/<id>/runs, or #/schema/blog and #/groups/seo in the type editor
+// #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, or #/schema/blog and #/groups/seo in the type editor
 function Page({
   hash,
   types,
@@ -131,6 +132,9 @@ function Page({
   if (section === 'automations' && name && action === 'runs') return <Runs key={name} id={name} />
   if (section === 'automations' && name) return <AutomationPage key={name} id={name} />
   if (section === 'automations') return <AutomationList />
+  if (section === 'keys' && name === 'new') return <KeyEditor key='new' />
+  if (section === 'keys' && name) return <KeyPage key={name} id={name} />
+  if (section === 'keys') return <KeyList />
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />

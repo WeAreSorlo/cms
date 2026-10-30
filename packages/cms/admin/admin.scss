@@ -546,6 +546,13 @@ a.iight-button {
   border-radius: var(--cms-radius-pill);
 }
 
+// Badges side by side, such as an API key's scopes in its row
+.cms-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--iight-size-1);
+}
+
 .cms-badge--accent {
   color: var(--cms-on-accent);
   background: var(--cms-accent);

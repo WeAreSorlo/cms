@@ -334,10 +334,16 @@ test('generates a type for each content type, shared group and form, registered 
   )
 })
 
-test('GET /types serves the generated types to API keys', async () => {
+test('GET /types serves the generated types to keys with the types scope', async () => {
   expect((await fetch(`${url}/types`)).status).toBe(401)
+  const refused = await fetch(`${url}/types`, { headers: { authorization: `Bearer ${key}` } })
+  expect({ status: refused.status, body: await refused.json() }).toEqual({
+    status: 403,
+    body: { message: "This key can't pull types. Make one that can with iight make:api-key --types." },
+  })
 
-  const response = await fetch(`${url}/types`, { headers: { authorization: `Bearer ${key}` } })
+  const typesKey = await createApiKey(db, 'Types', ['types'])
+  const response = await fetch(`${url}/types`, { headers: { authorization: `Bearer ${typesKey}` } })
   expect(response.headers.get('content-type')).toMatch(/^text\/plain/)
   expect(await response.text()).toBe(generated())
 })
@@ -346,7 +352,8 @@ test('types pull writes the types into a frontend, and --check fails when they a
   const bin = fileURLToPath(new URL('../../sdk/bin/iight.js', import.meta.url))
   const dir = await mkdtemp(join(tmpdir(), 'iight-frontend-'))
   const file = join(dir, 'src/iight-types.d.ts')
-  const pull = (args: Array<string>, token = key) =>
+  const typesKey = await createApiKey(db, 'Types', ['types'])
+  const pull = (args: Array<string>, token = typesKey) =>
     promisify(execFile)(process.execPath, [bin, 'types', 'pull', ...args], {
       cwd: dir,
       env: { ...process.env, IIGHT_URL: url, IIGHT_TOKEN: token },

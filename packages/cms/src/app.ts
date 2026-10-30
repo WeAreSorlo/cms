@@ -3,7 +3,7 @@ import { automationRoutes } from './automations'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
-import { apiKey, deliveryRoutes } from './delivery'
+import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
 import { formRoutes, publicFormRoutes } from './forms'
 import { mediaRoutes } from './media'
@@ -173,18 +173,21 @@ export function createApp(
   app.use('/api/forms/*', signedIn)
   app.use('/api/submissions/*', signedIn)
   app.use('/api/automations/*', signedIn)
+  app.use('/api/keys/*', signedIn)
   app.route('/api', typeRoutes(types, groups, editor))
   app.route('/api', entryRoutes(db, types, migrations))
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
+  app.route('/api', keyRoutes(db))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
   app.route('/v1', publicFormRoutes(db, forms))
 
-  // What the delivery API returns and the forms take, as TypeScript, for `npx iight types pull`
-  // Made for each request, since the type editor can change the types, and the admin the forms
-  app.get('/types', apiKey(db), async (c) => {
+  // What the delivery API returns and the forms take, as TypeScript, for `npx iight types pull`, to keys with the types
+  // scope. Made for each request, since the type editor can change the types, and the admin the forms.
+  const typesKey = apiKey(db, 'types', "This key can't pull types. Make one that can with iight make:api-key --types.")
+  app.get('/types', typesKey, async (c) => {
     const found = await db.selectFrom('forms').select(['name', 'fields']).orderBy('name').execute()
     return c.text(typesFile(types, depth, found, groups))
   })
