@@ -202,6 +202,13 @@ function eventFields(types: Iterable<HasFields & { name: string }>, forms: Array
   ]
 }
 
+// The paths into each kind of event's data, by the first part of the event's name, such as entry in entry.published
+const eventData = new Map([
+  ['entry', ['entry.']],
+  ['submission', ['form.', 'submission.']],
+  ['media', ['media.']],
+])
+
 // An automation, rendered by the admin's automation editor and checked by its routes. Its conditions are core's
 // conditional logic, taken from baseFields, which is core's baseInputSchemaFields(): the admin and the server each load
 // their own build of core. Its rules test the event's data, so both list the fields of the same types and forms.
@@ -209,8 +216,15 @@ export function automationSchema(
   baseFields: Array<FieldSchema>,
   types: Iterable<HasFields & { name: string }>,
   forms: Array<HasFields & { id: string }>,
+  triggers: Array<unknown> = [],
 ): Array<FieldSchema> {
   const conditions = baseFields.find((field) => field.name === 'conditions')!
+  // Only the data of the events ticked in When, since a rule on another event's data tests a value that's never there.
+  // Every event's while none is ticked.
+  const starts = triggers.flatMap((trigger) => eventData.get(String(trigger).split('.')[0]) ?? [])
+  const fieldChoices = eventFields(types, forms).filter(
+    (choice) => !starts.length || starts.some((start) => choice.value.startsWith(start)),
+  )
   return [
     { name: 'name', label: 'Name', type: 'text', required: true, options: { placeholder: 'Contact us notifications' } },
     { name: 'triggers', label: 'When', type: 'checkbox', required: true, options: { choices: [...events] } },
@@ -219,7 +233,7 @@ export function automationSchema(
       label: 'Only if',
       instructions:
         "Runs when any group has all of its rules matching, each testing the event's data. With no rules, every event it's triggered by runs it.",
-      options: { ...conditions.options, fieldChoices: eventFields(types, forms) },
+      options: { ...conditions.options, fieldChoices },
     },
     { name: 'actions', label: 'Then', type: 'flexible', required: true, options: { layouts: actionLayouts } },
   ]

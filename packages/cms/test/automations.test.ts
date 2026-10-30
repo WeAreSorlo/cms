@@ -383,7 +383,12 @@ test("rules test the fields of the site's types and forms, as the editor lists t
     { field: 'entry.values.published_at', operator: 'lessThan', value: '2026-10-30' },
     { field: 'media.mime', operator: 'startsWith', value: 'image/' },
   ]
-  await createAutomation({ name: 'Every kind of rule', conditions: [{ rules }], actions: [email] })
+  await createAutomation({
+    name: 'Every kind of rule',
+    triggers: ['submission.created', 'entry.created', 'media.created'],
+    conditions: [{ rules }],
+    actions: [email],
+  })
 
   const refused = await admin('POST', '/automations', {
     name: 'Wrong rules',
@@ -406,6 +411,32 @@ test("rules test the fields of the site's types and forms, as the editor lists t
     'conditions.0.rules.1.value': ['A valid choice required.'],
     'conditions.0.rules.2.value': ['A valid choice required.'],
   })
+})
+
+test('rules test only the data of the events that trigger the automation', async () => {
+  // A rule on an entry's data never matches a submission, and this one, negated, would match every submission
+  const refused = await admin('POST', '/automations', {
+    name: 'Mixed up',
+    triggers: ['submission.created'],
+    actions: [email],
+    conditions: [{ rules: [{ field: 'entry.type', operator: 'notEquals', value: 'blog' }] }],
+  })
+  expect(refused.status).toBe(422)
+  expect(flattenValidationReport(refused.body).messages).toEqual({
+    'conditions.0.rules.0.field': ['A valid choice required.'],
+  })
+
+  // The kinds of data the editor lists, by the start of each path
+  const listed = (triggers: Array<string>) =>
+    new Set(
+      automationSchema(baseInputSchemaFields(), types.values(), [], triggers)
+        .find((field) => field.name === 'conditions')!
+        .options!.fieldChoices.map((choice: any) => choice.value.split('.')[0]),
+    )
+  expect(listed(['media.created', 'media.deleted'])).toEqual(new Set(['media']))
+  expect(listed(['entry.published', 'submission.created'])).toEqual(new Set(['entry', 'form', 'submission']))
+  // Every event's while none is ticked
+  expect(listed([])).toEqual(new Set(['entry', 'form', 'submission', 'media']))
 })
 
 test('lists a path once when several types share it, with each type it belongs to', () => {

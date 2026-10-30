@@ -141,13 +141,8 @@ export function FormAutomations({ formId }: { formId: string }) {
 // Create or change an automation in a core form: the events that trigger it, conditions on their data, and the
 // actions it runs in order
 function AutomationEditor({ automation: loaded, initial }: { automation?: Automation; initial?: object }) {
-  // Its rules test the fields of the site's types and forms, listed as the server lists them to check them
   const types = useContext(TypesContext)
   const [forms, setForms] = useState<Array<{ id: string; label: string; fields: Array<FieldSchema> }>>()
-  const schema = useMemo(
-    () => forms && automationSchema(baseInputSchemaFields(), types.values(), forms),
-    [types, forms],
-  )
   const form = useRef<FormHandle>(null)
   // Around the form, for finding the fields that stop a save
   const area = useRef<HTMLDivElement>(null)
@@ -156,6 +151,13 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
   const [automation, setAutomation] = useState(loaded)
   const [shown, setShown] = useState<Record<string, any>>(loaded ? settingsOf(loaded) : (initial ?? {}))
   const [values, setValues] = useState(shown)
+  // Its rules test the fields of the site's types and forms, for the events ticked in When, listed as the server lists
+  // them to check them. Keyed by the ticked events as text, so changes elsewhere in the form don't rebuild it.
+  const ticked = String(values.triggers ?? [])
+  const schema = useMemo(
+    () => forms && automationSchema(baseInputSchemaFields(), types.values(), forms, ticked ? ticked.split(',') : []),
+    [types, forms, ticked],
+  )
   const [problem, setProblem] = useState('')
   // The action under way, such as save
   const [busy, setBusy] = useState<string>()
