@@ -107,6 +107,17 @@ Every entry has a draft, and once it's published, a live copy, which is what the
 
 A preview reads drafts in place of live copies, for a site's preview mode. It needs a key from `iight make:api-key --preview`, which can add `status=draft` to any delivery route. It then reads every entry that isn't archived, published or not, with links resolved to drafts. Other keys get a 403 for it. Plain keys can sit in frontends, since they only ever see what's live, but keep preview keys on a server. The SDK's `createClient({ preview: true })` sends `status=draft` with every query.
 
+## Bulk editing
+
+Tick entries in a type's list, across as many of its pages as you like, and Bulk edit opens up to 100 of them in a grid, a row for each entry and a column for each field. Singletons have no list, so no bulk edit.
+
+- **Columns.** The grid starts with the type's title field and list columns, and Columns picks the rest, remembered in the browser for each type. A group's fields are columns of their own, such as SEO › Title, and so are those of the groups inside it.
+- **Cells** show their values as the list does. A click, or Enter or F2, edits a cell in place with its core input, the only input the grid holds. Repeater, matrix and flexible cells say how many items, rows or blocks they hold, and relationship and media cells what they link to. Each of those opens its whole field in a dialog. A field that a row's conditions hide says Hidden.
+- **Keys.** Arrow keys move between cells, Home and End to the ends of a row, and with Ctrl or Cmd to the corners of the grid. Tab moves along a row and leaves the grid at either end. In a cell's input, Enter keeps the change and moves down, and Tab keeps it and moves along once it's past the input's own controls, such as a checkbox field's boxes. Shift+Enter moves up, or starts a new line in long text, and Escape puts back what was there.
+- **Checks.** Each row is checked with core's `validateValues` as it changes, as the entry editor checks its form, with `allowIncomplete` while the type has drafts. Invalid cells show their messages, and a row's status names what's wrong with fields the grid doesn't show.
+- **Saving.** Edits stay in the grid until Save, which sends the changed fields of the edited rows that pass their checks, in one request. Publish does the same with every check, and publishes them. A type without drafts has Save alone, which publishes. The rows that pass are saved, each with its version and events. The rest stay highlighted with their messages, and focus goes to the first cell to fix. Since only changed fields go, another editor's changes to an entry's other fields are kept.
+- **Not yet:** pasting a range from a spreadsheet, fill-down, undo, Publish or Archive for ticked entries without editing them, and more than 100 entries at a time.
+
 ## Content migrations
 
 Entries keep their values as JSON, so changing a content type never changes a table. A content migration changes the values inside entries instead. It's a file in the site project's `migrations` folder with an `up` and a `down`, as in Laravel.
@@ -372,6 +383,7 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `DELETE /api/types/:type`               | Deletes a type's file and writes a migration that flags its entries, which stay. Replies `{ migration: { file, notes } }`                                                                                                                                 |
 | `GET /api/types/:type/entries`          | Lists entries that aren't archived, or archived ones with `archived=true`, taking the delivery API's query parameters                                                                                                                                     |
 | `POST /api/types/:type/entries`         | Creates an entry from `{ values, parentId, publish }`, where `parentId` is for hierarchicals. With `publish: true`, it runs every check and publishes the entry too                                                                                       |
+| `PATCH /api/types/:type/entries`        | Saves the changed fields of 1 to 100 entries from `{ publish, entries: [{ id, values }] }`, replying with each one's result, as [bulk saves](#bulk-saves) describes                                                                                       |
 | `GET /api/types/:type/singleton`        | Replies a singleton's entry, created the first time it's opened                                                                                                                                                                                           |
 | `GET /api/entries/:id`                  | Replies an entry, archived or not                                                                                                                                                                                                                         |
 | `PUT /api/entries/:id`                  | Saves `{ values, parentId, publish }` as the draft. With `publish: true`, it runs every check and publishes the draft too, or replies 409 while a page's parent isn't published. A moved page goes after its new siblings, and the `uri`s under it follow |
@@ -406,6 +418,40 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `GET /api/automations/:id/runs`         | Lists its runs, each a try of one of its actions with its event, taking `order`, `page` and `perPage`                                                                                                                                                     |
 
 The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
+
+#### Bulk saves
+
+`PATCH /api/types/:type/entries` saves the grid's edits, in the shape the user chose on 30 October 2026. Each entry's `values` holds just the fields that changed. A group's fields merge into what's saved one by one, at any depth, and any other field's value replaces what's saved, so a list or a link is sent whole. `publish: true` publishes every entry that saves, after every check, and a type without drafts publishes anyway. Pages keep their parents.
+
+```json
+{
+  "publish": false,
+  "entries": [
+    { "id": "0192f0c4-…", "values": { "title": "Hello", "seo": { "title": "Hi" } } },
+    { "id": "0192f0c5-…", "values": { "price": -1 } }
+  ]
+}
+```
+
+Each entry saves on its own, in the order sent, through the same code as `PUT /api/entries/:id`, so those that pass are saved whatever happens to the rest. Each is read and locked in its save's transaction, and its changes merge into what that read finds, so another save's changes to its other fields are kept, however close together the two land. The reply is always 200, with a result for each entry: its `id` and the `status` that `PUT /api/entries/:id` would have replied. That's 200 with the saved entry in `data`, 422 with core's report in `report`, or another status with a `message`, such as 404 for an ID that isn't an entry of the type, and 409 for an archived entry or a page whose parent isn't live. When two entries take the same slug, the first saves and the second gets a 422 on its slug.
+
+```json
+{
+  "data": [
+    { "id": "0192f0c4-…", "status": 200, "data": { "id": "0192f0c4-…", "values": { "title": "Hello" } } },
+    {
+      "id": "0192f0c5-…",
+      "status": 422,
+      "report": {
+        "isValid": false,
+        "fields": { "price": { "isValid": false, "messages": ["This field requires a minimum value of 0."] } }
+      }
+    }
+  ]
+}
+```
+
+The whole request replies 400 unless it lists 1 to 100 entries as `{ id, values }`, each once, 404 for an unknown type, and 409 for a singleton or while a content migration hasn't run.
 
 ### The delivery API
 

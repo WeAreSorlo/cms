@@ -1,20 +1,10 @@
 import { holdsOne, idsOf, media, relationship, relationshipOptions } from '../src/fields'
 import { ContentType, Entry, TypesContext, api, errorMessage, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
-import { Badge, DialogClose, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
-import Form, { FieldSchema, Input, Modal, inputs, useFieldContext } from 'iight'
+import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
+import Form, { FieldSchema, Input, inputs, useFieldContext } from 'iight'
 import { Search, X } from 'lucide-react'
-import { ReactNode, Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-
-// A dialog outside the form it's opened from, since it holds a form of its own. The theme on <html> still reaches it
-const Dialog = ({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) =>
-  createPortal(
-    <Modal open header={<h2>{title}</h2>} closeButton={<DialogClose />} onClose={onClose}>
-      {children}
-    </Modal>,
-    document.body,
-  )
+import { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 // After a pick or a removal, focus goes back to the picker's Choose button, or once the field is full and Choose has
 // gone, to its last remove button. It would drop to the page otherwise, since a pick unmounts the dialog that had it

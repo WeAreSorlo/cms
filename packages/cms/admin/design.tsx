@@ -1,3 +1,5 @@
+import { ContentType, Entry, Status } from './api'
+import { Grid, columnsOf, useRows } from './bulk'
 import { contrast, pairs } from './contrast'
 import './design.scss'
 import { iconInput, useInputs } from './fields'
@@ -16,7 +18,7 @@ import {
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
-import { Archive, ArrowDown, ArrowUp, CircleAlert, Inbox } from 'lucide-react'
+import { Archive, ArrowDown, ArrowUp, CircleAlert, Inbox, Sheet } from 'lucide-react'
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 const colours = [
@@ -143,6 +145,82 @@ const pickerFields = (state: string): Array<FieldSchema> =>
     { type: 'icon', name: 'icon', label: 'Icon', defaultValue: 'newspaper' },
   ].map((field) => ({ ...field, readonly: state === 'readonly', disabled: state === 'disabled' }))
 
+// A type for the bulk editing grid: a required field, a number from 0, a box whose condition shows another field, a
+// field in a group with a maximum length, and a list, which opens in a dialog
+const gridType: ContentType = {
+  id: 'typ_sample',
+  name: 'sample',
+  label: 'Sample products',
+  structure: 'collection',
+  titleField: 'name',
+  fields: [
+    { id: 'fld_name', type: 'text', name: 'name', label: 'Name', required: true },
+    { id: 'fld_price', type: 'number', name: 'price', label: 'Price', options: { min: 0 } },
+    { id: 'fld_sale', type: 'boolean', name: 'sale', label: 'On sale' },
+    {
+      id: 'fld_sale_price',
+      type: 'number',
+      name: 'sale_price',
+      label: 'Sale price',
+      conditions: [{ field: 'sale', operator: 'equals', value: true }],
+    },
+    {
+      id: 'fld_seo',
+      type: 'group',
+      name: 'seo',
+      label: 'SEO',
+      options: {
+        fields: [{ id: 'fld_seo_title', type: 'text', name: 'title', label: 'Title', options: { maxLength: 30 } }],
+      },
+    },
+    {
+      id: 'fld_specs',
+      type: 'repeater',
+      name: 'specs',
+      label: 'Specs',
+      options: { fields: [{ id: 'fld_spec', type: 'text', name: 'label', label: 'Label', required: true }] },
+    },
+  ],
+}
+const gridColumns = columnsOf(gridType.fields)
+
+const sampleEntry = (id: string, status: Status, values: Record<string, any>): Entry => ({
+  id,
+  type: 'sample',
+  slug: null,
+  uri: null,
+  parentId: null,
+  position: null,
+  values,
+  createdAt: '2026-10-29T12:00:00Z',
+  updatedAt: '2026-10-29T12:00:00Z',
+  publishedAt: status === 'draft' ? null : '2026-10-29T12:00:00Z',
+  archivedAt: null,
+  createdBy: null,
+  updatedBy: null,
+  status,
+  publishedVersion: status === 'draft' ? null : 1,
+})
+
+// One of each: as saved, with values its checks refuse, and an unfinished draft, which Save takes but Publish doesn't
+const gridEntries = [
+  sampleEntry('lamp', 'published', {
+    name: 'Desk lamp',
+    price: 40,
+    sale: true,
+    sale_price: 32,
+    seo: { title: 'A brass desk lamp' },
+    specs: [{ label: 'Brass' }, { label: 'LED' }],
+  }),
+  sampleEntry('chair', 'changed', {
+    name: 'Armchair',
+    price: -5,
+    sale: false,
+    seo: { title: 'An armchair, far too long for a title' },
+  }),
+  sampleEntry('shelf', 'draft', { name: '', price: 120, sale: false }),
+]
+
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 // The design system's tokens and components in the current theme, for checking changes to them. iight dev serves it at
@@ -171,6 +249,21 @@ export default function Design() {
   const toast = useToast()
   const confirm = useConfirm()
   const [page, setPage] = useState(2)
+  const grid = useRows(gridType)
+  useEffect(() => grid.setRows(gridEntries.map((entry) => grid.check({ entry, values: entry.values }))), [])
+
+  // What a row looks like once the server refuses it
+  const refuse = () =>
+    grid.setRows((rows) =>
+      rows?.map((row, index) =>
+        index === 0
+          ? grid.check({
+              ...row,
+              failed: { publish: false, messages: { name: ['Another product here already uses this name.'] } },
+            })
+          : row,
+      ),
+    )
 
   return (
     <div className='cms-design'>
@@ -381,6 +474,59 @@ export default function Design() {
           </li>
         ))}
       </ol>
+
+      <h2>Bulk editing</h2>
+      <p>
+        Ticking entries in a list, and the grid that Bulk edit opens them in. Its cells show their values as the list
+        does. An edited cell is tinted, a refused one is outlined with its messages, and a field its conditions hide
+        says so. Specs opens in a dialog.
+      </p>
+      <div className='cms-header__actions'>
+        <span className='cms-muted'>1 selected</span>
+        <button type='button' className='iight-button' onClick={() => toast('Opened the grid')}>
+          <Sheet /> Bulk edit
+        </button>
+      </div>
+      <table className='cms-table'>
+        <thead>
+          <tr>
+            <th className='cms-table__tick'>
+              <label>
+                <input
+                  type='checkbox'
+                  aria-label='Select every entry on this page'
+                  ref={(box) => {
+                    if (box) box.indeterminate = true
+                  }}
+                />
+              </label>
+            </th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody>
+          {gridEntries.map(({ id, values }, index) => (
+            <tr key={id} className={index === 0 ? 'cms-table__selected' : undefined}>
+              <td className='cms-table__tick'>
+                <label>
+                  <input
+                    type='checkbox'
+                    aria-label={`Select ${values.name || 'Untitled'}`}
+                    defaultChecked={index === 0}
+                  />
+                </label>
+              </td>
+              <td>{values.name || 'Untitled'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {grid.rows && <Grid type={gridType} columns={gridColumns} rows={grid.rows} onChange={grid.change} />}
+      <div className='actions'>
+        <button type='button' className='iight-button' onClick={refuse}>
+          Refuse the first row
+        </button>
+      </div>
 
       <h2>Media cards</h2>
       <ul className='cms-media-grid'>

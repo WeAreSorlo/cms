@@ -22,6 +22,7 @@ import {
   useEffect,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 // Light, dark, or the OS's setting, remembered in this browser. index.html applies the choice before each first paint.
 export function ThemeSwitch() {
@@ -209,6 +210,26 @@ export const DialogClose = () => (
     <X />
   </IconButton>
 )
+
+// A dialog outside whatever opens it, since it may hold a form of its own inside another. The theme on <html> still
+// reaches it.
+export const Dialog = ({
+  title,
+  footer,
+  onClose,
+  children,
+}: {
+  title: string
+  footer?: ReactNode
+  onClose: () => void
+  children: ReactNode
+}) =>
+  createPortal(
+    <Modal open header={<h2>{title}</h2>} footer={footer} closeButton={<DialogClose />} onClose={onClose}>
+      {children}
+    </Modal>,
+    document.body,
+  )
 
 // Links between the views of one page, such as an inbox and its spam
 export const RouteTabs = ({

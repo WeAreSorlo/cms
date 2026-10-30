@@ -8,6 +8,7 @@ import {
   date,
   errorMessage,
   formatField,
+  formatValue,
   titleOf,
   tree,
 } from './api'
@@ -29,7 +30,17 @@ import {
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown, CircleAlert, Plus, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
+  CircleAlert,
+  Plus,
+  Sheet,
+  Trash2,
+} from 'lucide-react'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 // Fields whose stored values sort the way they read
@@ -51,10 +62,8 @@ const sortable = new Set([
   'color',
 ])
 
-// A list cell: the value as its input formats it, Yes for a ticked box, and a dash when there's nothing
-function Cell({ type, name, entry }: { type: ContentType; name: string; entry: Entry }) {
-  const field = type.fields.find((field) => field.name === name)
-  const text = field?.type === 'boolean' ? (entry.values[name] ? 'Yes' : '') : formatField(type, name, entry)
+// A cell's text, or a dash when there's nothing
+export function CellText({ text }: { text: string }) {
   if (text) return text
   return (
     <>
@@ -66,6 +75,11 @@ function Cell({ type, name, entry }: { type: ContentType; name: string; entry: E
   )
 }
 
+// A list cell: the value as its input formats it, Yes for a ticked box, and a dash when there's nothing
+export const FieldValue = ({ field, value }: { field?: FieldSchema; value: unknown }) => (
+  <CellText text={field?.type === 'boolean' ? (value ? 'Yes' : '') : formatValue(field, value)} />
+)
+
 // A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive
 export function EntryList({ type, archived = false }: { type: ContentType; archived?: boolean }) {
   const [rows, setRows] = useState<ReturnType<typeof tree>>()
@@ -73,6 +87,8 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
   const [pagination, setPagination] = useState<Pagination>()
   const [sort, setSort] = useState<{ name: string; direction: 'asc' | 'desc' }>()
   const [error, setError] = useState('')
+  // The entries ticked for bulk editing, in the order they were ticked, kept as pages and sorts change
+  const [ticked, setTicked] = useState<Array<string>>([])
   const ordered = type.structure === 'hierarchical' && !archived
   // Archived entries are never live, and without drafts, saved ones always are
   const statuses = !archived && type.drafts !== false
@@ -82,6 +98,7 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
     const field = type.fields.find((field) => field.name === name)
     return {
       name,
+      field,
       label: field?.label ?? name,
       number: field?.type === 'number' || field?.type === 'range',
       sortable: !ordered && !!field && sortable.has(field.type),
@@ -119,6 +136,13 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
     else setSort(sort.direction === 'asc' ? { name, direction: 'desc' } : undefined)
   }
 
+  const tick = (ids: Array<string>, on: boolean) =>
+    setTicked((all) =>
+      on ? [...all, ...ids.filter((id) => !all.includes(id))] : all.filter((id) => !ids.includes(id)),
+    )
+  const shownIds = rows?.map(({ entry }) => entry.id) ?? []
+  const pageTicked = shownIds.length > 0 && shownIds.every((id) => ticked.includes(id))
+
   const newEntry = (
     <a className='iight-button iight-button--primary' href={`#/types/${type.name}/new`}>
       <Plus /> New {singular}
@@ -133,6 +157,14 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
         actions={
           !archived && (
             <>
+              {ticked.length > 0 && (
+                <>
+                  <span className='cms-muted'>{ticked.length} selected</span>
+                  <a className='iight-button' href={`#/types/${type.name}/bulk/${ticked.join(',')}`}>
+                    <Sheet /> Bulk edit
+                  </a>
+                </>
+              )}
               <a className='iight-button' href={`#/types/${type.name}/archive`}>
                 <Archive /> Archive
               </a>
@@ -158,6 +190,21 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
           <table className='cms-table'>
             <thead>
               <tr>
+                {!archived && (
+                  <th className='cms-table__tick'>
+                    <label>
+                      <input
+                        type='checkbox'
+                        aria-label='Select every entry on this page'
+                        checked={pageTicked}
+                        ref={(box) => {
+                          if (box) box.indeterminate = !pageTicked && shownIds.some((id) => ticked.includes(id))
+                        }}
+                        onChange={(event) => tick(shownIds, event.target.checked)}
+                      />
+                    </label>
+                  </th>
+                )}
                 {columns.map((column) => {
                   const direction = sort?.name === column.name ? sort.direction : undefined
                   return (
@@ -189,7 +236,19 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
             </thead>
             <tbody>
               {rows.map(({ entry, depth, index, siblings }) => (
-                <tr key={entry.id}>
+                <tr key={entry.id} className={ticked.includes(entry.id) ? 'cms-table__selected' : undefined}>
+                  {!archived && (
+                    <td className='cms-table__tick'>
+                      <label>
+                        <input
+                          type='checkbox'
+                          aria-label={`Select ${titleOf(type, entry)}`}
+                          checked={ticked.includes(entry.id)}
+                          onChange={(event) => tick([entry.id], event.target.checked)}
+                        />
+                      </label>
+                    </td>
+                  )}
                   {columns.map((column, position) => (
                     <td key={column.name} className={column.number ? 'cms-table__number' : undefined}>
                       {position === 0 ? (
@@ -197,7 +256,7 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
                           {formatField(type, column.name, entry) || 'Untitled'}
                         </a>
                       ) : (
-                        <Cell type={type} name={column.name} entry={entry} />
+                        <FieldValue field={column.field} value={entry.values[column.name]} />
                       )}
                     </td>
                   ))}

@@ -8,7 +8,7 @@ import type { EventName } from './schemas'
 import type { ContentType } from './types'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import type { InputSchema } from 'iight'
+import type { FieldSchema, InputSchema, ValidationReport } from 'iight'
 import { Kysely, sql } from 'kysely'
 
 export type AdminEnv = { Variables: { user: { id: string; email: string; name: string } } }
@@ -16,6 +16,24 @@ export type AdminEnv = { Variables: { user: { id: string; email: string; name: s
 const slugTaken = 'Another entry here already uses this slug.'
 const liveSlugTaken = 'A published entry here already uses this slug.'
 const unpublishedParent = "Its parent isn't published. Publish the parent first."
+const archived = 'This entry is archived. Restore it to edit it.'
+
+const isObject = (value: unknown): value is Record<string, any> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+// Changed fields merged into an entry's values. A group's fields merge one by one, at any depth, and any other field's
+// value replaces what's stored, so a list or a link is sent whole. Keys that aren't the type's fields are left out.
+function merge(fields: Array<FieldSchema>, values: Record<string, any>, changed: Record<string, any>) {
+  const merged = { ...values }
+  for (const field of fields) {
+    if (!Object.hasOwn(changed, field.name)) continue
+    const value = changed[field.name]
+    const group = field.type === 'group' && isObject(value)
+    const saved = isObject(values[field.name]) ? values[field.name] : {}
+    merged[field.name] = group ? merge(field.options?.fields ?? [], saved, value) : value
+  }
+  return merged
+}
 
 // The entry and everything under it, as a "tree" for the statement that follows
 const tree = (id: string) => sql`
@@ -146,9 +164,16 @@ export function entryRoutes(
     c.json({ data: toAdminEntry((await find(id)).row) }, status)
 
   // The inputs' server checks, with the type's slug field also checking that no sibling has the slug, archived ones
-  // included, and for a publish, no live sibling. Built per request, since the check needs the entry and its parent.
-  const checkInputs = (type: ContentType, id: string | null, parentId: string | null, publish: boolean) => {
-    const inputs = serverInputs(db, types)
+  // included, and for a publish, no live sibling. Built per save, since the check needs the entry and its parent, and
+  // querying through the save's transaction.
+  const checkInputs = (
+    trx: Kysely<Database>,
+    type: ContentType,
+    id: string | null,
+    parentId: string | null,
+    publish: boolean,
+  ) => {
+    const inputs = serverInputs(trx, types)
     const slugField = type.fields.find((field) => field.name === type.slugField)
     if (!slugField) return inputs
 
@@ -157,7 +182,7 @@ export function entryRoutes(
       const validation = identifier.validateValue!(value, schema)
       if (schema.id !== slugField.id || !validation.isValid || isEmptyValue(value)) return validation
 
-      const sibling = await db
+      const sibling = await trx
         .selectFrom('entries')
         .select('archived_at')
         .where('type', '=', type.name)
@@ -176,7 +201,7 @@ export function entryRoutes(
       // A live entry keeps its slug until it's published again, so a publish can clash with one that no draft has
       const live =
         publish &&
-        (await db
+        (await trx
           .selectFrom('published_entries')
           .select('id')
           .where('type', '=', type.name)
@@ -191,9 +216,9 @@ export function entryRoutes(
   }
 
   // A parent must be an entry of the same type that isn't archived, and neither the entry nor one of its descendants
-  const checkParent = async (type: ContentType, parentId: unknown, id?: string) => {
+  const checkParent = async (trx: Kysely<Database>, type: ContentType, parentId: unknown, id?: string) => {
     const parent = isUuid(parentId)
-      ? await db
+      ? await trx
           .selectFrom('entries')
           .selectAll()
           .where('id', '=', parentId)
@@ -214,7 +239,7 @@ export function entryRoutes(
             select entries.id, entries.parent_id from entries join ancestors on entries.id = ancestors.parent_id
           )
           select exists (select 1 from ancestors where id = ${id}) as loops
-        `.execute(db)
+        `.execute(trx)
       ).rows[0].loops
 
     if (!parent || loops) {
@@ -225,10 +250,9 @@ export function entryRoutes(
     return parent
   }
 
-  // Create or update an entry from { values, parentId }, saving a version of its values. With publish: true, it also
-  // runs the checks a publish needs and makes what it saves the live copy, or does neither.
-  const save = async (c: Context<AdminEnv>, type: ContentType, existing?: StatusRow) => {
-    // The types already have a pending migration's change, so saving now would mix the old fields' values with the new
+  // The content migrations that have run, which values saved now have been through. While one is pending, the types
+  // already have its change, so saving would mix the old fields' values with the new.
+  const migrated = async () => {
     const files = await migrations()
     const applied = await appliedMigrations(db, files)
     const pending = Object.keys(files)
@@ -239,26 +263,46 @@ export function entryRoutes(
         message: `Run iight migrate first. The content migration ${pending} hasn't run yet.`,
       })
     }
+    return applied
+  }
 
-    // A type without drafts publishes every save
-    const body = await c.req.json().catch(() => ({}))
-    const publish = type.drafts === false || body?.publish === true
-    const parentId: string | null = type.structure === 'hierarchical' ? (body?.parentId ?? null) : null
-    const parent = parentId === null ? undefined : await checkParent(type, parentId, existing?.id)
-
-    // A draft can be unfinished, with required fields left empty, but a publish runs every check
-    const values = pickValues(type.fields, body?.values ?? {}, cmsInputs)
-    const inputs = checkInputs(type, existing?.id ?? null, parentId, publish)
-    const report = await validateServerValues(type.fields, values, inputs, { allowIncomplete: !publish })
-    if (!report.isValid) return c.json(report, 422)
-
-    const slug: string | null = (type.slugField && values[type.slugField]) || null
-    const hierarchical = type.structure === 'hierarchical'
-    const uri = !hierarchical || !slug ? null : parent ? parent.uri && `${parent.uri}/${slug}` : slug
-    const user = c.var.user.id
-
+  // Check values and save them as a new entry, or as the new version of the entry with the given ID, in one
+  // transaction. An entry is read and locked first, and what's saved comes from that read, so no other save of the
+  // entry can land between the two: what's sent replaces its values, or for bulk editing, merges into them. With
+  // publish, it runs the checks a publish needs too and makes what it saves the live copy, or does neither. A failed
+  // check comes back as core's report, and whatever else stops the save throws. The checks query through the
+  // transaction, so a save never waits for a second connection while it holds one.
+  const saveEntry = async (
+    type: ContentType,
+    user: string,
+    applied: Array<string>,
+    publish: boolean,
+    sent: (saved?: EntryRow) => { values: unknown; parentId: string | null },
+    id?: string,
+  ): Promise<{ id: string; report?: undefined } | { id?: undefined; report: ValidationReport }> => {
+    let report: ValidationReport | undefined
     try {
-      const row = await db.transaction().execute(async (trx) => {
+      return await db.transaction().execute(async (trx) => {
+        const existing =
+          id !== undefined && isUuid(id)
+            ? await trx.selectFrom('entries').selectAll().where('id', '=', id).forUpdate().executeTakeFirst()
+            : undefined
+        if (id !== undefined && existing?.type !== type.name) throw new HTTPException(404)
+        if (existing?.archived_at) throw new HTTPException(409, { message: archived })
+
+        const { values: posted, parentId } = sent(existing)
+        const parent = parentId === null ? undefined : await checkParent(trx, type, parentId, existing?.id)
+
+        // A draft can be unfinished, with required fields left empty, but a publish runs every check
+        const values = pickValues(type.fields, (posted as Record<string, any>) ?? {}, cmsInputs)
+        const inputs = checkInputs(trx, type, existing?.id ?? null, parentId, publish)
+        report = await validateServerValues(type.fields, values, inputs, { allowIncomplete: !publish })
+        if (!report.isValid) return { report }
+
+        const slug: string | null = (type.slugField && values[type.slugField]) || null
+        const hierarchical = type.structure === 'hierarchical'
+        const uri = !hierarchical || !slug ? null : parent ? parent.uri && `${parent.uri}/${slug}` : slug
+
         // A new or moved entry goes after its siblings
         const position = !hierarchical
           ? null
@@ -288,7 +332,7 @@ export function entryRoutes(
               .returningAll()
               .executeTakeFirstOrThrow()
 
-        // The update above locks the entry, so concurrent saves number their versions in turn
+        // The entry is locked, so concurrent saves number their versions in turn
         const { number } = await trx
           .insertInto('entry_versions')
           .values({
@@ -309,10 +353,8 @@ export function entryRoutes(
         }
 
         if (publish) await goLive(trx, type, row, number, user)
-        return row
+        return { id: row.id }
       })
-
-      return reply(c, row.id, existing ? 200 : 201)
     } catch (error) {
       const constraint = (error as { constraint?: string }).constraint
       // Its live parent was unpublished while it was being published
@@ -322,9 +364,19 @@ export function entryRoutes(
       // Two saves can pass a slug check at the same moment, and then an index stops the second
       const message = { entries_slug_unique: slugTaken, published_entries_slug_unique: liveSlugTaken }[constraint!]
       if (!message) throw error
-      const fields = { ...report.fields, [type.slugField!]: { isValid: false, messages: [message] } }
-      return c.json({ isValid: false, fields }, 422)
+      const fields = { ...report!.fields, [type.slugField!]: { isValid: false, messages: [message] } }
+      return { report: { isValid: false, fields } }
     }
+  }
+
+  // Create or update an entry from { values, parentId, publish }, where a type without drafts publishes every save
+  const save = async (c: Context<AdminEnv>, type: ContentType, id?: string) => {
+    const applied = await migrated()
+    const body = await c.req.json().catch(() => ({}))
+    const publish = type.drafts === false || body?.publish === true
+    const parentId: string | null = type.structure === 'hierarchical' ? (body?.parentId ?? null) : null
+    const saved = await saveEntry(type, c.var.user.id, applied, publish, () => ({ values: body?.values, parentId }), id)
+    return saved.report ? c.json(saved.report, 422) : reply(c, saved.id, id ? 200 : 201)
   }
 
   app.get('/types/:type/entries', async (c) => {
@@ -340,6 +392,51 @@ export function entryRoutes(
     const type = typeNamed(c.req.param('type'))
     if (type.structure === 'singleton') throw new HTTPException(409, { message: 'A singleton has one entry, open it.' })
     return save(c, type)
+  })
+
+  // Bulk editing (PLAN.md section 18): save the changed fields of up to 100 of a type's entries, with one publish for
+  // them all, replying with each one's result in the order sent. Each saves on its own, as PUT /entries/:id saves,
+  // so the rows that pass are saved whatever happens to the others. Each merges into its entry as it's locked for the
+  // save, so another save's changes to its other fields are kept, however close together they land.
+  app.patch('/types/:type/entries', async (c) => {
+    const type = typeNamed(c.req.param('type'))
+    if (type.structure === 'singleton') throw new HTTPException(409, { message: 'A singleton has one entry, open it.' })
+
+    const body = await c.req.json().catch(() => ({}))
+    const entries: Array<{ id: string; values: Record<string, any> }> = body?.entries
+    const sound =
+      Array.isArray(entries) &&
+      entries.length >= 1 &&
+      entries.length <= 100 &&
+      entries.every((entry) => isObject(entry) && typeof entry.id === 'string' && isObject(entry.values))
+    if (!sound) throw new HTTPException(400, { message: 'entries must list 1 to 100 entries, each { id, values }.' })
+    if (new Set(entries.map((entry) => entry.id)).size < entries.length) {
+      throw new HTTPException(400, { message: 'Each entry can only be sent once.' })
+    }
+
+    const applied = await migrated()
+    const publish = type.drafts === false || body.publish === true
+    const data = []
+    for (const { id, values } of entries) {
+      try {
+        // Pages stay where they are
+        const merged = (saved?: EntryRow) => ({
+          values: merge(type.fields, saved!.values, values),
+          parentId: saved!.parent_id,
+        })
+        const saved = await saveEntry(type, c.var.user.id, applied, publish, merged, id)
+        data.push(
+          saved.report
+            ? { id, status: 422, report: saved.report }
+            : { id, status: 200, data: toAdminEntry((await find(id)).row) },
+        )
+      } catch (error) {
+        if (!(error instanceof HTTPException)) throw error
+        const message = error.status === 404 ? "There's no entry of this type with this id." : error.message
+        data.push({ id, status: error.status, message })
+      }
+    }
+    return c.json({ data })
   })
 
   // A singleton's entry, created the first time it's opened
@@ -376,8 +473,8 @@ export function entryRoutes(
 
   app.put('/entries/:id', async (c) => {
     const { row, type } = await find(c.req.param('id'))
-    if (row.archived_at) throw new HTTPException(409, { message: 'This entry is archived. Restore it to edit it.' })
-    return save(c, type, row)
+    if (row.archived_at) throw new HTTPException(409, { message: archived })
+    return save(c, type, row.id)
   })
 
   // Take an entry off the live site, with the live pages under it, keeping its draft

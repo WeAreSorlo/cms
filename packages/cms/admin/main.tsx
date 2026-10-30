@@ -2,6 +2,7 @@ import { signInSchema } from '../src/schemas'
 import './admin.scss'
 import { ContentType, TypesContext, api } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
+import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { MediaLibrary } from './media'
@@ -83,8 +84,8 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
-// The page for the URL's hash, such as #/types/blog, #/entries/<id>, #/media, #/forms/<id>/inbox,
-// #/automations/<id>/runs or #/schema/blog in the type editor
+// The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>, #/media,
+// #/forms/<id>/inbox, #/automations/<id>/runs or #/schema/blog in the type editor
 function Page({
   hash,
   types,
@@ -96,7 +97,7 @@ function Page({
   editable: boolean
   reloadTypes: () => Promise<void>
 }) {
-  const [section, name, action] = hash.replace(/^#\/?/, '').split('/')
+  const [section, name, action, ids] = hash.replace(/^#\/?/, '').split('/')
   const type = section === 'types' ? types.get(name) : undefined
 
   if (Design && section === 'design') {
@@ -123,6 +124,7 @@ function Page({
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
+  if (type && action === 'bulk') return <BulkEditor key={hash} type={type} ids={ids?.split(',') ?? []} />
   if (type) return <EntryList key={`${type.name}/${action}`} type={type} archived={action === 'archive'} />
   return <p>{types.size ? 'Choose a content type.' : 'Add a content type to schema/types to get started.'}</p>
 }

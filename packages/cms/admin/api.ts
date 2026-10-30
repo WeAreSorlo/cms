@@ -1,6 +1,6 @@
 import { media, relationship } from '../src/fields'
 import type { ContentType } from '../src/types'
-import { Input, inputs } from 'iight'
+import { FieldSchema, Input, inputs } from 'iight'
 import { createContext } from 'react'
 
 export type { ContentType }
@@ -69,14 +69,27 @@ export async function allEntries(type: ContentType) {
   return entries
 }
 
-// A field's value as text, formatted by its input
-export function formatField(type: ContentType, name: string | undefined, entry: Entry) {
-  const field = type.fields.find((field) => field.name === name)
+// A value as text, formatted by its field's input
+export function formatValue(field: FieldSchema | undefined, value: any) {
   const format =
     field && ({ ...inputs, relationship, media } as Record<string, Partial<Input>>)[field.type]?.formatValue
-  const value = entry.values[name ?? '']
-  return (format ? format(value, field) : value?.toString()) ?? ''
+  // Core formats an invalid value as null, which shows here as it is, so a cell can show what its message is about
+  const text = (format && format(value, field)) ?? (typeof value === 'object' ? null : value?.toString())
+  // Core formats a choice field as the values it holds, which show here as their choices' labels
+  const choices: Array<{ value: unknown; label?: string }> | undefined = field?.options?.choices
+  if (!choices) return text ?? ''
+  return [text ?? []]
+    .flat()
+    .map((item) => choices.find((choice) => choice.value === item)?.label ?? item)
+    .join(', ')
 }
+
+// A field's value as text, formatted by its input
+export const formatField = (type: ContentType, name: string | undefined, entry: Entry) =>
+  formatValue(
+    type.fields.find((field) => field.name === name),
+    entry.values[name ?? ''],
+  )
 
 export const titleOf = (type: ContentType, entry: Entry) =>
   type.structure === 'singleton' ? type.label : formatField(type, type.titleField, entry) || 'Untitled'
