@@ -109,6 +109,8 @@ pre {
   display: grid;
   grid-template-columns: var(--cms-sidebar) minmax(0, 1fr);
   align-items: start;
+  // Rows as tall as their content. Stretched to fill min-height, they'd push the page down from the phone's top bar.
+  align-content: start;
   box-sizing: border-box;
   min-height: 100dvh;
   padding: var(--cms-inset);
