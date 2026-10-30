@@ -64,9 +64,8 @@ const runsFor = (row: AutomationRow, form: { id: string; name: string; label: st
 }
 
 // The admin API for automations and their runs. Every route needs a session, which createApp checks.
-export function automationRoutes(db: Kysely<Database>) {
+export function automationRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
   const app = new Hono<AdminEnv>()
-  const schema = automationSchema(baseInputSchemaFields())
 
   const find = async (id: string) => {
     const row = isUuid(id)
@@ -78,6 +77,9 @@ export function automationRoutes(db: Kysely<Database>) {
 
   const save = async (c: Context<AdminEnv>, existing?: AutomationRow) => {
     const body = await c.req.json().catch(() => ({}))
+    // Rules test the fields of the types and forms as they are now, which the type editor and the admin change
+    const forms = await db.selectFrom('forms').select(['id', 'label', 'fields']).execute()
+    const schema = automationSchema(baseInputSchemaFields(), types.values(), forms)
     const picked = pickValues(schema, body ?? {}, inputs)
     const values: Record<string, any> = {
       ...picked,

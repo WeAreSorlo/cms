@@ -1,5 +1,5 @@
 import { actionLayouts, automationSchema, events } from '../src/schemas'
-import { api, date, errorMessage } from './api'
+import { TypesContext, api, date, errorMessage } from './api'
 import {
   Badge,
   EmptyState,
@@ -13,9 +13,9 @@ import {
   useConfirm,
   useToast,
 } from './ui'
-import Form, { FormHandle, baseInputSchemaFields } from 'iight'
+import Form, { FieldSchema, FormHandle, baseInputSchemaFields } from 'iight'
 import { History, Mail, Pencil, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 // An automation as the admin API returns it
 interface Automation {
@@ -39,8 +39,6 @@ interface Run {
   response: string | null
   error: string | null
 }
-
-const schema = automationSchema(baseInputSchemaFields())
 
 const settingsOf = ({ name, triggers, conditions, actions }: Automation) => ({ name, triggers, conditions, actions })
 
@@ -143,6 +141,13 @@ export function FormAutomations({ formId }: { formId: string }) {
 // Create or change an automation in a core form: the events that trigger it, conditions on their data, and the
 // actions it runs in order
 function AutomationEditor({ automation: loaded, initial }: { automation?: Automation; initial?: object }) {
+  // Its rules test the fields of the site's types and forms, listed as the server lists them to check them
+  const types = useContext(TypesContext)
+  const [forms, setForms] = useState<Array<{ id: string; label: string; fields: Array<FieldSchema> }>>()
+  const schema = useMemo(
+    () => forms && automationSchema(baseInputSchemaFields(), types.values(), forms),
+    [types, forms],
+  )
   const form = useRef<FormHandle>(null)
   // Around the form, for finding the fields that stop a save
   const area = useRef<HTMLDivElement>(null)
@@ -154,6 +159,12 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
   const [problem, setProblem] = useState('')
   // The action under way, such as save
   const [busy, setBusy] = useState<string>()
+
+  useEffect(() => {
+    api('GET', '/forms')
+      .then(({ body }) => setForms(body.data))
+      .catch((error) => setProblem(errorMessage(error)))
+  }, [])
 
   // Run an action, showing what went wrong if it fails. The buttons stay enabled, so the focused one keeps focus, and
   // a second click is ignored here instead.
@@ -225,7 +236,11 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
       />
 
       <div ref={area}>
-        <Form ref={form} schema={schema} values={shown} onValuesChange={setValues} />
+        {schema ? (
+          <Form ref={form} schema={schema} values={shown} onValuesChange={setValues} />
+        ) : (
+          !problem && <Loading />
+        )}
       </div>
 
       <Panel

@@ -261,7 +261,7 @@ Forms live in the database rather than in `schema/`, since marketers make them i
 
 - Each change to a form's fields saves a new version, and each submission records the version it was checked against, so the inbox shows it with that version's fields. Changing only the label or name keeps the version.
 - Each form has an inbox of its submissions, newest first, with Spam and Archive views. Archived submissions can be restored, and any submission can be marked as spam by hand, such as one that got past the honeypot, or as not spam, such as a person's that filled it in.
-- The form's page shows HTML for pasting it into any page, which posts to the form with JavaScript off and takes the page's own styles. It posts to the form's ID, so renaming a form never breaks a page it's pasted into. Repeater, matrix and flexible fields are left out of it, since adding their items needs JavaScript.
+- The form's page shows HTML for pasting it into any page, which posts to the form with JavaScript off and takes the page's own styles. It posts to the form's ID, so renaming a form never breaks a page it's pasted into. Repeater, matrix, flexible and conditions fields are left out of it, since adding their items needs JavaScript.
 
 ### Submissions
 
@@ -311,7 +311,7 @@ Every change writes an event, in the same transaction as the change, so an event
 Content migrations write no events. `entry.updated` comes with every draft save, so a site that rebuilds when its content changes should listen for `entry.published` and `entry.unpublished` instead. An automation has:
 
 - **Triggers**, one or more of the events.
-- **Conditions**, core's conditional logic, checked against the event's data. Any group can match, and a group matches when all its rules do. A rule's field is a path into the data, such as `entry.type`, `entry.values.featured`, `form.name`, `submission.values.email` or `submission.spam`, and values compare as text, so `false` matches `"spam": false`. With no groups, every event it's triggered by runs it.
+- **Conditions**, core's conditional logic, checked against the event's data and edited with core's `conditions` input. Any group can match, and a group matches when all its rules do. A rule's field is a path into the data, picked from a list: `entry.type`, `form.id`, `form.name`, `submission.spam` and `media.mime`, then each type's top-level fields as `entry.values.<name>` and each form's as `submission.values.<name>`, by label, such as "Blog posts › Featured". Each field's type decides the operators, and a choice field's choices, a type, a form or a yes or no are picked from a list too. The routes check rules against the same list, so a rule on a field that's gone is refused until it's changed. Values compare as text, so `false` matches `"spam": false`. With no groups, every event it's triggered by runs it.
 - **Actions**, run in order. They're the blocks of a flexible field, so each action's settings are a core schema, in `src/schemas.ts`, and `src/actions.ts` runs it.
 
 | Action         | Settings                                                                                                                                                                                   |

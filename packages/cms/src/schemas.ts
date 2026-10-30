@@ -134,10 +134,82 @@ export const actionLayouts = [
   },
 ] satisfies Array<{ name: string; label: string; fields: Array<FieldSchema> }>
 
+interface HasFields {
+  label: string
+  fields: Array<FieldSchema>
+}
+
+// A rule's type for a field, by its input, as core's schema builder gives them. Choice fields give their choices.
+const ruleTypes: Record<string, string> = {
+  boolean: 'boolean',
+  number: 'number',
+  range: 'number',
+  date: 'date',
+  datetime: 'date',
+}
+
+const isChoice = (field: FieldSchema) => ['select', 'radio', 'checkbox'].includes(field.type)
+
+// The paths into an event's data that an automation's rules can test, as core's conditions input lists them: the
+// event's own first, then the types' and the forms' top-level fields, by label, as "Blog posts › Featured". Groups
+// are left out, since a rule can't compare them, and so is content, which holds no value.
+function eventFields(types: Iterable<HasFields & { name: string }>, forms: Array<HasFields & { id: string }>) {
+  const byLabel = <T extends HasFields>(list: Iterable<T>) => [...list].sort((a, b) => a.label.localeCompare(b.label))
+  const typeList = byLabel(types)
+  const formList = byLabel(forms)
+
+  // A path such as entry.values.slug is the same field in every type with one, so it's listed once, labelled with
+  // them all, as "Blog posts, Docs › Slug". Their choices go together, and fields of different kinds compare as text.
+  const fieldsOf = (owners: Array<HasFields>, path: string) => {
+    const named = new Map<string, Array<{ owner: string; field: FieldSchema }>>()
+    for (const owner of owners) {
+      for (const field of owner.fields) {
+        if (field.type === 'group' || field.type === 'content') continue
+        named.set(field.name, [...(named.get(field.name) ?? []), { owner: owner.label, field }])
+      }
+    }
+
+    return [...named].map(([name, uses]) => {
+      const fields = uses.map(({ field }) => field)
+      const kinds = new Set(fields.map((field) => (isChoice(field) ? 'choices' : (ruleTypes[field.type] ?? 'text'))))
+      const choices = fields
+        .flatMap((field): Array<any> => field.options?.choices ?? [])
+        .flatMap((choice) => (choice?.choices?.length ? choice.choices : [choice]))
+      const kind = kinds.size === 1 ? [...kinds][0] : 'text'
+      return {
+        value: path + name,
+        label: `${uses.map(({ owner }) => owner).join(', ')} › ${fields[0].label ?? name}`,
+        ...(kind === 'choices'
+          ? { choices: [...new Map(choices.map((choice) => [String(choice?.value), choice])).values()] }
+          : { type: kind }),
+      }
+    })
+  }
+
+  return [
+    {
+      value: 'entry.type',
+      label: 'Entry type',
+      choices: typeList.map((type) => ({ value: type.name, label: type.label })),
+    },
+    { value: 'form.id', label: 'Form', choices: formList.map((form) => ({ value: form.id, label: form.label })) },
+    // Renaming a form breaks rules on its name, so its ID is the one to pick, but older automations use the name
+    { value: 'form.name', label: 'Form name' },
+    { value: 'submission.spam', label: 'Spam', type: 'boolean' },
+    { value: 'media.mime', label: 'File type', example: 'image/png' },
+    ...fieldsOf(typeList, 'entry.values.'),
+    ...fieldsOf(formList, 'submission.values.'),
+  ]
+}
+
 // An automation, rendered by the admin's automation editor and checked by its routes. Its conditions are core's
 // conditional logic, taken from baseFields, which is core's baseInputSchemaFields(): the admin and the server each load
-// their own build of core.
-export function automationSchema(baseFields: Array<FieldSchema>): Array<FieldSchema> {
+// their own build of core. Its rules test the event's data, so both list the fields of the same types and forms.
+export function automationSchema(
+  baseFields: Array<FieldSchema>,
+  types: Iterable<HasFields & { name: string }>,
+  forms: Array<HasFields & { id: string }>,
+): Array<FieldSchema> {
   const conditions = baseFields.find((field) => field.name === 'conditions')!
   return [
     { name: 'name', label: 'Name', type: 'text', required: true, options: { placeholder: 'Contact us notifications' } },
@@ -146,7 +218,8 @@ export function automationSchema(baseFields: Array<FieldSchema>): Array<FieldSch
       ...conditions,
       label: 'Only if',
       instructions:
-        "Runs when any group has all of its rules matching. A rule's field is a path in the event's data, such as entry.type, entry.values.featured, form.name, submission.values.email, submission.spam or media.mime. With no groups, every event it's triggered by runs it.",
+        "Runs when any group has all of its rules matching, each testing the event's data. With no rules, every event it's triggered by runs it.",
+      options: { ...conditions.options, fieldChoices: eventFields(types, forms) },
     },
     { name: 'actions', label: 'Then', type: 'flexible', required: true, options: { layouts: actionLayouts } },
   ]

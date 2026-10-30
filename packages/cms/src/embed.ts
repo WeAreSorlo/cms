@@ -28,8 +28,8 @@ const inputTypes: Record<string, string> = {
   color: 'color',
 }
 
-// Inputs whose rows or blocks are added with JavaScript, which a plain HTML form can't do
-const needJavaScript = ['repeater', 'matrix', 'flexible', 'schemabuilder']
+// Inputs whose rows, blocks or rules are added with JavaScript, which a plain HTML form can't do
+const needJavaScript = ['repeater', 'matrix', 'flexible', 'schemabuilder', 'conditions']
 
 interface Choice {
   value: string

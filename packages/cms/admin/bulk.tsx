@@ -39,7 +39,7 @@ export interface Column {
 }
 
 // Fields too big for a cell, which open in a dialog
-const dialogTypes = new Set(['repeater', 'matrix', 'flexible', 'relationship', 'media', 'schemabuilder'])
+const dialogTypes = new Set(['repeater', 'matrix', 'flexible', 'relationship', 'media', 'schemabuilder', 'conditions'])
 
 // Every column a type's grid can show. A group's fields become columns of their own, and so do those of the groups
 // inside it. Content and hidden fields have nothing to edit.

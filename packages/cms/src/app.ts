@@ -176,7 +176,7 @@ export function createApp(
   app.route('/api', typeRoutes(types, groups, editor))
   app.route('/api', entryRoutes(db, types, migrations))
   app.route('/api', formRoutes(db))
-  app.route('/api', automationRoutes(db))
+  app.route('/api', automationRoutes(db, types))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))

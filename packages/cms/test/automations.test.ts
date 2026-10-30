@@ -2,6 +2,8 @@ import type { MailMessage } from '../src'
 import { webhookNetworks } from '../src/actions'
 import { createApp } from '../src/app'
 import { createWorker } from '../src/automations'
+import { baseInputSchemaFields, flattenValidationReport } from '../src/core'
+import { automationSchema } from '../src/schemas'
 import { db } from './database'
 import { contactFields, setUp, types } from './fixtures'
 import { FSDriver } from 'flydrive/drivers/fs'
@@ -367,6 +369,51 @@ test('conditions on the event data decide which automations run', async () => {
   const listed = (await admin('GET', `/automations?form=${form.id}`)).body.data
   expect(listed.map((automation: { name: string }) => automation.name)).toEqual(['Contact us', 'Every submission'])
   expect((await admin('GET', '/automations?form=nope')).status).toBe(404)
+})
+
+test("rules test the fields of the site's types and forms, as the editor lists them", async () => {
+  const form = (await admin('GET', '/forms')).body.data[0]
+  // The rules Email new submissions starts with, and one on each kind of value
+  const rules = [
+    { field: 'form.id', operator: 'equals', value: form.id },
+    { field: 'submission.spam', operator: 'equals', value: 'false' },
+    { field: 'submission.values.topics', operator: 'contains', value: 'sales' },
+    { field: 'entry.type', operator: 'equals', value: 'blog' },
+    { field: 'entry.values.views', operator: 'greaterThan', value: '100' },
+    { field: 'entry.values.published_at', operator: 'lessThan', value: '2026-10-30' },
+    { field: 'media.mime', operator: 'startsWith', value: 'image/' },
+  ]
+  await createAutomation({ name: 'Every kind of rule', conditions: [{ rules }], actions: [email] })
+
+  const refused = await admin('POST', '/automations', {
+    name: 'Wrong rules',
+    triggers: ['entry.created'],
+    actions: [email],
+    conditions: [
+      {
+        rules: [
+          { field: 'entry.values.nope', operator: 'equals', value: 'x' },
+          { field: 'entry.values.featured', operator: 'contains', value: 'yes' },
+          { field: 'entry.type', operator: 'equals', value: 'gone' },
+        ],
+      },
+    ],
+  })
+  expect(refused.status).toBe(422)
+  expect(flattenValidationReport(refused.body).messages).toEqual({
+    'conditions.0.rules.0.field': ['A valid choice required.'],
+    'conditions.0.rules.1.operator': ['A valid choice required.'],
+    'conditions.0.rules.1.value': ['A valid choice required.'],
+    'conditions.0.rules.2.value': ['A valid choice required.'],
+  })
+})
+
+test('lists a path once when several types share it, with each type it belongs to', () => {
+  const conditions = automationSchema(baseInputSchemaFields(), types.values(), []).find(
+    (field) => field.name === 'conditions',
+  )!
+  const titles = conditions.options!.fieldChoices.filter((choice: any) => choice.value === 'entry.values.title')
+  expect(titles).toEqual([{ value: 'entry.values.title', label: 'Blog posts, Docs › Title', type: 'text' }])
 })
 
 test("emails go out through the site's own send, with the submission's fields", async () => {
