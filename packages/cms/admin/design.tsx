@@ -2,6 +2,7 @@ import { ContentType, Entry, GroupsContext, SharedGroup, Status } from './api'
 import { Grid, columnsOf, useRows } from './bulk'
 import { contrast, pairs } from './contrast'
 import './design.scss'
+import { Version, Versions } from './entries'
 import { iconInput, useInputs } from './fields'
 import { TypeGroups } from './groups'
 import { Media, MediaCard } from './media'
@@ -13,14 +14,16 @@ import {
   Notice,
   PageHeader,
   Pages,
+  Panel,
+  PanelSlot,
   StatusBadge,
   ThemeSwitch,
   useConfirm,
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
-import { Archive, ArrowDown, ArrowUp, CircleAlert, Inbox, Sheet } from 'lucide-react'
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Sheet, Trash2 } from 'lucide-react'
+import { ReactNode, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 const colours = [
   '--cms-page',
@@ -63,20 +66,91 @@ const sampleFiles: Array<Media> = [
   },
 ]
 
-// The entry editor's action bar as an entry's status changes it, with an action under way and one that failed, and
-// for a type without drafts, whose Save publishes
-const actionBars = [
-  { label: 'A draft', live: false, drafts: true },
-  { label: 'Published, or changed since', live: true, drafts: true },
-  { label: 'While it publishes', live: true, drafts: true, busy: true },
+// Seven versions, newest first, a day apart, one of them saved by a user deleted since
+const sampleVersions: Array<Version> = [7, 6, 5, 4, 3, 2, 1].map((number) => ({
+  number,
+  createdBy: number === 2 ? null : { id: 'usr_sample', name: 'Levi' },
+  createdAt: `2026-10-${22 + number}T14:0${number}:00Z`,
+}))
+
+// The entry editor's panel for each kind of entry: new, before and after a publish that can't go ahead, changed since
+// its live version with the history shut and open, archived, and of a type without drafts, whose Save publishes
+const panels: Array<{
+  label: string
+  status: 'new' | 'changed' | 'archived' | 'published'
+  problem?: string
+  open?: boolean
+  drafts?: boolean
+}> = [
+  { label: 'A new entry', status: 'new' },
   {
     label: "A publish that can't go ahead",
-    live: false,
-    drafts: true,
+    status: 'new',
     problem: '2 fields need fixing before this can be published.',
   },
-  { label: 'A type without drafts', live: true, drafts: false },
+  { label: 'Changed, with its history shut', status: 'changed' },
+  { label: 'Changed, with its history open', status: 'changed', open: true },
+  { label: 'Archived', status: 'archived' },
+  { label: 'A type without drafts', status: 'published', drafts: false },
 ]
+
+// One of the entry editor's panels, whose buttons toast what they'd do
+function EntryPanel({ status, problem, open, drafts = true }: Omit<(typeof panels)[number], 'label'>) {
+  const toast = useToast()
+  const archived = status === 'archived'
+  const entry = status !== 'new' && {
+    ...sampleEntry('sample', archived ? 'draft' : status, {}),
+    archivedAt: archived ? '2026-10-30T09:00:00Z' : null,
+    publishedVersion: { changed: 5, published: 7, archived: null }[status],
+  }
+  const button = (label: string, tone?: 'primary' | 'danger', icon?: ReactNode) => (
+    <button
+      type='button'
+      className={tone ? `iight-button iight-button--${tone}` : 'iight-button'}
+      onClick={() => toast(label)}
+    >
+      {icon} {label}
+    </button>
+  )
+
+  return (
+    <Panel
+      label='About this entry'
+      problem={problem}
+      actions={
+        archived ? (
+          button('Restore', 'primary', <ArchiveRestore />)
+        ) : (
+          <>
+            {drafts && button('Save draft')}
+            {button(drafts ? 'Publish' : 'Save', 'primary')}
+          </>
+        )
+      }
+      footer={
+        entry &&
+        (archived ? (
+          button('Delete for good', 'danger', <Trash2 />)
+        ) : (
+          <>
+            {drafts && entry.status !== 'draft' && button('Unpublish')}
+            {button('Archive', undefined, <Archive />)}
+          </>
+        ))
+      }
+    >
+      {entry && (
+        <Versions
+          versions={sampleVersions}
+          entry={entry}
+          drafts={drafts}
+          defaultOpen={open}
+          onRestore={(version) => toast(`Version ${version.number} is in the form`)}
+        />
+      )}
+    </Panel>
+  )
+}
 
 const buttons = [
   ['Secondary', 'iight-button'],
@@ -448,67 +522,27 @@ export default function Design() {
 
       <h2>Publishing</h2>
       <p>
-        An entry's status shows in its editor's header and in its list. Publish saves the form and makes it the live
-        copy, and Unpublish takes the live copy down once there is one. The versions list marks the version that's live.
+        An entry's status shows in its editor's header and in its list. The editor's panel has Save draft and Publish at
+        the top, which saves the form and makes it the live copy, and Unpublish at the bottom once there's a live copy.
+        Its versions show the current one and the live one until all of them are asked for. Other editors' panels have
+        Save at the top and Delete at the bottom. Below 64rem the top is a bar fixed to the bottom of the window, and
+        the rest follows the form, but here the panels stay as they are.
       </p>
       <div className='actions'>
         {(['draft', 'published', 'changed'] as const).map((status) => (
           <StatusBadge key={status} status={status} />
         ))}
       </div>
-      {actionBars.map(({ label, live, drafts, busy, problem }) => (
-        <section key={label}>
-          <h3>{label}</h3>
-          <div className='cms-action-bar'>
-            {drafts && (
-              <button
-                type='button'
-                className='iight-button iight-button--primary'
-                aria-busy={busy}
-                onClick={() => toast('Published')}
-              >
-                {busy ? 'Publishing…' : 'Publish'}
-              </button>
-            )}
-            <button
-              type='button'
-              className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
-              onClick={() => toast('Saved')}
-            >
-              Save
-            </button>
-            {live && drafts && (
-              <button type='button' className='iight-button' onClick={() => toast('Unpublished')}>
-                Unpublish
-              </button>
-            )}
-            <button type='button' className='iight-button' onClick={() => toast('Archived')}>
-              <Archive /> Archive
-            </button>
-            {problem && (
-              <p className='cms-problem'>
-                <CircleAlert /> {problem}
-              </p>
-            )}
-          </div>
-        </section>
-      ))}
-      <h3>Versions</h3>
-      <ol className='cms-versions'>
-        {[3, 2, 1].map((number) => (
-          <li key={number}>
-            Version {number}
-            <span className='cms-muted'>28/10/2026, 12:0{number}:00</span>
-            {number === 3 && <Badge tone='accent'>Current</Badge>}
-            {number === 2 && <StatusBadge status='published' />}
-            {number < 3 && (
-              <button type='button' className='iight-button' onClick={() => toast(`Restored version ${number}`)}>
-                Restore
-              </button>
-            )}
-          </li>
-        ))}
-      </ol>
+      <PanelSlot.Provider value={null}>
+        <ul className='cms-design__panels'>
+          {panels.map(({ label, ...panel }) => (
+            <li key={label}>
+              <h3>{label}</h3>
+              <EntryPanel {...panel} />
+            </li>
+          ))}
+        </ul>
+      </PanelSlot.Provider>
 
       <h2>Bulk editing</h2>
       <p>
@@ -569,19 +603,23 @@ export default function Design() {
         way to one, each through a dialog, and a use links to the shared group its fields come from.
       </p>
       <GroupsContext.Provider value={sampleGroups}>
-        {['editable', 'read-only'].map((state) => (
-          <section key={state}>
-            <h3>{state === 'editable' ? 'In iight dev' : 'Read-only'}</h3>
-            <aside className='cms-editor__aside'>
-              <TypeGroups
-                fields={groupFields(state)}
-                editable={state === 'editable'}
-                onMakeShared={(field) => toast(`Opens Make ${field.label} shared`)}
-                onUseShared={(field) => toast(`Opens Use a shared group for ${field.label}`)}
-              />
-            </aside>
-          </section>
-        ))}
+        <PanelSlot.Provider value={null}>
+          <ul className='cms-design__panels'>
+            {['editable', 'read-only'].map((state) => (
+              <li key={state}>
+                <h3>{state === 'editable' ? 'In iight dev' : 'Read-only'}</h3>
+                <Panel label='Details'>
+                  <TypeGroups
+                    fields={groupFields(state)}
+                    editable={state === 'editable'}
+                    onMakeShared={(field) => toast(`Opens Make ${field.label} shared`)}
+                    onUseShared={(field) => toast(`Opens Use a shared group for ${field.label}`)}
+                  />
+                </Panel>
+              </li>
+            ))}
+          </ul>
+        </PanelSlot.Provider>
       </GroupsContext.Provider>
 
       <h2>Media cards</h2>

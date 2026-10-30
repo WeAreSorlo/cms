@@ -5,10 +5,17 @@
  */
 
 $phone: 40rem;
+// From here an editor's panel floats beside the page
+$aside: 64rem;
 
-// Room for the sticky bars, so a focused field never hides behind them
+// Room for the sticky bars, so a focused field never hides behind them. Below 64rem, an editor's actions are a bar
+// fixed to the bottom of the window, which its panel measures as --cms-bar.
 html {
   scroll-padding-block: 4rem;
+
+  @media (width < $aside) {
+    scroll-padding-bottom: max(4rem, calc(var(--cms-bar, 0px) + 2 * var(--cms-inset)));
+  }
 }
 
 body {
@@ -96,15 +103,21 @@ pre {
   height: 1rem;
 }
 
+// The nav and the page, inset from the window's edges. An editor's panel goes beside the page from 64rem, and after it
+// below that, under the page's column. The page scrolls with the window.
 .admin {
-  display: flex;
-  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--cms-sidebar) minmax(0, 1fr);
+  align-items: start;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: var(--cms-inset);
 
   > main {
-    flex: 1;
+    grid-column: 2;
     min-width: 0;
     max-width: var(--cms-column);
-    padding: var(--iight-size-4) var(--cms-size-8);
+    padding: var(--iight-size-2) var(--iight-size-4) var(--cms-size-6);
 
     // Focus lands here from the skip link only when a page has no heading
     &:focus {
@@ -130,31 +143,30 @@ pre {
   display: none;
 }
 
+// A card as tall as the window, whose list scrolls above the user's row. It spans the panel's row too, below 64rem.
 .cms-nav {
   position: sticky;
-  top: 0;
+  top: var(--cms-inset);
+  grid-row: span 2;
   display: flex;
-  flex: none;
   flex-direction: column;
-  gap: var(--iight-size-4);
   box-sizing: border-box;
-  width: var(--cms-sidebar);
-  height: 100vh;
-  overflow-y: auto;
-  padding: var(--iight-size-4) var(--iight-size-3);
+  height: calc(100dvh - 2 * var(--cms-inset));
   background: var(--cms-surface);
-  border-right: var(--iight-size-px) solid var(--cms-rule);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+  box-shadow: var(--cms-shadow-1);
 
   ul {
     display: flex;
     flex-direction: column;
     margin: 0;
-    padding: 0;
+    padding: var(--iight-size-2);
     list-style: none;
   }
 
+  // From edge to edge
   ul + ul {
-    padding-top: var(--iight-size-4);
     border-top: var(--iight-size-px) solid var(--cms-rule);
   }
 
@@ -181,24 +193,48 @@ pre {
   }
 }
 
-.cms-nav__mark {
-  padding: 0 var(--iight-size-2);
-  font-size: var(--cms-text-lg);
-  line-height: var(--cms-leading-lg);
+.cms-nav__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .cms-nav__user {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--iight-size-3);
-  margin-top: auto;
-  padding: var(--iight-size-4) var(--iight-size-2) 0;
+  align-items: center;
+  gap: var(--iight-size-1);
+  padding: var(--iight-size-2) var(--iight-size-2) var(--iight-size-2) var(--iight-size-3);
   border-top: var(--iight-size-px) solid var(--cms-rule);
 
   p {
+    flex: 1;
     margin: 0;
     color: var(--cms-muted);
+    overflow-wrap: anywhere;
+  }
+}
+
+.cms-nav__theme {
+  anchor-name: --cms-theme;
+}
+
+// The theme switch, over the page
+.cms-popover {
+  padding: var(--iight-size-3);
+  color: var(--cms-text);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+  box-shadow: var(--cms-shadow-2);
+}
+
+// Just above its button and level with its right edge, where browsers can place it there, and in the middle of the
+// window where they can't
+@supports (position-area: top) {
+  .cms-popover {
+    position-anchor: --cms-theme;
+    position-area: top span-left;
+    margin: 0 0 var(--iight-size-1);
   }
 }
 
@@ -392,30 +428,38 @@ pre {
 .cms-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--iight-size-3);
   margin-bottom: var(--iight-size-4);
+}
+
+// The list's link and the title, both bold and large, with the link and its slash muted
+.cms-header__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--iight-size-2);
+  min-width: 0;
+  font-size: var(--cms-text-xl);
+  line-height: var(--cms-leading-xl);
+  font-weight: var(--iight-font-weight-bold);
+  color: var(--cms-muted);
+
+  > a {
+    color: inherit;
+    text-decoration: none;
+
+    &:hover {
+      color: var(--cms-text);
+      text-decoration: underline;
+    }
+  }
 
   h1 {
     margin: 0;
-  }
-}
-
-.cms-header__back {
-  display: flex;
-  align-items: center;
-  gap: var(--iight-size-1);
-  width: fit-content;
-  margin-bottom: var(--iight-size-1);
-  font-size: var(--cms-text-sm);
-  line-height: var(--cms-leading-sm);
-  color: var(--cms-muted);
-  text-decoration: none;
-
-  &:hover {
     color: var(--cms-text);
-    text-decoration: underline;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -427,8 +471,11 @@ pre {
   gap: var(--iight-size-2);
 }
 
+// Badges and details beside the title, in the body's text
 .cms-header__meta {
-  margin-top: var(--iight-size-1);
+  font-size: var(--cms-text-base);
+  line-height: var(--cms-leading-base);
+  font-weight: var(--iight-font-weight-normal);
 }
 
 // Core's buttons on links, such as New blog post
@@ -570,6 +617,7 @@ a.iight-button {
   }
 }
 
+// At the bottom right of the page, clear of an editor's panel and of the bar its actions make below 64rem
 .cms-toasts {
   position: fixed;
   right: var(--iight-size-4);
@@ -578,6 +626,16 @@ a.iight-button {
   display: flex;
   flex-direction: column;
   gap: var(--iight-size-2);
+
+  @media (width >= $aside) {
+    .admin:has(.cms-panel-slot > .cms-panel) & {
+      right: calc(var(--cms-panel) + 2 * var(--cms-inset));
+    }
+  }
+
+  @media (width < $aside) {
+    bottom: calc(var(--cms-bar, 0px) + 2 * var(--cms-inset));
+  }
 }
 
 .cms-toast {
@@ -609,26 +667,51 @@ a.iight-button {
   margin-right: auto;
 }
 
-.cms-editor__body {
+// An editor's panel: a card of actions, details and actions that take the page away, which the reference page shows
+// as it is
+.cms-panel {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--cms-size-6) var(--cms-size-8);
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--cms-panel);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+  box-shadow: var(--cms-shadow-1);
 }
 
-.cms-editor__form {
-  flex: 1 1 30rem;
-  min-width: 0;
-  max-width: var(--cms-column);
+.cms-panel__actions,
+.cms-panel__footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+  padding: var(--iight-size-3);
 }
 
-// Beside the form when there's room, and under it when there isn't
-.cms-editor__aside {
+.cms-panel__actions {
+  border-bottom: var(--iight-size-px) solid var(--cms-rule);
+}
+
+// Save draft and Publish share the width
+.cms-panel__buttons {
   display: flex;
-  flex: 1 1 15rem;
+  gap: var(--iight-size-2);
+
+  > * {
+    flex: 1;
+  }
+}
+
+// The only part that scrolls, padded so its focus rings aren't clipped
+.cms-panel__body {
+  display: flex;
+  flex: 1;
   flex-direction: column;
   gap: var(--cms-size-6);
-  max-width: 20rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--iight-size-3);
 
   h2 {
     margin: 0 0 var(--iight-size-2);
@@ -642,24 +725,108 @@ a.iight-button {
   }
 }
 
+.cms-panel__footer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: auto;
+  border-top: var(--iight-size-px) solid var(--cms-rule);
+}
+
+// The shell's column for a panel, which holds nothing of its own
+.cms-panel-slot {
+  display: contents;
+}
+
+@media (width >= $aside) {
+  .admin {
+    grid-template-columns: var(--cms-sidebar) minmax(0, 1fr) auto;
+  }
+
+  // At the window's right edge, as tall as the nav
+  .cms-panel-slot > .cms-panel {
+    position: sticky;
+    top: var(--cms-inset);
+    grid-row: 1;
+    grid-column: 3;
+    height: calc(100dvh - 2 * var(--cms-inset));
+  }
+}
+
+// After the page, in its column, with the actions in a bar fixed to the bottom of the window, which the page leaves
+// room for
+@media (width < $aside) {
+  .cms-panel-slot > .cms-panel {
+    grid-column: 2;
+    box-sizing: content-box;
+    width: auto;
+    max-width: var(--cms-column);
+    padding: 0 var(--iight-size-4) calc(var(--cms-bar, 0px) + 2 * var(--cms-inset));
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+
+    > .cms-panel__actions {
+      position: fixed;
+      right: var(--cms-inset);
+      bottom: var(--cms-inset);
+      left: calc(2 * var(--cms-inset) + var(--cms-sidebar));
+      z-index: 1;
+      background: var(--cms-surface);
+      border: var(--iight-size-px) solid var(--cms-rule);
+      border-radius: var(--iight-size-2);
+      box-shadow: var(--cms-shadow-2);
+    }
+
+    > .cms-panel__body {
+      overflow: visible;
+      padding: 0;
+    }
+
+    > .cms-panel__footer {
+      margin-top: var(--cms-size-6);
+      padding: var(--iight-size-3) 0 0;
+    }
+  }
+}
+
+// Each version and its badges over who saved it and when, with Restore beside them
 .cms-versions {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-1);
-  margin: 0;
+  gap: var(--iight-size-2);
+  margin: 0 0 var(--iight-size-2);
   padding: 0;
   list-style: none;
 
   li {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--iight-size-2);
-    min-height: var(--cms-control);
+
+    > div {
+      flex: 1;
+      min-width: 0;
+    }
   }
 }
 
-// Sticks to the bottom of the window while the form is longer than it
+.cms-versions__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-1) var(--iight-size-2);
+}
+
+.cms-versions__by {
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  color: var(--cms-muted);
+  overflow-wrap: anywhere;
+}
+
+// The bulk editor's actions, which need the page's full width. They stick to the bottom of the window while the grid
+// is longer than it.
 .cms-action-bar {
   position: sticky;
   bottom: 0;
@@ -672,10 +839,6 @@ a.iight-button {
   padding: var(--iight-size-3) 0;
   background: var(--cms-page);
   border-top: var(--iight-size-px) solid var(--cms-rule);
-}
-
-.cms-action-bar__end {
-  margin-left: auto;
 }
 
 .cms-problem {
@@ -1145,10 +1308,20 @@ a.iight-button {
 
 @media (max-width: $phone) {
   .admin {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
 
     > main {
+      grid-column: 1;
       padding: var(--iight-size-4);
+    }
+  }
+
+  .cms-panel-slot > .cms-panel {
+    grid-column: 1;
+
+    > .cms-panel__actions {
+      left: var(--cms-inset);
     }
   }
 
@@ -1167,18 +1340,16 @@ a.iight-button {
   // The menu button shows and hides the nav, which then sits under the bar
   .cms-nav {
     position: static;
-    width: auto;
+    grid-row: auto;
     height: auto;
-    border-right: 0;
+    border: 0;
     border-bottom: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: 0;
+    box-shadow: none;
 
     &:not([data-open]) {
       display: none;
     }
-  }
-
-  .cms-nav__mark {
-    display: none;
   }
 
   .cms-toasts {

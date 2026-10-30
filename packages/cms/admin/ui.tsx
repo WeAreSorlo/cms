@@ -20,6 +20,8 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
@@ -65,7 +67,8 @@ export const TypeIcon = ({ name }: { name?: string }) => (
   </Suspense>
 )
 
-// A page's title, with a link back above it, details below it, and its actions on the right
+// A page's title on one line after a link to the list it's in, with details such as a badge beside it, and its
+// actions on the right. The h1 holds only the title, since the shell titles the document after it.
 export function PageHeader({
   back,
   title,
@@ -79,19 +82,78 @@ export function PageHeader({
 }) {
   return (
     <header className='cms-header'>
-      <div>
+      <div className='cms-header__title'>
         {back && (
-          <a className='cms-header__back' href={back.href}>
-            <ChevronLeft />
-            {back.label}
-          </a>
+          <>
+            <a href={back.href}>{back.label}</a>
+            <span aria-hidden>/</span>
+          </>
         )}
         <h1>{title}</h1>
-        {meta && <div className='cms-header__meta'>{meta}</div>}
+        {meta && <span className='cms-header__meta'>{meta}</span>}
       </div>
       {actions && <div className='cms-header__actions'>{actions}</div>}
     </header>
   )
+}
+
+// Where editors' panels go: the shell's column at the window's right, or nowhere, as on the reference page, which
+// shows its panels in place
+export const PanelSlot = createContext<HTMLElement | null>(null)
+
+// An editor's panel: its actions at the top with what stops them, details in the middle, and the actions that take
+// the page away, such as Delete, at the bottom. From 64rem it floats beside the page, as tall as the window, and only
+// its middle scrolls. Below that, its actions are a bar fixed to the bottom of the window, and the rest follows the
+// page.
+export function Panel({
+  actions,
+  problem,
+  label,
+  footer,
+  children,
+}: {
+  actions?: ReactNode
+  problem?: string
+  // The panel's name, such as About this entry
+  label?: string
+  footer?: ReactNode
+  children?: ReactNode
+}) {
+  const slot = useContext(PanelSlot)
+  const bar = useRef<HTMLDivElement>(null)
+  const hasBar = !!(actions || problem)
+
+  // The page makes room for the bar, as tall as its buttons and problem make it
+  useLayoutEffect(() => {
+    const element = bar.current
+    if (!slot || !element) return
+    const root = document.documentElement
+    const observer = new ResizeObserver(() => root.style.setProperty('--cms-bar', `${element.offsetHeight}px`))
+    observer.observe(element)
+    return () => {
+      observer.disconnect()
+      root.style.removeProperty('--cms-bar')
+    }
+  }, [slot, hasBar])
+
+  // The whole panel is the landmark, since the shell's column sits outside main and the actions need one too
+  const panel = (
+    <aside className='cms-panel' aria-label={label}>
+      {hasBar && (
+        <div ref={bar} className='cms-panel__actions'>
+          {actions && <div className='cms-panel__buttons'>{actions}</div>}
+          {problem && (
+            <p className='cms-problem' role='alert'>
+              <CircleAlert /> {problem}
+            </p>
+          )}
+        </div>
+      )}
+      {children && <div className='cms-panel__body'>{children}</div>}
+      {footer && <div className='cms-panel__footer'>{footer}</div>}
+    </aside>
+  )
+  return slot ? createPortal(panel, slot) : panel
 }
 
 const noticeIcons = { info: Info, success: CircleCheck, warning: TriangleAlert, danger: CircleAlert }

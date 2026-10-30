@@ -79,6 +79,9 @@
   --cms-row: 2rem;
   --cms-control: 1.75rem;
   --cms-sidebar: 14rem;
+  --cms-panel: 18rem;
+  // Between the window's edges and the floating nav and panel
+  --cms-inset: var(--iight-size-2);
   --cms-column: 48rem;
   --cms-page-max: 80rem;
   --cms-radius-pill: 999px;

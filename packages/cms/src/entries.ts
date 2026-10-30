@@ -617,19 +617,21 @@ export function entryRoutes(
     return c.body(null, 204)
   })
 
-  // Every saved version, newest first. To restore one, save its values again, which the next route brings up to date.
+  // Every saved version, newest first, with who saved it. Only saves write versions, so a version with no user was
+  // saved by a user deleted since. To restore one, save its values again, which the next route brings up to date.
   app.get('/entries/:id/versions', async (c) => {
     const { row } = await find(c.req.param('id'))
     const versions = await db
       .selectFrom('entry_versions')
-      .select(['number', 'created_by', 'created_at'])
+      .leftJoin('users', 'users.id', 'entry_versions.created_by')
+      .select(['number', 'entry_versions.created_at', 'users.id as user_id', 'users.name as user_name'])
       .where('entry_id', '=', row.id)
       .orderBy('number', 'desc')
       .execute()
     return c.json({
       data: versions.map((version) => ({
         number: version.number,
-        createdBy: version.created_by,
+        createdBy: version.user_id ? { id: version.user_id, name: version.user_name } : null,
         createdAt: version.created_at,
       })),
     })

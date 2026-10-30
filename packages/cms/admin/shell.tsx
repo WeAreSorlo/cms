@@ -1,10 +1,22 @@
 import { ContentType, SectionContext, sectionOf } from './api'
-import { Confirmer, ThemeSwitch, Toaster, TypeIcon } from './ui'
-import { Blocks, ClipboardList, Component, Images, LogOut, LucideProvider, Menu, Workflow, X } from 'lucide-react'
+import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
+import {
+  Blocks,
+  ClipboardList,
+  Component,
+  Images,
+  LogOut,
+  LucideProvider,
+  Menu,
+  SunMoon,
+  Workflow,
+  X,
+} from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
-// The page around every admin page: the nav, the user's menu, and a skip link. After each change of page it titles the
-// document after the page's heading and moves focus there, so screen readers announce the new page.
+// The page around every admin page: the nav with the user's row, a skip link, and the column for an editor's panel.
+// After each change of page it titles the document after the page's heading and moves focus there, so screen readers
+// announce the new page.
 export function Shell({
   hash,
   types,
@@ -19,6 +31,7 @@ export function Shell({
   children: ReactNode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const main = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
 
@@ -107,40 +120,57 @@ export function Shell({
           aria-label='Main'
           data-open={menuOpen || undefined}
           onKeyDown={(event) => {
-            if (!menuOpen || event.key !== 'Escape') return
+            // Escape closes an open popover first, as the browser does
+            if (!menuOpen || event.key !== 'Escape' || event.currentTarget.querySelector(':popover-open')) return
             setMenuOpen(false)
             menuButton.current?.focus()
           }}
         >
-          <strong className='cms-nav__mark'>iight</strong>
-          {groups.map((items, index) => (
-            <ul key={index}>
-              {items.map((item) => (
-                <li key={item.section}>
-                  <a href={`#/${item.section}`} aria-current={item.section === section ? 'page' : undefined}>
-                    {item.icon}
-                    {item.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ))}
+          <div className='cms-nav__list'>
+            {groups.map((items, index) => (
+              <ul key={index}>
+                {items.map((item) => (
+                  <li key={item.section}>
+                    <a href={`#/${item.section}`} aria-current={item.section === section ? 'page' : undefined}>
+                      {item.icon}
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
           <div className='cms-nav__user'>
-            <p>Signed in as {user.name}.</p>
-            <ThemeSwitch />
-            <button type='button' className='iight-button' onClick={onSignOut}>
-              <LogOut /> Sign out
+            <p>Signed in as {user.name}</p>
+            <button
+              type='button'
+              className='cms-icon-button cms-nav__theme'
+              aria-label='Theme'
+              title='Theme'
+              popoverTarget='cms-theme'
+            >
+              <SunMoon />
             </button>
+            {/* After its button, so Tab goes into it */}
+            <div id='cms-theme' className='cms-popover' popover='auto'>
+              <ThemeSwitch />
+            </div>
+            <IconButton label='Sign out' onClick={onSignOut}>
+              <LogOut />
+            </IconButton>
           </div>
         </nav>
 
         <main id='main' ref={main} tabIndex={-1}>
           <SectionContext.Provider value={showSection}>
-            <Toaster>
-              <Confirmer>{children}</Confirmer>
-            </Toaster>
+            <PanelSlot.Provider value={panelSlot}>
+              <Toaster>
+                <Confirmer>{children}</Confirmer>
+              </Toaster>
+            </PanelSlot.Provider>
           </SectionContext.Provider>
         </main>
+        <div ref={setPanelSlot} className='cms-panel-slot' />
       </div>
     </LucideProvider>
   )

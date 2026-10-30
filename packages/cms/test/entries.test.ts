@@ -83,9 +83,24 @@ test("creates and edits entries with the type's fields, saving a version each ti
 
   const versions = await send('GET', `/entries/${entry.id}/versions`)
   expect(versions.body.data).toEqual([
-    { number: 2, createdBy: userId, createdAt: expect.any(String) },
-    { number: 1, createdBy: userId, createdAt: expect.any(String) },
+    { number: 2, createdBy: { id: userId, name: 'Ada' }, createdAt: expect.any(String) },
+    { number: 1, createdBy: { id: userId, name: 'Ada' }, createdAt: expect.any(String) },
   ])
+
+  // A version saved by a user deleted since has no one to name
+  const gone = '0192f0c4-0000-7000-8000-00000000dead'
+  await db
+    .insertInto('users')
+    .values({ id: gone, name: 'Gone', email: 'gone@example.com', password_hash: '' })
+    .execute()
+  await db
+    .updateTable('entry_versions')
+    .set({ created_by: gone })
+    .where('entry_id', '=', entry.id)
+    .where('number', '=', 1)
+    .execute()
+  await db.deleteFrom('users').where('id', '=', gone).execute()
+  expect((await send('GET', `/entries/${entry.id}/versions`)).body.data[1].createdBy).toBeNull()
 
   // Restoring a version means saving its values again, as a new version
   const first = await send('GET', `/entries/${entry.id}/versions/1`)

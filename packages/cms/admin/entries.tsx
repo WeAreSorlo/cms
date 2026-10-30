@@ -9,6 +9,7 @@ import {
   errorMessage,
   formatField,
   formatValue,
+  shortDate,
   titleOf,
   tree,
 } from './api'
@@ -23,6 +24,7 @@ import {
   PageHeader,
   Pages,
   Pagination,
+  Panel,
   StatusBadge,
   TypeIcon,
   focusInvalid,
@@ -30,18 +32,9 @@ import {
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
-import {
-  Archive,
-  ArchiveRestore,
-  ArrowDown,
-  ArrowUp,
-  ChevronsUpDown,
-  CircleAlert,
-  Plus,
-  Sheet,
-  Trash2,
-} from 'lucide-react'
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown, Plus, Sheet, Trash2 } from 'lucide-react'
+import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 // Fields whose stored values sort the way they read
 const sortable = new Set([
@@ -291,17 +284,78 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
   )
 }
 
-interface Version {
+export interface Version {
   number: number
+  // Null once the user who saved it is deleted
+  createdBy: { id: string; name: string } | null
   createdAt: string
+}
+
+// An entry's versions, newest first: the current one, and the live one when that's older, until all of them are asked
+// for. Every version but the current one can be restored, unless the entry is archived.
+export function Versions({
+  versions,
+  entry,
+  drafts,
+  defaultOpen = false,
+  onRestore,
+}: {
+  versions: Array<Version>
+  entry: Entry
+  drafts: boolean
+  defaultOpen?: boolean
+  onRestore: (version: Version) => void
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const id = useId()
+  const current = versions[0]
+  const few = versions.filter((version) => version === current || version.number === entry.publishedVersion)
+
+  return (
+    <section>
+      <h2>Versions</h2>
+      <ol id={id} className='cms-versions'>
+        {(open ? versions : few).map((version) => (
+          <li key={version.number}>
+            <div>
+              <div className='cms-versions__title'>
+                Version {version.number}
+                {version === current && <Badge tone='accent'>Current</Badge>}
+                {drafts && version.number === entry.publishedVersion && <StatusBadge status='published' />}
+              </div>
+              <div className='cms-versions__by'>
+                {version.createdBy?.name ?? 'Deleted user'} · {shortDate(version.createdAt)}
+              </div>
+            </div>
+            {version !== current && !entry.archivedAt && (
+              <button
+                type='button'
+                className='iight-button'
+                aria-label={`Restore version ${version.number}`}
+                onClick={() => onRestore(version)}
+              >
+                Restore
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+      {versions.length > few.length && (
+        <button type='button' className='link' aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+          {open ? 'Show fewer' : `Show all ${versions.length} versions`}
+        </button>
+      )}
+    </section>
+  )
 }
 
 // Create, edit and publish an entry with its type's fields, see the entries that link to it, and see and restore its
 // versions
 export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?: Entry }) {
   const form = useRef<FormHandle>(null)
-  // Where focus goes once Unpublish, which only a live entry has, goes
-  const publishButton = useRef<HTMLButtonElement>(null)
+  // The primary button at the top of the panel, Publish, Save or Restore, where focus goes once the button it
+  // replaces goes, such as Unpublish, which only a live entry has
+  const primaryButton = useRef<HTMLButtonElement>(null)
   // Around the forms, for finding the fields that stop a save
   const fields = useRef<HTMLDivElement>(null)
   const inputs = useInputs()
@@ -413,12 +467,12 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
     act('unpublish', async () => {
       setEntry((await api('POST', `/entries/${entry!.id}/unpublish`)).body.data)
       toast('Unpublished')
-      publishButton.current?.focus()
+      primaryButton.current?.focus()
     })
 
   // Put an old version's values in the form, for saving as the newest version
-  const restore = (version: Version) =>
-    act('restore', async () => {
+  const restoreVersion = (version: Version) =>
+    act('version', async () => {
       show((await api('GET', `/entries/${entry!.id}/versions/${version.number}`)).body.data.values)
       setRestoring(version)
     })
@@ -428,19 +482,26 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
     setRestoring(undefined)
   }
 
+  // Archiving swaps the panel's buttons for Restore and Delete for good, and restoring swaps them back, so once the page
+  // shows the result, focus moves to the primary button: Restore, or Publish, or Save for a type without drafts
+  const archiveOrRestore = (action: 'archive' | 'restore') =>
+    act(action, async () => {
+      const { body } = await api('POST', `/entries/${entry!.id}/${action}`)
+      flushSync(() => setEntry(body.data))
+      primaryButton.current?.focus()
+    })
+
   // Each asks first where it needs to, before the action starts, so the dialog hands focus back to its button
-  const archive = async (action: 'archive' | 'restore') => {
+  const archive = async () => {
     const count = usedBy.length
-    const cancelled =
-      action === 'archive' &&
-      count > 0 &&
-      !(await confirm({
+    const sure =
+      count === 0 ||
+      (await confirm({
         title: `Archive ${titleOf(type, entry!)}?`,
         body: `${count === 1 ? 'An entry links' : `${count} entries link`} to it. Their links leave it out until it's restored, and it can't be deleted while they're there.`,
         action: 'Archive',
       }))
-    if (cancelled) return
-    act(action, async () => setEntry((await api('POST', `/entries/${entry!.id}/${action}`)).body.data))
+    if (sure) archiveOrRestore('archive')
   }
 
   const remove = async () => {
@@ -461,7 +522,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   const archived = !!entry?.archivedAt
 
   return (
-    <div className='cms-page cms-editor'>
+    <div>
       <PageHeader
         back={type.structure !== 'singleton' ? { href: `#/types/${type.name}`, label: type.label } : undefined}
         title={entry ? titleOf(type, entry) : `New ${type.singular ?? type.label}`}
@@ -470,61 +531,48 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
         }
       />
 
-      <div className='cms-editor__body'>
-        <div ref={fields} className='cms-editor__form'>
-          {archived && <Notice tone='warning'>Archived on {date(entry.archivedAt!)}. Restore it to edit it.</Notice>}
-          {restoring && (
-            <Notice>
-              Version {restoring.number} is in the form. Save to restore it.{' '}
-              <button type='button' className='iight-button' onClick={discard}>
-                Discard
-              </button>
-            </Notice>
-          )}
-
-          {hierarchical && (
-            <Form
-              schema={parentSchema}
-              values={shownParent}
-              onValuesChange={(next) => setParentId(next.parentId || null)}
-            />
-          )}
-          <Form ref={form} schema={type.fields} inputs={inputs} values={shown} onValuesChange={setValues} />
-        </div>
-
-        {entry && (usedBy.length > 0 || versions.length > 0) && (
-          <aside className='cms-editor__aside' aria-label='About this entry'>
-            <UsedBy entries={usedBy} types={types} />
-            {versions.length > 0 && (
-              <section>
-                <h2>Versions</h2>
-                <ol className='cms-versions'>
-                  {versions.map((version, index) => (
-                    <li key={version.number}>
-                      Version {version.number}
-                      <span className='cms-muted'>{date(version.createdAt)}</span>
-                      {index === 0 && <Badge tone='accent'>Current</Badge>}
-                      {drafts && version.number === entry.publishedVersion && <StatusBadge status='published' />}
-                      {index > 0 && !archived && (
-                        <button type='button' className='iight-button' onClick={() => restore(version)}>
-                          Restore
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </section>
-            )}
-          </aside>
+      <div ref={fields}>
+        {archived && <Notice tone='warning'>Archived on {date(entry.archivedAt!)}. Restore it to edit it.</Notice>}
+        {restoring && (
+          <Notice>
+            Version {restoring.number} is in the form. Save to restore it.{' '}
+            <button type='button' className='iight-button' onClick={discard}>
+              Discard
+            </button>
+          </Notice>
         )}
+
+        {hierarchical && (
+          <Form
+            schema={parentSchema}
+            values={shownParent}
+            onValuesChange={(next) => setParentId(next.parentId || null)}
+          />
+        )}
+        <Form ref={form} schema={type.fields} inputs={inputs} values={shown} onValuesChange={setValues} />
       </div>
 
-      <div className='cms-action-bar'>
-        {!archived && (
-          <>
-            {drafts && (
+      <Panel
+        label='About this entry'
+        problem={problem}
+        actions={
+          archived ? (
+            <button
+              ref={primaryButton}
+              type='button'
+              className='iight-button iight-button--primary'
+              aria-busy={busy === 'restore'}
+              onClick={() => archiveOrRestore('restore')}
+            >
+              <ArchiveRestore /> {busy === 'restore' ? 'Restoring…' : 'Restore'}
+            </button>
+          ) : drafts ? (
+            <>
+              <button type='button' className='iight-button' aria-busy={busy === 'save'} onClick={() => save(false)}>
+                {busy === 'save' ? 'Saving…' : 'Save draft'}
+              </button>
               <button
-                ref={publishButton}
+                ref={primaryButton}
                 type='button'
                 className='iight-button iight-button--primary'
                 aria-busy={busy === 'publish'}
@@ -532,43 +580,53 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
               >
                 {busy === 'publish' ? 'Publishing…' : 'Publish'}
               </button>
-            )}
+            </>
+          ) : (
             <button
+              ref={primaryButton}
               type='button'
-              className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
+              className='iight-button iight-button--primary'
               aria-busy={busy === 'save'}
               onClick={() => save(false)}
             >
               {busy === 'save' ? 'Saving…' : 'Save'}
             </button>
-            {drafts && entry && entry.status !== 'draft' && (
-              <button type='button' className='iight-button' aria-busy={busy === 'unpublish'} onClick={unpublish}>
-                {busy === 'unpublish' ? 'Unpublishing…' : 'Unpublish'}
+          )
+        }
+        footer={
+          entry &&
+          (archived ? (
+            <button
+              type='button'
+              className='iight-button iight-button--danger'
+              aria-busy={busy === 'delete'}
+              onClick={remove}
+            >
+              <Trash2 /> {busy === 'delete' ? 'Deleting…' : 'Delete for good'}
+            </button>
+          ) : (
+            <>
+              {drafts && entry.status !== 'draft' && (
+                <button type='button' className='iight-button' aria-busy={busy === 'unpublish'} onClick={unpublish}>
+                  {busy === 'unpublish' ? 'Unpublishing…' : 'Unpublish'}
+                </button>
+              )}
+              <button type='button' className='iight-button' aria-busy={busy === 'archive'} onClick={archive}>
+                <Archive /> {busy === 'archive' ? 'Archiving…' : 'Archive'}
               </button>
+            </>
+          ))
+        }
+      >
+        {entry && (versions.length > 0 || usedBy.length > 0) && (
+          <>
+            {versions.length > 0 && (
+              <Versions versions={versions} entry={entry} drafts={drafts} onRestore={restoreVersion} />
             )}
+            <UsedBy entries={usedBy} types={types} />
           </>
         )}
-        {/* One button for both, so it keeps focus when an entry is archived or restored */}
-        {entry && (
-          <button
-            type='button'
-            className={archived ? 'iight-button iight-button--primary' : 'iight-button'}
-            onClick={() => archive(archived ? 'restore' : 'archive')}
-          >
-            {archived ? <ArchiveRestore /> : <Archive />} {archived ? 'Restore' : 'Archive'}
-          </button>
-        )}
-        {problem && (
-          <p className='cms-problem' role='alert'>
-            <CircleAlert /> {problem}
-          </p>
-        )}
-        {archived && (
-          <button type='button' className='iight-button iight-button--danger cms-action-bar__end' onClick={remove}>
-            <Trash2 /> Delete for good
-          </button>
-        )}
-      </div>
+      </Panel>
     </div>
   )
 }

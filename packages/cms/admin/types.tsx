@@ -3,9 +3,9 @@ import { typeSchema } from '../src/schemas'
 import { ContentType, SharedGroup, api, errorMessage } from './api'
 import { iconInput, useInputs } from './fields'
 import { MakeShared, TypeGroups, UseShared } from './groups'
-import { Badge, EmptyState, Notice, PageHeader, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
+import { Badge, EmptyState, Notice, PageHeader, Panel, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
-import { Blocks, CircleAlert, Plus, Trash2 } from 'lucide-react'
+import { Blocks, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 // The builder is a form of its own, so a new choice in the settings never resets an editor open in it
@@ -219,56 +219,71 @@ export function TypeEditor({
   }
 
   return (
-    <div className='cms-page cms-editor'>
+    <div>
       <PageHeader
         back={{ href: '#/schema', label: 'Content types' }}
         title={type ? type.label : 'New content type'}
         meta={type && <Badge>{type.structure}</Badge>}
       />
 
-      <div className='cms-editor__body'>
-        <div ref={forms} className='cms-editor__form'>
-          {!editable && <Notice>{readOnly}</Notice>}
-          {result && (
-            <Notice tone='success'>
-              {result.message}
-              {result.notes.length > 0 && (
-                <ul>
-                  {result.notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              )}
-            </Notice>
-          )}
-          <Form
-            ref={settingsForm}
-            schema={schema}
-            inputs={settingsInputs}
-            values={shown}
-            onValuesChange={setSettings}
-          />
-          <Form
-            ref={fieldsForm}
-            schema={fieldsSchema}
-            inputs={inputs}
-            values={shownFields}
-            onValuesChange={(next) => changeFields(next.fields)}
-          />
-        </div>
-
-        {/* How the menu will show the type, following the settings as they're typed */}
-        <aside className='cms-editor__aside' aria-label='Details'>
-          <section>
-            <h2>In the menu</h2>
-            <p className='cms-type-preview'>
-              <TypeIcon name={settings.icon} />
-              {settings.label || 'Untitled'}
-            </p>
-          </section>
-          <TypeGroups fields={fields} editable={editable} onMakeShared={setMaking} onUseShared={setUsing} />
-        </aside>
+      <div ref={forms}>
+        {!editable && <Notice>{readOnly}</Notice>}
+        {result && (
+          <Notice tone='success'>
+            {result.message}
+            {result.notes.length > 0 && (
+              <ul>
+                {result.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            )}
+          </Notice>
+        )}
+        <Form ref={settingsForm} schema={schema} inputs={settingsInputs} values={shown} onValuesChange={setSettings} />
+        <Form
+          ref={fieldsForm}
+          schema={fieldsSchema}
+          inputs={inputs}
+          values={shownFields}
+          onValuesChange={(next) => changeFields(next.fields)}
+        />
       </div>
+
+      <Panel
+        label='Details'
+        problem={problem}
+        actions={
+          editable && (
+            <button
+              type='button'
+              className='iight-button iight-button--primary'
+              aria-busy={busy === 'save'}
+              onClick={save}
+            >
+              {busy === 'save' ? 'Saving…' : 'Save'}
+            </button>
+          )
+        }
+        footer={
+          editable &&
+          type && (
+            <button type='button' className='iight-button iight-button--danger' onClick={remove}>
+              <Trash2 /> Delete
+            </button>
+          )
+        }
+      >
+        {/* How the menu will show the type, following the settings as they're typed */}
+        <section>
+          <h2>In the menu</h2>
+          <p className='cms-type-preview'>
+            <TypeIcon name={settings.icon} />
+            {settings.label || 'Untitled'}
+          </p>
+        </section>
+        <TypeGroups fields={fields} editable={editable} onMakeShared={setMaking} onUseShared={setUsing} />
+      </Panel>
 
       {making && (
         <MakeShared
@@ -282,29 +297,6 @@ export function TypeEditor({
         />
       )}
       {using && <UseShared field={using} onClose={() => setUsing(undefined)} onUse={(group) => swap(using, group)} />}
-
-      {editable && (
-        <div className='cms-action-bar'>
-          <button
-            type='button'
-            className='iight-button iight-button--primary'
-            aria-busy={busy === 'save'}
-            onClick={save}
-          >
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
-          {problem && (
-            <p className='cms-problem' role='alert'>
-              <CircleAlert /> {problem}
-            </p>
-          )}
-          {type && (
-            <button type='button' className='iight-button iight-button--danger cms-action-bar__end' onClick={remove}>
-              <Trash2 /> Delete
-            </button>
-          )}
-        </div>
-      )}
     </div>
   )
 }

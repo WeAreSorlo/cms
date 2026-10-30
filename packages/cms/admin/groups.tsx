@@ -2,9 +2,9 @@ import { isUse, someField, usesOf } from '../src/fields'
 import { groupSchema } from '../src/schemas'
 import { ContentType, GroupsContext, SharedGroup, TypesContext, api, errorMessage } from './api'
 import { useInputs } from './fields'
-import { Dialog, EmptyState, Notice, PageHeader, focusInvalid, useConfirm, useToast } from './ui'
+import { Dialog, EmptyState, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
-import { CircleAlert, Component, Plus, Trash2 } from 'lucide-react'
+import { Component, Plus, Trash2 } from 'lucide-react'
 import { MouseEvent, useContext, useRef, useState } from 'react'
 
 // Shared groups (PLAN.md section 19): fields defined once in schema/groups, which types use through Shared group
@@ -187,77 +187,75 @@ export function GroupEditor({
   }
 
   return (
-    <div className='cms-page cms-editor'>
+    <div>
       <PageHeader
         back={{ href: '#/groups', label: 'Shared groups' }}
         title={group ? group.label : 'New shared group'}
       />
 
-      <div className='cms-editor__body'>
-        <div ref={forms} className='cms-editor__form'>
-          {!editable && <Notice>{readOnly}</Notice>}
-          {result && (
-            <Notice tone='success'>
-              {result.message}
-              {result.notes.length > 0 && (
-                <ul>
-                  {result.notes.map((note, index) => (
-                    <li key={index}>{note}</li>
-                  ))}
-                </ul>
-              )}
-            </Notice>
-          )}
-          <Form ref={settingsForm} schema={groupSchema} values={shown} onValuesChange={setSettings} />
-          <Form
-            ref={fieldsForm}
-            schema={fieldsSchema}
-            inputs={inputs}
-            values={shownFields}
-            onValuesChange={(next) => setFields(next.fields ?? [])}
-          />
-        </div>
-
-        <aside className='cms-editor__aside' aria-label='Details'>
-          <section className='cms-used-by'>
-            <h2>Used by</h2>
-            {users.length ? (
+      <div ref={forms}>
+        {!editable && <Notice>{readOnly}</Notice>}
+        {result && (
+          <Notice tone='success'>
+            {result.message}
+            {result.notes.length > 0 && (
               <ul>
-                {users.map((user) => (
-                  <li key={user.href}>
-                    <a href={user.href}>{user.label}</a>
-                  </li>
+                {result.notes.map((note, index) => (
+                  <li key={index}>{note}</li>
                 ))}
               </ul>
-            ) : (
-              <p className='cms-muted'>No type uses it yet.</p>
             )}
-          </section>
-        </aside>
+          </Notice>
+        )}
+        <Form ref={settingsForm} schema={groupSchema} values={shown} onValuesChange={setSettings} />
+        <Form
+          ref={fieldsForm}
+          schema={fieldsSchema}
+          inputs={inputs}
+          values={shownFields}
+          onValuesChange={(next) => setFields(next.fields ?? [])}
+        />
       </div>
 
-      {editable && (
-        <div className='cms-action-bar'>
-          <button
-            type='button'
-            className='iight-button iight-button--primary'
-            aria-busy={busy === 'save'}
-            onClick={save}
-          >
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
-          {problem && (
-            <p className='cms-problem' role='alert'>
-              <CircleAlert /> {problem}
-            </p>
-          )}
-          {group && (
-            <button type='button' className='iight-button iight-button--danger cms-action-bar__end' onClick={remove}>
+      <Panel
+        label='Details'
+        problem={problem}
+        actions={
+          editable && (
+            <button
+              type='button'
+              className='iight-button iight-button--primary'
+              aria-busy={busy === 'save'}
+              onClick={save}
+            >
+              {busy === 'save' ? 'Saving…' : 'Save'}
+            </button>
+          )
+        }
+        footer={
+          editable &&
+          group && (
+            <button type='button' className='iight-button iight-button--danger' onClick={remove}>
               <Trash2 /> Delete
             </button>
+          )
+        }
+      >
+        <section className='cms-used-by'>
+          <h2>Used by</h2>
+          {users.length ? (
+            <ul>
+              {users.map((user) => (
+                <li key={user.href}>
+                  <a href={user.href}>{user.label}</a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className='cms-muted'>No type uses it yet.</p>
           )}
-        </div>
-      )}
+        </section>
+      </Panel>
     </div>
   )
 }

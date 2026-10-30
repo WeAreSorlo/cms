@@ -8,12 +8,13 @@ import {
   PageHeader,
   Pages,
   Pagination,
+  Panel,
   focusInvalid,
   useConfirm,
   useToast,
 } from './ui'
 import Form, { FormHandle, baseInputSchemaFields } from 'iight'
-import { CircleAlert, History, Mail, Pencil, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react'
+import { History, Mail, Pencil, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // An automation as the admin API returns it
@@ -210,7 +211,7 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
   }
 
   return (
-    <div className='cms-page cms-editor'>
+    <div>
       <PageHeader
         back={{ href: '#/automations', label: 'Automations' }}
         title={automation ? automation.name : 'New automation'}
@@ -223,25 +224,31 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
         }
       />
 
-      <div ref={area} className='cms-editor__form'>
+      <div ref={area}>
         <Form ref={form} schema={schema} values={shown} onValuesChange={setValues} />
       </div>
 
-      <div className='cms-action-bar'>
-        <button type='button' className='iight-button iight-button--primary' aria-busy={busy === 'save'} onClick={save}>
-          {busy === 'save' ? 'Saving…' : 'Save'}
-        </button>
-        {problem && (
-          <p className='cms-problem' role='alert'>
-            <CircleAlert /> {problem}
-          </p>
-        )}
-        {automation && (
-          <button type='button' className='iight-button iight-button--danger cms-action-bar__end' onClick={remove}>
-            <Trash2 /> Delete
+      <Panel
+        label='About this automation'
+        problem={problem}
+        actions={
+          <button
+            type='button'
+            className='iight-button iight-button--primary'
+            aria-busy={busy === 'save'}
+            onClick={save}
+          >
+            {busy === 'save' ? 'Saving…' : 'Save'}
           </button>
-        )}
-      </div>
+        }
+        footer={
+          automation && (
+            <button type='button' className='iight-button iight-button--danger' onClick={remove}>
+              <Trash2 /> Delete
+            </button>
+          )
+        }
+      />
     </div>
   )
 }

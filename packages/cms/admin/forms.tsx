@@ -10,6 +10,7 @@ import {
   PageHeader,
   Pages,
   Pagination,
+  Panel,
   RouteTabs,
   focusInvalid,
   useToast,
@@ -178,7 +179,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
   }
 
   return (
-    <div className='cms-page cms-editor'>
+    <div>
       <PageHeader
         back={{ href: '#/forms', label: 'Forms' }}
         title={form ? form.label : 'New form'}
@@ -192,32 +193,28 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
         }
       />
 
-      {/* The action bar sticks while these forms are in view, and lets go before the embed code */}
-      <div>
-        <div ref={forms} className='cms-editor__form'>
-          <Form ref={settingsForm} schema={formSchema} values={shown} onValuesChange={setSettings} />
-          <Form
-            ref={fieldsForm}
-            schema={fieldsSchema}
-            values={shownFields}
-            onValuesChange={(next) => setFields(next.fields ?? [])}
-          />
-        </div>
+      <div ref={forms}>
+        <Form ref={settingsForm} schema={formSchema} values={shown} onValuesChange={setSettings} />
+        <Form
+          ref={fieldsForm}
+          schema={fieldsSchema}
+          values={shownFields}
+          onValuesChange={(next) => setFields(next.fields ?? [])}
+        />
+      </div>
 
-        <div className='cms-action-bar'>
+      <Panel
+        label='About this form'
+        problem={problem}
+        actions={
           <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={save}>
             {busy ? 'Saving…' : 'Save'}
           </button>
-          {problem && (
-            <p className='cms-problem' role='alert'>
-              <CircleAlert /> {problem}
-            </p>
-          )}
-        </div>
-      </div>
+        }
+      />
 
       {form && (
-        <section className='cms-editor__form cms-section'>
+        <section className='cms-section'>
           <h2>Embed</h2>
           <p>
             Paste this HTML into any page. It posts to the form without JavaScript, takes the page's own styles, and
@@ -239,7 +236,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
       )}
 
       {form && (
-        <div className='cms-editor__form cms-section'>
+        <div className='cms-section'>
           <FormAutomations formId={form.id} />
         </div>
       )}

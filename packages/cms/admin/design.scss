@@ -1,9 +1,17 @@
 /* The reference page's own styles, which the built admin leaves out along with the page */
 
 .cms-design {
-  // The samples sit in the page rather than sticking to the bottom of the window
-  .cms-action-bar {
-    position: static;
+  // Editors' panels in place, each as tall as a short window
+  &__panels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--iight-size-4);
+    padding: 0;
+    list-style: none;
+
+    .cms-panel {
+      height: 28rem;
+    }
   }
 
   &__swatches,
