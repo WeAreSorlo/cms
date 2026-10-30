@@ -1122,6 +1122,27 @@ a.iight-button {
   border-radius: var(--iight-size-1);
 }
 
+// A type's groups beside its editor, each with what it can become or the shared group it uses
+.cms-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-3);
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    flex-direction: column;
+    gap: var(--iight-size-1);
+  }
+}
+
+.cms-groups__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--iight-size-2);
+}
+
 @media (max-width: $phone) {
   .admin {
     flex-direction: column;

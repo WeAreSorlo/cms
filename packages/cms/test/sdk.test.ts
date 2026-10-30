@@ -1,6 +1,7 @@
 import { createApp } from '../src/app'
 import { uuidv7 } from '../src/db'
 import { createApiKey } from '../src/delivery'
+import { type ContentType, type SharedGroup, expandFields } from '../src/types'
 import { typesFile } from '../src/typescript'
 import { db } from './database'
 import { blog, contactFields, setUp, types } from './fixtures'
@@ -23,7 +24,58 @@ let server: ReturnType<typeof serve>
 
 // A form, which the generated types include
 const contact = { name: 'contact', fields: contactFields }
-const generated = () => typesFile(types, 2, [contact])
+
+// Shared groups, which the generated types name: one holding a link, one using it, and one without links
+const og: SharedGroup = {
+  id: 'grp_og',
+  name: 'og',
+  label: 'Sharing',
+  fields: [
+    { id: 'fld_image', type: 'media', name: 'image', options: { types: ['image/*'], maximum: 1 } },
+    { id: 'fld_alt', type: 'text', name: 'alt' },
+  ],
+}
+const seo: SharedGroup = {
+  id: 'grp_seo',
+  name: 'seo',
+  label: 'SEO',
+  fields: [
+    { id: 'fld_title', type: 'text', name: 'title', required: true },
+    { id: 'fld_share', type: 'shared', name: 'share', options: { group: 'grp_og' } },
+  ],
+}
+const meta: SharedGroup = {
+  id: 'grp_meta',
+  name: 'meta',
+  label: 'Meta',
+  fields: [{ id: 'fld_noindex', type: 'boolean', name: 'noindex' }],
+}
+const groups = new Map([og, seo, meta].map((group) => [group.name, group]))
+
+// A type using them, as types load with their uses expanded
+const pages: ContentType = {
+  id: 'typ_pages',
+  name: 'pages',
+  label: 'Pages',
+  structure: 'collection',
+  fields: expandFields(
+    [
+      { id: 'fld_heading', type: 'text', name: 'heading', required: true },
+      { id: 'fld_seo', type: 'shared', name: 'seo', options: { group: 'grp_seo' } },
+      { id: 'fld_meta', type: 'shared', name: 'meta', options: { group: 'grp_meta' } },
+      {
+        id: 'fld_items',
+        type: 'repeater',
+        name: 'items',
+        options: { fields: [{ id: 'fld_item_share', type: 'shared', name: 'share', options: { group: 'grp_og' } }] },
+      },
+    ],
+    new Map([...groups.values()].map((group) => [group.id, group])),
+  ),
+}
+
+const served = new Map([...types, ['pages', pages]])
+const generated = () => typesFile(served, 2, [contact], groups)
 
 beforeAll(async () => {
   await setUp()
@@ -55,7 +107,7 @@ beforeAll(async () => {
     .execute()
   await publishAll()
 
-  const app = createApp(db, types)
+  const app = createApp(db, served, { groups })
   const { port } = await new Promise<AddressInfo>((resolve) => {
     server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 }, resolve)
   })
@@ -246,9 +298,35 @@ test('submit() sends a form its values as JSON, with no key needed', async () =>
   await expect(createClient({ url }).entries('blog').first()).rejects.toMatchObject({ status: 401 })
 })
 
-test('generates a type for each content type and form, registered with the SDK', async () => {
+test('generates a type for each content type, shared group and form, registered with the SDK', async () => {
   // sdk.test-d.ts typechecks queries against this file, so it also shows the generated types compile
   await expect(generated()).toMatchFileSnapshot('./iight-types.d.ts')
+
+  // Each shared group is named, with its resolved shape when it holds links, and types that use it refer to it
+  expect(generated()).toContain(
+    [
+      'export type GroupOg = {\n  image?: string\n  alt?: string\n}',
+      'export type GroupOgResolved<Depth extends number> = {\n  image?: Media | null\n  alt?: string\n}',
+      'export type GroupSeo = {\n  title: string\n  share?: GroupOg\n}',
+      'export type GroupSeoResolved<Depth extends number> = {\n  title: string\n  share?: GroupOgResolved<Depth>\n}',
+      'export type GroupMeta = {\n  noindex?: boolean\n}',
+    ].join('\n\n'),
+  )
+  expect(generated()).toContain(
+    [
+      'export type PagesValues = {',
+      '  heading: string',
+      '  seo?: GroupSeo',
+      '  meta?: GroupMeta',
+      '  items?: Array<{\n    share?: GroupOg\n  }>',
+      '}',
+      '',
+      'export type PagesResolvedValues<Depth extends number> = {',
+      '  seo?: GroupSeoResolved<Depth>',
+      '  items?: Array<{\n    share?: GroupOgResolved<Depth>\n  }>',
+      '}',
+    ].join('\n'),
+  )
 
   const optional = blog.fields.map((field) => (field.name === 'slug' ? { ...field, required: false } : field))
   expect(typesFile(new Map([['news', { ...blog, name: 'news', fields: optional }]]))).toContain(

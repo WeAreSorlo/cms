@@ -1,19 +1,22 @@
 import { media, relationship } from '../src/fields'
-import type { ContentType } from '../src/types'
+import type { ContentType, SharedGroup } from '../src/types'
 import { FieldSchema, Input, inputs } from 'iight'
 import { createContext } from 'react'
 
-export type { ContentType }
+export type { ContentType, SharedGroup }
 
 // The site's content types, for the pickers and the pages that show entries' titles
 export const TypesContext = createContext(new Map<string, ContentType>())
+
+// The site's shared groups by name, as their files have them, for the type editor
+export const GroupsContext = createContext(new Map<string, SharedGroup>())
 
 // The nav item a page belongs to, from its URL's hash, such as types/blog for #/types/blog/archive. An entry's URL
 // doesn't name its type, so its page tells the shell through SectionContext once the entry loads.
 export function sectionOf(hash: string) {
   const [section, name] = hash.replace(/^#\/?/, '').split('/')
   if (section === 'types' && name) return `types/${name}`
-  return ['media', 'forms', 'automations', 'schema'].includes(section) ? section : undefined
+  return ['media', 'forms', 'automations', 'schema', 'groups'].includes(section) ? section : undefined
 }
 
 export const SectionContext = createContext((section: string) => {})

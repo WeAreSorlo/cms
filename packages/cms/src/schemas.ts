@@ -152,6 +152,21 @@ export function automationSchema(baseFields: Array<FieldSchema>): Array<FieldSch
   ]
 }
 
+// A shared group's settings, rendered by the admin's shared group editor and checked by its routes. checkGroup in
+// types.ts checks its fields.
+export const groupSchema: Array<FieldSchema> = [
+  { name: 'label', label: 'Label', type: 'text', required: true, width: 50, options: { placeholder: 'SEO' } },
+  {
+    name: 'name',
+    label: 'Name',
+    type: 'identifier',
+    required: true,
+    width: 50,
+    instructions: 'Names its file in schema/groups and its type in pulled types, such as GroupSeo.',
+    options: { format: 'mixed' },
+  },
+]
+
 // A content type's settings, rendered by the admin's type editor and checked by its routes. The choices come from the
 // type's top-level fields, and checkType in types.ts checks the fields themselves. The icon is text to the routes,
 // and a picker of Lucide's icons in the admin.

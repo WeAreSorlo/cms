@@ -1,6 +1,6 @@
 import { ContentType, SectionContext, sectionOf } from './api'
 import { Confirmer, ThemeSwitch, Toaster, TypeIcon } from './ui'
-import { Blocks, ClipboardList, Images, LogOut, LucideProvider, Menu, Workflow, X } from 'lucide-react'
+import { Blocks, ClipboardList, Component, Images, LogOut, LucideProvider, Menu, Workflow, X } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 // The page around every admin page: the nav, the user's menu, and a skip link. After each change of page it titles the
@@ -74,7 +74,10 @@ export function Shell({
       { section: 'forms', label: 'Forms', icon: <ClipboardList /> },
       { section: 'automations', label: 'Automations', icon: <Workflow /> },
     ],
-    [{ section: 'schema', label: 'Content types', icon: <Blocks /> }],
+    [
+      { section: 'schema', label: 'Content types', icon: <Blocks /> },
+      { section: 'groups', label: 'Shared groups', icon: <Component /> },
+    ],
   ]
 
   return (

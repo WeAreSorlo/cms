@@ -1,4 +1,14 @@
-import type { ContactFormValues, EntryAuthors, EntryBlog, EntryDocs, EntryHome } from './iight-types'
+import type {
+  ContactFormValues,
+  EntryAuthors,
+  EntryBlog,
+  EntryDocs,
+  EntryHome,
+  GroupMeta,
+  GroupOg,
+  GroupOgResolved,
+  GroupSeo,
+} from './iight-types'
 import {
   type Draft,
   type Entry,
@@ -82,6 +92,25 @@ test('with() resolves the links inside groups, repeaters and flexible blocks', (
   type Credit = NonNullable<Values<typeof posts>['credits']>[number]
   expectTypeOf<NonNullable<Credit['person']>['values']['name']>().toEqualTypeOf<string>()
   expectTypeOf<Credit['role']>().toEqualTypeOf<string | undefined>()
+})
+
+test('a shared group has a type of its own, which with() resolves as it resolves any group', () => {
+  // Every place that uses a group has its type, so one component can take them all
+  type Page = Values<ReturnType<typeof cms.entries<'pages'>>>
+  expectTypeOf<Page['seo']>().toEqualTypeOf<GroupSeo | undefined>()
+  expectTypeOf<Page['meta']>().toEqualTypeOf<GroupMeta | undefined>()
+  expectTypeOf<NonNullable<Page['seo']>['share']>().toEqualTypeOf<GroupOg | undefined>()
+  expectTypeOf<NonNullable<Page['items']>[number]['share']>().toEqualTypeOf<GroupOg | undefined>()
+
+  const resolved = cms.entries('pages').with('seo', 'items')
+  type Seo = NonNullable<Values<typeof resolved>['seo']>
+  expectTypeOf<Seo['title']>().toEqualTypeOf<string>()
+  expectTypeOf<NonNullable<Seo['share']>['image']>().toEqualTypeOf<Media | null | undefined>()
+  type Item = NonNullable<Values<typeof resolved>['items']>[number]
+  expectTypeOf<Item['share']>().toEqualTypeOf<GroupOgResolved<2> | undefined>()
+
+  // @ts-expect-error meta holds no links
+  cms.entries('pages').with('meta')
 })
 
 test("what with() links to has its own links resolved, down to the depth the CMS's settings give", () => {

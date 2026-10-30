@@ -1,8 +1,9 @@
-import { ContentType, Entry, Status } from './api'
+import { ContentType, Entry, GroupsContext, SharedGroup, Status } from './api'
 import { Grid, columnsOf, useRows } from './bulk'
 import { contrast, pairs } from './contrast'
 import './design.scss'
 import { iconInput, useInputs } from './fields'
+import { TypeGroups } from './groups'
 import { Media, MediaCard } from './media'
 import {
   Badge,
@@ -219,6 +220,40 @@ const gridEntries = [
     seo: { title: 'An armchair, far too long for a title' },
   }),
   sampleEntry('shelf', 'draft', { name: '', price: 120, sale: false }),
+]
+
+// A type's own groups, one inside a layout, and a use of a shared group, as the type editor lists them. Each state's
+// copy has ids of its own, since buttons are named through them.
+const sampleGroups = new Map<string, SharedGroup>([
+  ['seo', { id: 'grp_sample', name: 'seo', label: 'SEO', fields: [] }],
+])
+const groupFields = (state: string): Array<FieldSchema> => [
+  { id: `fld_address_${state}`, type: 'group', name: 'address', label: 'Address', options: { fields: [] } },
+  {
+    id: `fld_blocks_${state}`,
+    type: 'flexible',
+    name: 'blocks',
+    label: 'Blocks',
+    options: {
+      layouts: [
+        {
+          id: `lay_cta_${state}`,
+          name: 'cta',
+          label: 'Call to action',
+          fields: [
+            { id: `fld_button_${state}`, type: 'group', name: 'button', label: 'Button', options: { fields: [] } },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: `fld_seo_${state}`,
+    type: 'shared',
+    name: 'seo',
+    label: 'Search and sharing',
+    options: { group: 'grp_sample' },
+  },
 ]
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -527,6 +562,27 @@ export default function Design() {
           Refuse the first row
         </button>
       </div>
+
+      <h2>Shared groups</h2>
+      <p>
+        The type editor lists a type's groups beside its form, at any depth. Its own can become a shared group or give
+        way to one, each through a dialog, and a use links to the shared group its fields come from.
+      </p>
+      <GroupsContext.Provider value={sampleGroups}>
+        {['editable', 'read-only'].map((state) => (
+          <section key={state}>
+            <h3>{state === 'editable' ? 'In iight dev' : 'Read-only'}</h3>
+            <aside className='cms-editor__aside'>
+              <TypeGroups
+                fields={groupFields(state)}
+                editable={state === 'editable'}
+                onMakeShared={(field) => toast(`Opens Make ${field.label} shared`)}
+                onUseShared={(field) => toast(`Opens Use a shared group for ${field.label}`)}
+              />
+            </aside>
+          </section>
+        ))}
+      </GroupsContext.Provider>
 
       <h2>Media cards</h2>
       <ul className='cms-media-grid'>

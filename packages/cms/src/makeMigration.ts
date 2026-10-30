@@ -1,4 +1,5 @@
 import { sharedDepth } from './content'
+import { mapFields } from './fields'
 import type { ContentType } from './types'
 import type { FieldSchema } from 'iight'
 import { existsSync } from 'node:fs'
@@ -58,6 +59,51 @@ const pathOf = (tree: Tree, id: string): string => {
 const containersOf = (tree: Tree, parent: string): Array<Node> =>
   parent ? [...containersOf(tree, tree.get(parent)!.parent), tree.get(parent)!] : []
 
+// Every field and layout inside a node, by its path from there, such as og.title
+function inside(tree: Tree, id: string, path = '', found = new Map<string, Node>()) {
+  for (const node of tree.values()) {
+    if (node.parent !== id) continue
+    const at = path ? `${path}.${node.name}` : node.name
+    found.set(at, node)
+    inside(tree, node.id, at, found)
+  }
+  return found
+}
+
+// The old fields with new ids wherever a group's fields came from somewhere else, such as a type's own SEO group swapped
+// for a use of a shared one, which gives the fields inside new ids (PLAN.md section 19). Those are matched by name, so
+// each keeps its values where the name matches, and the ones that don't match are removed and flagged.
+// shortcut: a swap that changes no values writes no migration, so iight migrate doesn't rebuild entry_relations, whose
+// rows keep the copy's field ids until each entry saves. Nothing reads field_id yet; rebuild them here once something does.
+function matchSwaps(before: Array<FieldSchema>, after: Array<FieldSchema>) {
+  const old = treeOf(before)
+  const now = treeOf(after)
+  const ids = new Map<string, string>()
+  for (const node of now.values()) {
+    const was = old.get(node.id)
+    const swapped =
+      was?.schema.type === 'group' &&
+      node.schema.type === 'group' &&
+      was.schema.options?.group !== node.schema.options?.group
+    if (!swapped) continue
+
+    const matches = inside(now, node.id)
+    for (const [path, child] of inside(old, was.id)) {
+      const match = matches.get(path)
+      if (match?.kind === child.kind) ids.set(child.id, match.id)
+      else {
+        // An id no field has now, so it's removed rather than taken for the new field that has it
+        let unused = `${child.id}~`
+        while (now.has(unused) || old.has(unused) || [...ids.values()].includes(unused)) unused += '~'
+        ids.set(child.id, unused)
+      }
+    }
+  }
+  if (!ids.size) return before
+  const rename = <T extends { id?: string }>(node: T) => (ids.has(node.id!) ? { ...node, id: ids.get(node.id!) } : node)
+  return mapFields(before, rename, rename)
+}
+
 const choicesOf = (schema: Record<string, any>): Array<unknown> =>
   (schema.options?.choices ?? [])
     .flatMap((choice: any) => (choice?.choices?.length > 0 ? choice.choices : [choice]))
@@ -91,7 +137,7 @@ function call(method: string, ...args: Array<string>) {
 // The changes that turn one type's values from its old fields into its new ones, in an order where none overwrites
 // another's values
 function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<FieldSchema>) {
-  const old = treeOf(before)
+  const old = treeOf(matchSwaps(before, after))
   const now = treeOf(after)
   // Where each old field and layout is, as the changes so far leave it
   const current: Tree = new Map([...old].map(([id, node]) => [id, { ...node }]))
@@ -186,9 +232,10 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
       const options = [
         ...new Set([...Object.keys(was.schema.options ?? {}), ...Object.keys(node.schema.options ?? {})]),
       ]
+      // A group's options.group names the shared group its fields come from, and a swap changes the fields, not values
       const changed = options.filter(
         (key) =>
-          !['fields', 'layouts', 'choices', ...presentation].includes(key) &&
+          !['fields', 'layouts', 'choices', 'group', ...presentation].includes(key) &&
           !isDeepStrictEqual(was.schema.options?.[key], node.schema.options?.[key]),
       )
       const reasons = [

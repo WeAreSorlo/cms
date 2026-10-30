@@ -1,7 +1,7 @@
 import type { DeliveryOptions } from '.'
 import { inputs, pickValues, validationError } from './core'
 import { Database, isUuid } from './db'
-import { allows, holdsOne, idsOf, linkFields, media, relationship } from './fields'
+import { allows, holdsOne, idsOf, linkFields, media, relationship, shared } from './fields'
 import { toMedia } from './media'
 import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
@@ -9,11 +9,13 @@ import { HTTPException } from 'hono/http-exception'
 import type { Input, InputPickValue, InputSchema } from 'iight'
 import { Kysely, SqlBool, sql } from 'kysely'
 
-// Core's inputs and the CMS's own, which the server never renders. The admin adds their pickers.
+// Core's inputs and the CMS's own, which the server never renders. The admin adds their pickers. Types have no
+// Shared group fields once they load, so only their files' checks meet one.
 export const cmsInputs: Record<string, Input> = {
   ...inputs,
   relationship: { ...relationship, default: () => null },
   media: { ...media, default: () => null },
+  shared: { ...shared, default: () => null },
 }
 
 // The names of the content types a relationship field takes, which is all of them when it lists none

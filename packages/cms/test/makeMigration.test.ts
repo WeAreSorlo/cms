@@ -1,6 +1,6 @@
 import { ContentMigrationFile, catchUp } from '../src/content'
 import { makeMigration } from '../src/makeMigration'
-import type { ContentType } from '../src/types'
+import { type ContentType, type SharedGroup, expandFields } from '../src/types'
 import type { FieldSchema } from 'iight'
 import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -386,4 +386,258 @@ test('migrations are named for the time and the types, or a name given, and sort
   await expect(makeMigration(dir, new Map([['blog', blog]]), 'no spaces')).rejects.toThrow(
     'A migration name can only have letters, digits and underscores.',
   )
+})
+
+// Shared groups (PLAN.md section 19). make:migration diffs types as they load, with each use of a shared group
+// expanded, so these are expanded as loadSchema expands them.
+const expand = (type: ContentType, ...groups: Array<SharedGroup>) => ({
+  ...type,
+  fields: expandFields(type.fields, new Map(groups.map((group) => [group.id, group]))),
+})
+
+const seo: SharedGroup = {
+  id: 'grp_seo',
+  name: 'seo',
+  label: 'SEO',
+  fields: [
+    { id: 'fld_t', type: 'text', name: 'title' },
+    { id: 'fld_d', type: 'textarea', name: 'description' },
+    { id: 'fld_k', type: 'text', name: 'keywords' },
+  ],
+}
+
+const use = (id: string, name: string, group = 'grp_seo') => ({ id, type: 'shared', name, options: { group } })
+
+// Uses of the SEO group at the top of pages, and in news's items and its hero blocks
+const pages: ContentType = {
+  id: 'typ_pages',
+  name: 'pages',
+  label: 'Pages',
+  structure: 'collection',
+  fields: [{ id: 'fld_heading', type: 'text', name: 'heading' }, use('fld_seo', 'seo')],
+}
+
+const news: ContentType = {
+  id: 'typ_news',
+  name: 'news',
+  label: 'News',
+  structure: 'collection',
+  fields: [
+    { id: 'fld_items', type: 'repeater', name: 'items', options: { fields: [use('fld_item_seo', 'meta')] } },
+    {
+      id: 'fld_sections',
+      type: 'flexible',
+      name: 'sections',
+      options: { layouts: [{ id: 'lay_hero', name: 'hero', fields: [use('fld_hero_seo', 'seo')] }] },
+    },
+  ],
+}
+
+test('a change to a shared group writes one migration for every type and path that uses it', async () => {
+  const changed: SharedGroup = {
+    ...seo,
+    fields: [
+      { ...seo.fields[0], name: 'headline' },
+      seo.fields[1],
+      { id: 'fld_n', type: 'boolean', name: 'noindex', defaultValue: false },
+    ],
+  }
+  const { file, source, notes } = await migration(
+    [expand(news, seo), expand(pages, seo)],
+    [expand(news, changed), expand(pages, changed)],
+  )
+
+  expect(file).toBeDefined()
+  expect(notes).toEqual([
+    "Flagged: deletes the values of items.meta.keywords, which down can't bring back. Old versions keep them",
+    "Flagged: deletes the values of sections.hero.seo.keywords, which down can't bring back. Old versions keep them",
+    "Flagged: deletes the values of seo.keywords, which down can't bring back. Old versions keep them",
+  ])
+  for (const line of [
+    "entries.renameField('news', 'items.meta.title', 'items.meta.headline')",
+    "entries.renameField('news', 'sections.hero.seo.title', 'sections.hero.seo.headline')",
+    "entries.addField('news', 'items.meta.noindex', false)",
+    "entries.addField('news', 'sections.hero.seo.noindex', false)",
+    "entries.renameField('pages', 'seo.title', 'seo.headline')",
+    "entries.removeField('pages', 'seo.keywords')",
+    "entries.addField('pages', 'seo.noindex', false)",
+  ]) {
+    expect(source).toContain(line)
+  }
+
+  const article = {
+    items: [{ meta: { title: 'One', description: 'First', keywords: 'a' } }, { meta: { title: 'Two' } }],
+    sections: [{ _layout: 'hero', seo: { title: 'Hero', keywords: 'b' } }],
+  }
+  const { up, down } = await roundTrip(file, article, 'news')
+  expect(up).toEqual({
+    items: [
+      { meta: { headline: 'One', description: 'First', noindex: false } },
+      { meta: { headline: 'Two', noindex: false } },
+    ],
+    sections: [{ _layout: 'hero', seo: { headline: 'Hero', noindex: false } }],
+  })
+  expect(down).toEqual({
+    items: [{ meta: { title: 'One', description: 'First' } }, { meta: { title: 'Two' } }],
+    sections: [{ _layout: 'hero', seo: { title: 'Hero' } }],
+  })
+  expect((await roundTrip(file, { heading: 'Home', seo: { title: 'Home' } }, 'pages')).up).toEqual({
+    heading: 'Home',
+    seo: { headline: 'Home', noindex: false },
+  })
+})
+
+test("making a type's own group shared changes no values, since its fields match the new group's", async () => {
+  // The type editor's Make shared gives the group the copy's fields, and the use the copy's id and name
+  const own: ContentType = {
+    ...pages,
+    fields: [pages.fields[0], { id: 'fld_seo', type: 'group', name: 'seo', options: { fields: seo.fields } }],
+  }
+  const made = await migration([own], [expand(pages, seo)])
+  expect(made).toMatchObject({ file: undefined, notes: [], updated: true })
+})
+
+test('using a shared group in place of a copy keeps the values whose names match, and flags the rest', async () => {
+  const copy: ContentType = {
+    id: 'typ_events',
+    name: 'events',
+    label: 'Events',
+    structure: 'collection',
+    fields: [
+      { id: 'fld_name', type: 'text', name: 'name' },
+      {
+        id: 'fld_event_seo',
+        type: 'group',
+        name: 'seo',
+        label: 'Search',
+        options: {
+          fields: [
+            { id: 'fld_event_title', type: 'text', name: 'title', options: { maxLength: 60 } },
+            { id: 'fld_summary', type: 'textarea', name: 'summary' },
+            { id: 'fld_event_keywords', type: 'textarea', name: 'keywords' },
+          ],
+        },
+      },
+    ],
+  }
+  // The type editor's Use shared group keeps the copy's id and its own settings
+  const using = { ...copy, fields: [copy.fields[0], { ...use('fld_event_seo', 'seo'), label: 'Search' }] }
+  const { file, source, notes } = await migration([copy], [expand(using, seo)])
+
+  // Matched fields are flagged for their changed settings and types, as any field is
+  expect(notes).toEqual([
+    "Flagged: deletes the values of seo.summary, which down can't bring back. Old versions keep them",
+    'Flagged: seo.title has a new maxLength, so some entries may not pass. Run iight migrate --check',
+    'TODO: seo.keywords changed from textarea to text. Convert its values here, and back in down',
+  ])
+  expect(source).not.toContain("'seo.title'")
+
+  const event = { name: 'Launch', seo: { title: 'Launch day', summary: 'Gone', keywords: 'rockets' } }
+  expect((await roundTrip(file, event, 'events')).up).toEqual({
+    name: 'Launch',
+    seo: { title: 'Launch day', keywords: 'rockets' },
+  })
+})
+
+test('swapping one shared group for another matches fields by name, even where their ids are the same', async () => {
+  // Its title has the id of seo's keywords, as in a group file copied from another and edited
+  const meta: SharedGroup = {
+    id: 'grp_meta',
+    name: 'meta',
+    label: 'Meta',
+    fields: [
+      { id: 'fld_k', type: 'text', name: 'title' },
+      { id: 'fld_x', type: 'text', name: 'extra' },
+    ],
+  }
+  const swapped = { ...pages, fields: [pages.fields[0], use('fld_seo', 'seo', 'grp_meta')] }
+  const { file, notes } = await migration([expand(pages, seo)], [expand(swapped, meta)])
+
+  expect(notes).toEqual([
+    "Flagged: deletes the values of seo.description, which down can't bring back. Old versions keep them",
+    "Flagged: deletes the values of seo.keywords, which down can't bring back. Old versions keep them",
+  ])
+  const page = { heading: 'Home', seo: { title: 'Welcome', description: 'Hi', keywords: 'home' } }
+  expect((await roundTrip(file, page, 'pages')).up).toEqual({ heading: 'Home', seo: { title: 'Welcome' } })
+})
+
+test("a copy in a list's items or a layout keeps its values when swapped, the groups inside it matched by path", async () => {
+  const og: SharedGroup = {
+    id: 'grp_og',
+    name: 'og',
+    label: 'Sharing',
+    fields: [
+      { id: 'fld_image', type: 'url', name: 'image' },
+      { id: 'fld_alt', type: 'text', name: 'alt' },
+    ],
+  }
+  const card: SharedGroup = {
+    id: 'grp_card',
+    name: 'card',
+    label: 'Card',
+    fields: [{ id: 'fld_card_title', type: 'text', name: 'title' }, use('fld_card_share', 'share', 'grp_og')],
+  }
+  // A card of its own, holding a group of its own, in news's items and in its hero layout
+  const ownCard = (id: string) => ({
+    id,
+    type: 'group',
+    name: 'card',
+    options: {
+      fields: [
+        { id: `${id}_title`, type: 'text', name: 'title' },
+        {
+          id: `${id}_share`,
+          type: 'group',
+          name: 'share',
+          options: {
+            fields: [
+              { id: `${id}_image`, type: 'url', name: 'image' },
+              { id: `${id}_caption`, type: 'text', name: 'caption' },
+            ],
+          },
+        },
+      ],
+    },
+  })
+  const layout = (field: object) => ({ id: 'lay_hero', name: 'hero', fields: [field] })
+  const own: ContentType = {
+    ...news,
+    fields: [
+      { id: 'fld_items', type: 'repeater', name: 'items', options: { fields: [ownCard('fld_item_card')] } },
+      { id: 'fld_sections', type: 'flexible', name: 'sections', options: { layouts: [layout(ownCard('fld_hero'))] } },
+    ],
+  }
+  const using: ContentType = {
+    ...news,
+    fields: [
+      {
+        id: 'fld_items',
+        type: 'repeater',
+        name: 'items',
+        options: { fields: [use('fld_item_card', 'card', 'grp_card')] },
+      },
+      {
+        id: 'fld_sections',
+        type: 'flexible',
+        name: 'sections',
+        options: { layouts: [layout(use('fld_hero', 'card', 'grp_card'))] },
+      },
+    ],
+  }
+  const { file, notes } = await migration([own], [expand(using, card, og)])
+
+  expect(notes).toEqual([
+    "Flagged: deletes the values of items.card.share.caption, which down can't bring back. Old versions keep them",
+    "Flagged: deletes the values of sections.hero.card.share.caption, which down can't bring back. Old versions keep them",
+  ])
+  const share = { image: 'https://example.com/a.png', caption: 'A' }
+  const { up } = await roundTrip(
+    file,
+    { items: [{ card: { title: 'One', share } }], sections: [{ _layout: 'hero', card: { title: 'Two', share } }] },
+    'news',
+  )
+  expect(up).toEqual({
+    items: [{ card: { title: 'One', share: { image: share.image } } }],
+    sections: [{ _layout: 'hero', card: { title: 'Two', share: { image: share.image } } }],
+  })
 })

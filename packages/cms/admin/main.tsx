@@ -1,10 +1,11 @@
 import { signInSchema } from '../src/schemas'
 import './admin.scss'
-import { ContentType, TypesContext, api } from './api'
+import { ContentType, GroupsContext, SharedGroup, TypesContext, api } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
+import { GroupEditor, GroupList } from './groups'
 import { MediaLibrary } from './media'
 import { Shell } from './shell'
 import './theme.scss'
@@ -85,15 +86,17 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 }
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>, #/media,
-// #/forms/<id>/inbox, #/automations/<id>/runs or #/schema/blog in the type editor
+// #/forms/<id>/inbox, #/automations/<id>/runs, or #/schema/blog and #/groups/seo in the type editor
 function Page({
   hash,
   types,
+  groups,
   editable,
   reloadTypes,
 }: {
   hash: string
   types: Map<string, ContentType>
+  groups: Map<string, SharedGroup>
   editable: boolean
   reloadTypes: () => Promise<void>
 }) {
@@ -112,6 +115,13 @@ function Page({
     return <TypeEditor key={name} type={types.get(name)} editable={editable} onSaved={reloadTypes} />
   }
   if (section === 'schema') return <TypeList types={types} editable={editable} />
+  if (section === 'groups' && name === 'new') {
+    return <GroupEditor key='new' editable={editable} onSaved={reloadTypes} />
+  }
+  if (section === 'groups' && groups.has(name)) {
+    return <GroupEditor key={name} group={groups.get(name)} editable={editable} onSaved={reloadTypes} />
+  }
+  if (section === 'groups') return <GroupList groups={groups} editable={editable} />
   if (section === 'media') return <MediaLibrary />
   if (section === 'forms' && name === 'new') return <FormEditor key='new' />
   if (section === 'forms' && name && isView(action)) return <Inbox key={`${name}/${action}`} id={name} view={action} />
@@ -133,6 +143,7 @@ function App() {
   // Undefined until we know whether a session exists
   const [user, setUser] = useState<null | User>()
   const [types, setTypes] = useState<Map<string, ContentType>>()
+  const [groups, setGroups] = useState(new Map<string, SharedGroup>())
   const [editable, setEditable] = useState(false)
 
   // The one copy of the URL's hash, so the shell and the page see each change in the same render
@@ -149,10 +160,11 @@ function App() {
       .catch(() => setUser(null))
   }, [])
 
-  // Loaded again after each change in the type editor
+  // Loaded again after each change in the type editor, with the shared groups
   const reloadTypes = useCallback(async () => {
     const { body } = await api('GET', '/types')
     setTypes(new Map(body.data.map((type: ContentType) => [type.name, type])))
+    setGroups(new Map(body.groups.map((group: SharedGroup) => [group.name, group])))
     setEditable(body.editable)
   }, [])
 
@@ -172,7 +184,9 @@ function App() {
   return (
     <Shell hash={hash} types={types} user={user} onSignOut={signOut}>
       <TypesContext.Provider value={types}>
-        <Page hash={hash} types={types} editable={editable} reloadTypes={reloadTypes} />
+        <GroupsContext.Provider value={groups}>
+          <Page hash={hash} types={types} groups={groups} editable={editable} reloadTypes={reloadTypes} />
+        </GroupsContext.Provider>
       </TypesContext.Provider>
     </Shell>
   )

@@ -2,6 +2,30 @@
 
 import type { Entry, Linked, Media } from '@iight/sdk'
 
+export type GroupOg = {
+  image?: string
+  alt?: string
+}
+
+export type GroupOgResolved<Depth extends number> = {
+  image?: Media | null
+  alt?: string
+}
+
+export type GroupSeo = {
+  title: string
+  share?: GroupOg
+}
+
+export type GroupSeoResolved<Depth extends number> = {
+  title: string
+  share?: GroupOgResolved<Depth>
+}
+
+export type GroupMeta = {
+  noindex?: boolean
+}
+
 export type BlogValues = {
   title: string
   slug: string
@@ -96,6 +120,31 @@ export type EntryAuthors = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'p
   values: AuthorsValues
 }
 
+export type PagesValues = {
+  heading: string
+  seo?: GroupSeo
+  meta?: GroupMeta
+  items?: Array<{
+    share?: GroupOg
+  }>
+}
+
+export type PagesResolvedValues<Depth extends number> = {
+  seo?: GroupSeoResolved<Depth>
+  items?: Array<{
+    share?: GroupOgResolved<Depth>
+  }>
+}
+
+export type EntryPages = Omit<Entry, 'type' | 'slug' | 'uri' | 'parentId' | 'position' | 'values'> & {
+  type: "pages"
+  slug: null
+  uri: null
+  parentId: null
+  position: null
+  values: PagesValues
+}
+
 export type ContactFormValues = {
   name: string
   email: string
@@ -117,12 +166,14 @@ declare module '@iight/sdk' {
     docs: EntryDocs
     home: EntryHome
     authors: EntryAuthors
+    pages: EntryPages
   }
   interface ResolvedTypes<Depth extends number> {
     blog: BlogResolvedValues<Depth>
     docs: DocsResolvedValues<Depth>
     home: HomeResolvedValues<Depth>
     authors: AuthorsResolvedValues<Depth>
+    pages: PagesResolvedValues<Depth>
   }
   interface FormTypes {
     contact: ContactFormValues

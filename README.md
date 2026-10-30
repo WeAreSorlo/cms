@@ -90,6 +90,52 @@ The CMS adds two field types to core's. A `relationship` field links to entries,
 - Archiving an entry that others link to asks first in the admin. Deleting an entry or a file for good replies 409 while any entry links to it, archived ones included, so remove the links first. The type editor won't delete a type that relationship fields link to.
 - Changing a `maximum` to or from 1 changes the shape of the field's values, which `make:migration` flags and `iight migrate --check` lists.
 
+### Shared groups
+
+A shared group is a set of fields defined once and used by many types, such as SEO fields, so the types' copies can't drift apart. Each is a JSON file in the site project's `schema/groups` folder, beside `schema/types`, named after the group, as in `playground/schema/groups`:
+
+```json
+{
+  "id": "grp_k3x9q2mz",
+  "name": "seo",
+  "label": "SEO",
+  "fields": [
+    { "id": "fld_l2g562g3", "type": "text", "name": "title", "label": "Title", "options": { "maxLength": 60 } },
+    { "id": "fld_u8dwksgh", "type": "textarea", "name": "description", "label": "Description" }
+  ]
+}
+```
+
+| Key      | What it holds                                                                                                     |
+| -------- | ----------------------------------------------------------------------------------------------------------------- |
+| `id`     | A stable ID, such as `grp_k3x9q2mz`, which uses name it by, so renaming a group breaks nothing                    |
+| `name`   | The file's name: a letter, then letters, digits or underscores. It also names the group's pulled type, `GroupSeo` |
+| `label`  | What the admin calls the group                                                                                    |
+| `fields` | A core schema, checked as a type's is. Every field and flexible layout needs an `id`, unique in the group         |
+
+A type uses a group with a `shared` field, which names it by `id`:
+
+```json
+{
+  "id": "fld_04fi4quz",
+  "type": "shared",
+  "name": "seo",
+  "label": "Search and sharing",
+  "options": { "group": "grp_k3x9q2mz" }
+}
+```
+
+- A use has its own `name`, `label`, `instructions`, `width` and conditions. Its fields always come from the group, every one of them, and like a group it isn't `required`.
+- Its values sit under its name, as a group's do: `values.seo.title`.
+- Uses go anywhere a field can, inside groups, repeaters and flexible layouts included, and a type can use the same group more than once. A group can use other groups, but never itself, even through others.
+- Types load with each use expanded into an ordinary `group` field holding the group's fields, so the editor, the checks, `with()`, `entry_relations`, the bulk grid, the delivery API and `iight migrate --check` treat it as one. The group keeps `options.group`, and its fields' ids get the use's in front, such as `fld_04fi4quz.fld_l2g562g3`, so two uses in one type never share one. So field ids in type and group files can't hold a dot.
+- `iight dev` checks the group files with the types, listing ids two files share, groups that use themselves and uses that name a group that doesn't exist.
+
+In `iight dev`, the admin's Shared groups page creates, edits and deletes groups as the type editor does types, writing a migration for every type each change reaches. Deleting one replies 409 while a type or another group uses it. The type editor's palette has a Shared group field, and beside the form it lists the type's groups at any depth:
+
+- **Make shared** turns one of the type's own groups into a new shared group, with its fields and their ids, and swaps the type's copy for a use with the copy's `id`, name and settings. Saving the type then needs no migration.
+- **Use shared group** swaps a copy for a use of a shared group, showing first which values the swap keeps and which it deletes.
+
 ## Drafts and publishing
 
 Every entry has a draft, and once it's published, a live copy, which is what the delivery API serves. Save writes the draft as a new version, and the live site keeps its copy until Publish replaces it. Unpublish takes the live copy down and keeps the draft. An entry is a draft until it's published, published while its newest version is the live one, and changed once a newer version is saved.
@@ -134,6 +180,8 @@ Entries keep their values as JSON, so changing a content type never changes a ta
 | Layout renamed or removed                             | Renames the blocks' `_layout`, or deletes the blocks, flagged                                  |
 | Type renamed                                          | Renames the type of its entries                                                                |
 | Type removed                                          | Flagged. Its entries stay until you delete them                                                |
+| Shared group changed                                  | Each of the changes above, for every type and path that uses the group, in one migration       |
+| A group swapped for a use, or a use for another group | Keeps the values whose field names match, at any depth, and deletes the rest, flagged          |
 
 ```ts
 // migrations/2026_10_28_120000_blog.ts
@@ -163,6 +211,7 @@ export const down: ContentMigration = ({ entries }) => {
 | `update(type, change)`         | Any other change: `change` takes an entry's values and returns new ones                |
 
 - Paths name fields as the schema nests them: `address.town` in a group, `pets.name` in every item of a repeater or matrix, and `blocks.quote.credit` in the blocks of the `quote` layout.
+- `make:migration` compares types as they load, with their uses of shared groups expanded, so the snapshot holds them that way too, and a use's fields are paths like any group's, such as `seo.title`. A swap is a group whose `options.group` changed under the same `id`, as the type editor's swaps keep it. Its fields are matched by name rather than by `id`, and a matched field whose type or settings changed gets a TODO or a flag, as any field does. A use added with an `id` of its own in place of a group is a removal and an addition, flagged.
 - An `up` or `down` only declares changes to one entry's values. `iight migrate` runs them on every entry, 500 at a time, inside one transaction for each migration, and old versions run them too.
 - Every save records the last content migration that ran. Opening an old version runs the `up` of each migration that ran after it was saved, so its values fit the fields as they are now. A version saved after a migration that has since been rolled back replies 409 until it runs again.
 - While a content migration hasn't run, saving an entry replies 409, since the types already have its change and the entries don't yet.
@@ -377,10 +426,13 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `POST /api/session`                     | Signs in with `{ email, password }`. Replies `{ data: user }` and sets the `iight_session` cookie, or 422 with core's validation report                                                                                                                   |
 | `GET /api/session`                      | Replies `{ data: user }` for the signed-in user, or 401                                                                                                                                                                                                   |
 | `DELETE /api/session`                   | Signs out                                                                                                                                                                                                                                                 |
-| `GET /api/types`                        | Lists the content types, with `editable`, which is true in `iight dev`                                                                                                                                                                                    |
+| `GET /api/types`                        | Lists the content types, each with its uses of shared groups expanded, `groups`, the shared groups as their files have them, and `editable`, which is true in `iight dev`                                                                                 |
 | `POST /api/types`                       | Creates a type from its settings and `fields`, giving it an `id`. Replies `{ data: type, migration: { file, notes } }`, or 422 with core's report                                                                                                         |
 | `PUT /api/types/:type`                  | Replaces a type, renaming its file when `name` changes, and writes a content migration for the change. Replies as `POST` does                                                                                                                             |
 | `DELETE /api/types/:type`               | Deletes a type's file and writes a migration that flags its entries, which stay. Replies `{ migration: { file, notes } }`                                                                                                                                 |
+| `POST /api/groups`                      | Creates a shared group from `{ label, name, fields }`, giving it an `id`. Replies `{ data: group, migration: { file, notes } }`, or 422 with core's report                                                                                                |
+| `PUT /api/groups/:group`                | Replaces a shared group, renaming its file when `name` changes, and writes a content migration for every type the change reaches. Replies as `POST` does                                                                                                  |
+| `DELETE /api/groups/:group`             | Deletes a shared group's file, or replies 409 while a type or another group uses it                                                                                                                                                                       |
 | `GET /api/types/:type/entries`          | Lists entries that aren't archived, or archived ones with `archived=true`, taking the delivery API's query parameters                                                                                                                                     |
 | `POST /api/types/:type/entries`         | Creates an entry from `{ values, parentId, publish }`, where `parentId` is for hierarchicals. With `publish: true`, it runs every check and publishes the entry too                                                                                       |
 | `PATCH /api/types/:type/entries`        | Saves the changed fields of 1 to 100 entries from `{ publish, entries: [{ id, values }] }`, replying with each one's result, as [bulk saves](#bulk-saves) describes                                                                                       |
@@ -417,7 +469,7 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `DELETE /api/automations/:id`           | Deletes an automation, with its runs, including those still to come                                                                                                                                                                                       |
 | `GET /api/automations/:id/runs`         | Lists its runs, each a try of one of its actions with its event, taking `order`, `page` and `perPage`                                                                                                                                                     |
 
-The type routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
+The type and shared group routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
 #### Bulk saves
 
@@ -545,7 +597,7 @@ await cms.form('contact_us').submit({ name: 'Ada', email: 'ada@example.com' })
 
 The `token` is optional, since submitting needs none, but entries do. A site's own server sends its key when it submits for its visitors, so they aren't rate limited as one IP address.
 
-`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and an API key from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Each shared group's values get a type of their own, such as `GroupSeo`, and `GroupSeoResolved<Depth>`, every field with its links resolved, when it holds relationship or media fields. The types that use it refer to them, so one component can take a group's values from every type that has it. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
 
 A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key`:
 

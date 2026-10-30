@@ -1,8 +1,9 @@
-import type { ContentType } from './types'
+import type { ContentType, SharedGroup } from './types'
 import type { FieldSchema, InputSchema, InputValidateValue } from 'iight'
 
 // The CMS's own inputs, which store IDs: relationship links to entries, and media to files in the media library
-// (PLAN.md section 12). Nothing here loads core or server code, so the admin imports them too and adds the pickers.
+// (PLAN.md section 12), and the Shared group field. Nothing here loads core or server code, so the admin imports them
+// too and adds the pickers.
 
 // Whether types such as image/png or image/* allow a mime, leaving out its parameters, as in audio/ogg; codecs=opus
 export function allows(types: Array<string>, mime: string) {
@@ -48,6 +49,77 @@ export const someField = (fields: Array<FieldSchema>, test: (field: FieldSchema)
 
 // A type's top-level fields that are relationship or media fields or hold some, which with() can name
 export const linkFields = (type: ContentType) => type.fields.filter((field) => someField([field], isLink))
+
+type Layout = { id?: string; fields?: Array<FieldSchema> }
+
+// Fields with each field and layout in them, at any depth, replaced by what change and changeLayout make of it, after
+// the fields inside it have been
+export function mapFields(
+  fields: Array<FieldSchema>,
+  change: (field: FieldSchema) => FieldSchema,
+  changeLayout = (layout: Layout) => layout,
+): Array<FieldSchema> {
+  const inside = (list: Array<FieldSchema>) => mapFields(list, change, changeLayout)
+  return fields.map((field) => {
+    const { fields: children, layouts } = field.options ?? {}
+    if (!Array.isArray(children) && !Array.isArray(layouts)) return change(field)
+    return change({
+      ...field,
+      options: {
+        ...field.options,
+        ...(Array.isArray(children) && { fields: inside(children) }),
+        ...(Array.isArray(layouts) && {
+          layouts: layouts.map((layout: Layout) =>
+            changeLayout(Array.isArray(layout.fields) ? { ...layout, fields: inside(layout.fields) } : layout),
+          ),
+        }),
+      },
+    })
+  })
+}
+
+// A use of a shared group from schema/groups, which names it by id in options.group (PLAN.md section 19). Types expand
+// each use into a group of the shared group's fields when they load, so only the type editor sees one.
+export const shared = {
+  name: () => 'Shared group',
+  description: () => 'The fields of a shared group, which many types can use.',
+  category: () => 'Layout',
+  // Core never checks a group's required, so a use, like a group, has none
+  coreFields: (fields: Array<FieldSchema>) => fields.filter((field) => field.name !== 'required'),
+}
+
+// The Shared group field's setting, choosing a shared group by id, so renaming one breaks nothing
+export const sharedOptions = (groups: Iterable<SharedGroup>): Array<FieldSchema> => [
+  {
+    name: 'group',
+    label: 'Shared group',
+    type: 'select',
+    required: true,
+    options: { choices: [...groups].map((group) => ({ value: group.id, label: group.label })) },
+  },
+]
+
+// Whether a field is a use of a shared group, as types have them once they load: a group that names its shared group
+export const isUse = (field: FieldSchema) => field.type === 'group' && field.options?.group !== undefined
+
+// The ids of the shared groups some fields use, at any depth, as their files have them
+export const usesOf = (fields: Array<FieldSchema>) => {
+  const ids: Array<string> = []
+  mapFields(fields, (field) => {
+    if (field.type === 'shared') ids.push(field.options?.group)
+    return field
+  })
+  return ids
+}
+
+// Expanded fields as their file has them: each use back as the Shared group field it was, without its shared group's
+// fields, since expanding only gave it the group type and those
+export const collapseUses = (fields: Array<FieldSchema>) =>
+  mapFields(fields, (field) => {
+    if (!isUse(field)) return field
+    const { fields: _, ...options } = field.options!
+    return { ...field, type: 'shared', options }
+  })
 
 // One ID, or a list of different IDs within the field's minimum and maximum. The server checks what they link to.
 const validateValue: InputValidateValue = (value, schema) => {

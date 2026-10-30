@@ -1,16 +1,18 @@
 import { inputs, pickValues, validateServerValues } from './core'
 import type { AdminEnv } from './entries'
-import { someField } from './fields'
+import { isUse, someField, usesOf } from './fields'
 import { makeMigration } from './makeMigration'
-import { typeSchema } from './schemas'
-import { ContentType, checkType, loadTypes } from './types'
+import { groupSchema, typeSchema } from './schemas'
+import { ContentType, SharedGroup, checkGroup, checkType, cycleOf, cycleProblem, loadSchema } from './types'
 import { Context, Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
+import type { FieldSchema } from 'iight'
 import { randomBytes } from 'node:crypto'
-import { rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 
-// Where the type editor writes: the site project's schema/types and migrations folders
+// Where the type editor writes: the site project's schema/types and migrations folders. Shared groups go in the
+// groups folder beside schema/types.
 export interface EditorDirs {
   types: string
   migrations: string
@@ -19,8 +21,9 @@ export interface EditorDirs {
 // The settings' icon is text here, and a picker in the admin
 const settingsInputs = { ...inputs, icon: inputs.text }
 
-// A new type's id, in the form core gives fields, such as typ_k3x9q2mz
-const createTypeId = () => `typ_${Array.from(randomBytes(8), (byte) => (byte % 36).toString(36)).join('')}`
+// A new type's or shared group's id, in the form core gives fields, such as typ_k3x9q2mz
+const createId = (prefix: string) =>
+  `${prefix}_${Array.from(randomBytes(8), (byte) => (byte % 36).toString(36)).join('')}`
 
 // The project's own Prettier lays the file out when it has one, as it would lay out a file written by hand
 async function formatJson(file: string, value: unknown) {
@@ -32,34 +35,76 @@ async function formatJson(file: string, value: unknown) {
   }
 }
 
-// The admin API for content types. Given the site project's folders, as iight dev gives them, the type editor can
-// also create, change and delete types, writing their files and a content migration for each change (PLAN.md section
-// 4). Without them, types are read-only and change through git.
-export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
+// A 422 reply with core's report, and each of checkType's or checkGroup's problems under the setting it starts with,
+// or under fields for the rest
+function problemsReply(
+  c: Context<AdminEnv>,
+  schema: Array<FieldSchema>,
+  report: { isValid: boolean; fields: Record<string, unknown> },
+  found: Array<[key: string, message: string]>,
+) {
+  const problems: Record<string, Array<string>> = {}
+  for (const [key, message] of found) {
+    const at = schema.some((field) => field.name === key) ? key : 'fields'
+    problems[at] = [...(problems[at] ?? []), message]
+  }
+  if (report.isValid && !found.length) return undefined
+  const fieldReports = Object.entries(problems).map(([key, messages]) => [key, { isValid: false, messages }])
+  return c.json({ isValid: false, fields: { ...report.fields, ...Object.fromEntries(fieldReports) } }, 422)
+}
+
+// The setting a problem starts with, such as name in '"name" must match the file's name'
+const keyOf = (problem: string) => problem.match(/^(?:It needs an? )?"(\w+)"/)?.[1] ?? 'fields'
+
+// The admin API for content types and shared groups. Given the site project's folders, as iight dev gives them, the
+// type editor can also create, change and delete them, writing their files and a content migration for each change
+// (PLAN.md sections 4 and 19). Without them, they're read-only and change through git.
+export function typeRoutes(
+  types: Map<string, ContentType>,
+  groups = new Map<string, SharedGroup>(),
+  dirs?: EditorDirs,
+) {
   const app = new Hono<AdminEnv>()
+  const groupsDir = dirs && join(dirname(dirs.types), 'groups')
 
-  app.get('/types', (c) => c.json({ data: [...types.values()], editable: dirs !== undefined }))
+  app.get('/types', (c) => c.json({ data: [...types.values()], groups: [...groups.values()], editable: !!dirs }))
 
-  const editable: MiddlewareHandler<AdminEnv> = async (_c, next) => {
-    if (!dirs)
-      throw new HTTPException(403, { message: 'Content types can only be changed in development, with iight dev.' })
-    await next()
+  const editable =
+    (what: string): MiddlewareHandler<AdminEnv> =>
+    async (_c, next) => {
+      if (!dirs)
+        throw new HTTPException(403, { message: `${what} can only be changed in development, with iight dev.` })
+      await next()
+    }
+
+  const named = <T>(map: Map<string, T>, name: string) => {
+    const found = map.get(name)
+    if (!found) throw new HTTPException(404)
+    return found
   }
 
-  const named = (name: string) => {
-    const type = types.get(name)
-    if (!type) throw new HTTPException(404)
-    return type
-  }
+  // The ids of every type or every shared group, and of the one being saved
+  const ids = (map: Map<string, { id: string }>, saving?: string) =>
+    new Set([...[...map.values()].map((value) => value.id), ...(saving ? [saving] : [])])
 
-  // Change the type files, load them all again, and write a migration for the change
+  // Change the files, load them all again, and write a migration for the change
   const commit = async (change: () => Promise<void>) => {
     await change()
-    const loaded = await loadTypes(dirs!.types)
+    const loaded = await loadSchema(dirs!.types)
     types.clear()
-    for (const [name, type] of loaded) types.set(name, type)
+    for (const [name, type] of loaded.types) types.set(name, type)
+    groups.clear()
+    for (const [name, group] of loaded.groups) groups.set(name, group)
     const { file, notes } = await makeMigration(dirs!.migrations, types)
     return { file: file ?? null, notes }
+  }
+
+  // Write a file of a folder, which the first shared group makes, renaming it when its name changes
+  const write = async (dir: string, value: { name: string }, old?: { name: string }) => {
+    const file = join(dir, `${value.name}.json`)
+    await mkdir(dir, { recursive: true })
+    await writeFile(file, await formatJson(file, value))
+    if (old && old.name !== value.name) await rm(join(dir, `${old.name}.json`))
   }
 
   // Create or replace a type from its settings and fields, renaming its file when its name changes
@@ -73,7 +118,7 @@ export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
     // In the order the type files have them, leaving out empty settings
     const type: ContentType = JSON.parse(
       JSON.stringify({
-        id: old?.id ?? createTypeId(),
+        id: old?.id ?? createId('typ'),
         name: settings.name,
         label: settings.label,
         singular: settings.singular || undefined,
@@ -88,50 +133,93 @@ export function typeRoutes(types: Map<string, ContentType>, dirs?: EditorDirs) {
       }),
     )
 
-    // Each of checkType's problems goes under the setting it starts with, and the rest under fields
-    const problems: Record<string, Array<string>> = {}
-    const add = (key: string, message: string) => (problems[key] = [...(problems[key] ?? []), message])
+    const found: Array<[string, string]> = []
     if (report.isValid) {
-      const typeIds = new Set([...[...types.values()].map((other) => other.id), type.id])
-      for (const problem of checkType(type, type.name, typeIds)) {
-        const key = problem.match(/^(?:It needs an? )?"(\w+)"/)?.[1]
-        add(key && schema.some((field) => field.name === key) ? key : 'fields', problem)
+      for (const problem of checkType(type, type.name, ids(types, type.id), ids(groups))) {
+        found.push([keyOf(problem), problem])
       }
       if ([...types.values()].some((other) => other.name === type.name && other.id !== type.id)) {
-        add('name', `Another content type is named ${type.name}.`)
+        found.push(['name', `Another content type is named ${type.name}.`])
       }
     }
-    if (!report.isValid || Object.keys(problems).length) {
-      const fieldReports = Object.entries(problems).map(([key, messages]) => [key, { isValid: false, messages }])
-      return c.json({ isValid: false, fields: { ...report.fields, ...Object.fromEntries(fieldReports) } }, 422)
-    }
+    const invalid = problemsReply(c, schema, report, found)
+    if (invalid) return invalid
 
-    const migration = await commit(async () => {
-      const file = join(dirs!.types, `${type.name}.json`)
-      await writeFile(file, await formatJson(file, type))
-      if (old && old.name !== type.name) await rm(join(dirs!.types, `${old.name}.json`))
-    })
+    const migration = await commit(() => write(dirs!.types, type, old))
     return c.json({ data: types.get(type.name), migration }, old ? 200 : 201)
   }
 
-  app.post('/types', editable, (c) => save(c))
-  app.put('/types/:type', editable, (c) => save(c, named(c.req.param('type'))))
+  app.post('/types', editable('Content types'), (c) => save(c))
+  app.put('/types/:type', editable('Content types'), (c) => save(c, named(types, c.req.param('type'))))
 
-  // The type's entries stay, and the migration flags them
-  app.delete('/types/:type', editable, async (c) => {
-    const type = named(c.req.param('type'))
-    const linking = [...types.values()].filter(
-      (other) =>
-        other.id !== type.id &&
-        someField(other.fields, (field) => field.type === 'relationship' && field.options?.types?.includes(type.id)),
-    )
+  // The type's entries stay, and the migration flags them. Shared groups no type uses yet can link to it too.
+  app.delete('/types/:type', editable('Content types'), async (c) => {
+    const type = named(types, c.req.param('type'))
+    const links = (fields: Array<FieldSchema>) =>
+      someField(fields, (field) => field.type === 'relationship' && field.options?.types?.includes(type.id))
+    const linking = [
+      ...[...types.values()].filter((other) => other.id !== type.id && links(other.fields)).map((other) => other.label),
+      ...[...groups.values()].filter((group) => links(group.fields)).map((group) => `the shared group ${group.label}`),
+    ]
     if (linking.length) {
-      const labels = linking.map((other) => other.label).join(', ')
       throw new HTTPException(409, {
-        message: `Relationship fields in ${labels} link to ${type.label}. Take it out of them first.`,
+        message: `Relationship fields in ${linking.join(', ')} link to ${type.label}. Take it out of them first.`,
       })
     }
     return c.json({ migration: await commit(() => rm(join(dirs!.types, `${type.name}.json`))) })
+  })
+
+  // Create or replace a shared group from its settings and fields, renaming its file when its name changes. Types see
+  // the change as a change to their own fields, so the migration covers every type and path that uses it.
+  const saveGroup = async (c: Context<AdminEnv>, old?: SharedGroup) => {
+    const body = await c.req.json().catch(() => ({}))
+    const settings = pickValues(groupSchema, body ?? {}, inputs)
+    const report = await validateServerValues(groupSchema, settings, inputs)
+    const group: SharedGroup = {
+      id: old?.id ?? createId('grp'),
+      name: settings.name,
+      label: settings.label,
+      fields: Array.isArray(body?.fields) ? body.fields : [],
+    }
+
+    const found: Array<[string, string]> = []
+    if (report.isValid) {
+      const problems = checkGroup(group, group.name, ids(types), ids(groups, group.id))
+      for (const problem of problems) found.push([keyOf(problem), problem])
+      if ([...groups.values()].some((other) => other.name === group.name && other.id !== group.id)) {
+        found.push(['name', `Another shared group is named ${group.name}.`])
+      }
+      // Only a group that passes can be followed through the groups it uses
+      const byId = new Map([...groups.values(), group].map((each) => [each.id, each]))
+      const through = problems.length ? undefined : cycleOf(group.id, byId)
+      if (through) found.push(['fields', cycleProblem(through)])
+    }
+    const invalid = problemsReply(c, groupSchema, report, found)
+    if (invalid) return invalid
+
+    const migration = await commit(() => write(groupsDir!, group, old))
+    return c.json({ data: groups.get(group.name), migration }, old ? 200 : 201)
+  }
+
+  app.post('/groups', editable('Shared groups'), (c) => saveGroup(c))
+  app.put('/groups/:group', editable('Shared groups'), (c) => saveGroup(c, named(groups, c.req.param('group'))))
+
+  app.delete('/groups/:group', editable('Shared groups'), async (c) => {
+    const group = named(groups, c.req.param('group'))
+    const using = [
+      ...[...types.values()]
+        .filter((type) => someField(type.fields, (field) => isUse(field) && field.options!.group === group.id))
+        .map((type) => type.label),
+      ...[...groups.values()]
+        .filter((other) => usesOf(other.fields).includes(group.id))
+        .map((other) => `the shared group ${other.label}`),
+    ]
+    if (using.length) {
+      throw new HTTPException(409, {
+        message: `${using.join(', ')} ${using.length > 1 ? 'use' : 'uses'} ${group.label}. Take it out of them first.`,
+      })
+    }
+    return c.json({ migration: await commit(() => rm(join(groupsDir!, `${group.name}.json`))) })
   })
 
   return app

@@ -10,7 +10,7 @@ import { mediaRoutes } from './media'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
 import { EditorDirs, typeRoutes } from './typeEditor'
-import type { ContentType } from './types'
+import type { ContentType, SharedGroup } from './types'
 import { typesFile } from './typescript'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, MiddlewareHandler } from 'hono'
@@ -29,7 +29,9 @@ const sessionLength = 30 * 24 * 60 * 60 * 1000
 export interface AppOptions {
   // Its content migrations, loaded by each request that needs them, so a new one counts as soon as it's written
   migrations?: () => Promise<Record<string, ContentMigrationFile>>
-  // Its folders, where the type editor writes types and migrations, as in iight dev
+  // Its shared groups, which its types come with expanded
+  groups?: Map<string, SharedGroup>
+  // Its folders, where the type editor writes types, shared groups and migrations, as in iight dev
   editor?: EditorDirs
   // Its storage for media, from iight.config.ts. The media library and its files need it.
   storage?: Storage
@@ -46,7 +48,16 @@ export interface AppOptions {
 export function createApp(
   db: Kysely<Database>,
   types = new Map<string, ContentType>(),
-  { migrations = async () => ({}), editor, storage, media, delivery, forms, admin }: AppOptions = {},
+  {
+    migrations = async () => ({}),
+    groups = new Map(),
+    editor,
+    storage,
+    media,
+    delivery,
+    forms,
+    admin,
+  }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
   const app = new Hono<AdminEnv>()
@@ -156,12 +167,13 @@ export function createApp(
     await next()
   }
   app.use('/api/types/*', signedIn)
+  app.use('/api/groups/*', signedIn)
   app.use('/api/entries/*', signedIn)
   app.use('/api/media/*', signedIn)
   app.use('/api/forms/*', signedIn)
   app.use('/api/submissions/*', signedIn)
   app.use('/api/automations/*', signedIn)
-  app.route('/api', typeRoutes(types, editor))
+  app.route('/api', typeRoutes(types, groups, editor))
   app.route('/api', entryRoutes(db, types, migrations))
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db))
@@ -174,7 +186,7 @@ export function createApp(
   // Made for each request, since the type editor can change the types, and the admin the forms
   app.get('/types', apiKey(db), async (c) => {
     const found = await db.selectFrom('forms').select(['name', 'fields']).orderBy('name').execute()
-    return c.text(typesFile(types, depth, found))
+    return c.text(typesFile(types, depth, found, groups))
   })
 
   return app

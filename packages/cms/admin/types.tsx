@@ -1,10 +1,12 @@
+import { collapseUses, mapFields } from '../src/fields'
 import { typeSchema } from '../src/schemas'
-import { ContentType, api, errorMessage } from './api'
+import { ContentType, SharedGroup, api, errorMessage } from './api'
 import { iconInput, useInputs } from './fields'
+import { MakeShared, TypeGroups, UseShared } from './groups'
 import { Badge, EmptyState, Notice, PageHeader, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
 import { Blocks, CircleAlert, Plus, Trash2 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 // The builder is a form of its own, so a new choice in the settings never resets an editor open in it
 const fieldsSchema: Array<FieldSchema> = [{ name: 'fields', label: 'Fields', type: 'schemabuilder' }]
@@ -70,7 +72,8 @@ export function TypeList({ types, editable }: { types: Map<string, ContentType>;
 }
 
 // Create or change a content type: its settings, and its fields in core's schema builder. Saving writes the type's file
-// and a content migration for the change, whose flags and TODOs the page lists.
+// and a content migration for the change, whose flags and TODOs the page lists. Its own groups can become shared, or
+// give way to a shared group, beside the form.
 export function TypeEditor({
   type,
   editable,
@@ -94,8 +97,14 @@ export function TypeEditor({
   })
   // What the settings form starts from, replaced only when a renamed field takes a setting with it
   const [shown, setShown] = useState(settings)
-  const [fields, setFields] = useState<Array<FieldSchema>>(type?.fields ?? [])
-  const [shownFields] = useState({ fields })
+  // As the type's file has them, with each use of a shared group as its Shared group field
+  const [fields, setFields] = useState<Array<FieldSchema>>(() => collapseUses(type?.fields ?? []))
+  // What the builder starts from, replaced only when a group is swapped for a shared one
+  const [shownFields, setShownFields] = useState({ fields })
+  // The group a swap dialog is open for, and the swapped one, whose link takes focus once it shows
+  const [making, setMaking] = useState<FieldSchema>()
+  const [using, setUsing] = useState<FieldSchema>()
+  const [swapped, setSwapped] = useState<string>()
   const schema = useMemo(() => typeSchema(fields), [fields])
   // Taken once, by the page the save moved to, since the editor it left renders again before it goes
   const [result, setResult] = useState(() => {
@@ -128,6 +137,25 @@ export function TypeEditor({
     }
     setFields(next)
   }
+
+  // One of the type's own groups, at any depth, swapped for a use of a shared group, which keeps the group's id and its
+  // own settings, so its entries keep the values whose names match
+  const swap = (field: FieldSchema, group: SharedGroup) => {
+    const { fields: _, ...options } = field.options ?? {}
+    const use = { ...field, type: 'shared', options: { ...options, group: group.id } }
+    const next = mapFields(fields, (each) => (each.id === field.id ? use : each))
+    changeFields(next)
+    setShownFields({ fields: next })
+    setSwapped(field.id)
+  }
+
+  // The swap's button went with its group, so once the dialog has closed and handed focus back, it moves to the shared
+  // group the use links to
+  useEffect(() => {
+    if (!swapped || making || using) return
+    document.querySelector<HTMLElement>(`[data-use="${swapped}"]`)?.focus()
+    setSwapped(undefined)
+  })
 
   // Run an action, showing what went wrong if it fails. The buttons stay enabled, so the focused one keeps focus, and
   // a second click is ignored here instead.
@@ -230,7 +258,7 @@ export function TypeEditor({
         </div>
 
         {/* How the menu will show the type, following the settings as they're typed */}
-        <aside className='cms-editor__aside' aria-label='Preview'>
+        <aside className='cms-editor__aside' aria-label='Details'>
           <section>
             <h2>In the menu</h2>
             <p className='cms-type-preview'>
@@ -238,8 +266,22 @@ export function TypeEditor({
               {settings.label || 'Untitled'}
             </p>
           </section>
+          <TypeGroups fields={fields} editable={editable} onMakeShared={setMaking} onUseShared={setUsing} />
         </aside>
       </div>
+
+      {making && (
+        <MakeShared
+          field={making}
+          onClose={() => setMaking(undefined)}
+          onMade={async (group) => {
+            await onSaved()
+            swap(making, group)
+            toast(`Made ${group.label} shared. Save to use it here.`)
+          }}
+        />
+      )}
+      {using && <UseShared field={using} onClose={() => setUsing(undefined)} onUse={(group) => swap(using, group)} />}
 
       {editable && (
         <div className='cms-action-bar'>

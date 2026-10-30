@@ -1,5 +1,5 @@
-import { holdsOne, idsOf, media, relationship, relationshipOptions } from '../src/fields'
-import { ContentType, Entry, TypesContext, api, errorMessage, titleOf } from './api'
+import { holdsOne, idsOf, media, relationship, relationshipOptions, shared, sharedOptions } from '../src/fields'
+import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
 import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
 import Form, { FieldSchema, Input, inputs, useFieldContext } from 'iight'
@@ -315,18 +315,24 @@ function IconPicker() {
 // The type editor's Icon setting, whose value is text: the name of one of Lucide's icons
 export const iconInput: Input = { ...inputs.text, default: IconPicker }
 
-// The CMS's inputs with their pickers, for the forms that edit entries and content types
-export function useInputs() {
+// The CMS's inputs with their pickers, for the forms that edit entries, content types and shared groups. The schema
+// builder offers a Shared group field while there's a shared group to use, other than the one it's building.
+export function useInputs(building?: string) {
   const types = useContext(TypesContext)
-  return useMemo<Record<string, Input>>(
-    () => ({
+  const groups = useContext(GroupsContext)
+  return useMemo<Record<string, Input>>(() => {
+    const usable = [...groups.values()].filter((group) => group.id !== building)
+    return {
       relationship: {
         ...relationship,
         optionFields: () => relationshipOptions(types.values()),
         default: RelationshipPicker,
       },
       media: { ...media, default: MediaPicker },
-    }),
-    [types],
-  )
+      // Types expand their uses into groups, so no form ever renders one
+      ...(usable.length
+        ? { shared: { ...shared, optionFields: () => sharedOptions(usable), default: () => null } }
+        : {}),
+    }
+  }, [types, groups, building])
 }

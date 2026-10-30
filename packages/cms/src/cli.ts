@@ -10,7 +10,7 @@ import { loadMigrations, migrate, migrationsDir, rollback, status } from './migr
 import { hashPassword } from './passwords'
 import { rebuildRelations } from './relations'
 import { apiKeySchema, userSchema } from './schemas'
-import { loadTypes } from './types'
+import { loadSchema } from './types'
 import type { FieldSchema } from 'iight'
 import { Kysely } from 'kysely'
 import { existsSync } from 'node:fs'
@@ -62,7 +62,7 @@ const commands: Record<string, Command> = {
     },
   },
   'make:migration': {
-    description: 'Write a content migration for the changes to schema/types',
+    description: 'Write a content migration for the changes to schema/types and schema/groups',
     run: async (_db, [name]) => {
       const types = await loadProjectTypes()
       const { file, notes, created, updated } = await makeMigration(resolve('migrations'), types, name).catch(
@@ -85,12 +85,14 @@ const commands: Record<string, Command> = {
   },
 }
 
-// Load the site project's content types, or list their problems and stop
-const loadProjectTypes = () =>
-  loadTypes(resolve('schema/types')).catch((error) => {
+// Load the site project's content types and shared groups, or list their problems and stop
+const loadProjectSchema = () =>
+  loadSchema(resolve('schema/types')).catch((error) => {
     console.error(error.message)
     process.exit(1)
   })
+
+const loadProjectTypes = async () => (await loadProjectSchema()).types
 
 // The CMS's migrations and the site project's content migrations, which share the migrations table
 async function loadAllMigrations() {
@@ -130,7 +132,7 @@ async function dev(db: Kysely<Database>) {
   const vite = await import('vite')
 
   // shortcut: types load once, and again after each change in the type editor, so restart after editing a file by hand
-  const types = await loadProjectTypes()
+  const { types, groups } = await loadProjectSchema()
   const dirs = { types: resolve('schema/types'), migrations: resolve('migrations') }
 
   const port = Number(process.env.PORT) || 3000
@@ -141,6 +143,7 @@ async function dev(db: Kysely<Database>) {
   })
   const app = createApp(db, types, {
     migrations: () => loadContentMigrations(dirs.migrations),
+    groups,
     editor: dirs,
     storage: config.storage,
     media: config.media,
@@ -166,10 +169,11 @@ async function start(db: Kysely<Database>) {
     process.exit(1)
   }
 
-  const types = await loadProjectTypes()
+  const { types, groups } = await loadProjectSchema()
   // No editor, so the type editor is read-only
   const app = createApp(db, types, {
     migrations: () => loadContentMigrations(resolve('migrations')),
+    groups,
     admin,
     storage: config.storage,
     media: config.media,

@@ -8,6 +8,7 @@ test("finds the nav item a page's URL belongs to", () => {
   expect(sectionOf('#/forms/01a1831e/inbox')).toBe('forms')
   expect(sectionOf('#/automations/new/01a1831e')).toBe('automations')
   expect(sectionOf('#/schema/blog')).toBe('schema')
+  expect(sectionOf('#/groups/seo')).toBe('groups')
   expect(sectionOf('#/media')).toBe('media')
 
   // An entry's page names its type once it loads
