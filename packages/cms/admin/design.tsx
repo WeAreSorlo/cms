@@ -1,5 +1,7 @@
+import { versionSchema } from '../src/schemas'
 import { ContentType, Entry, GroupsContext, SharedGroup, Status } from './api'
 import { Grid, columnsOf, useRows } from './bulk'
+import { compare } from './compare'
 import { contrast, pairs } from './contrast'
 import './design.scss'
 import { Version, Versions } from './entries'
@@ -21,6 +23,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
+import { ChangeList, JsonChanges } from './versions'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Sheet, Trash2 } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useReducer, useRef, useState } from 'react'
@@ -66,12 +69,117 @@ const sampleFiles: Array<Media> = [
   },
 ]
 
-// Seven versions, newest first, a day apart, one of them saved by a user deleted since
+// Seven versions, newest first, a day apart, one of them saved by a user deleted since. Version 5, the live one in the
+// changed entry's panels, is named and went live an hour after it was saved, and so did version 3, by someone since
+// deleted.
 const sampleVersions: Array<Version> = [7, 6, 5, 4, 3, 2, 1].map((number) => ({
   number,
+  name: { 5: 'Launch copy', 3: 'Before the rebrand' }[number] ?? null,
   createdBy: number === 2 ? null : { id: 'usr_sample', name: 'Levi' },
   createdAt: `2026-10-${22 + number}T14:0${number}:00Z`,
+  publishedAt: number === 5 || number === 3 ? `2026-10-${22 + number}T15:00:00Z` : null,
+  publishedBy: number === 5 ? { id: 'usr_sample', name: 'Levi' } : null,
 }))
+
+// Two versions of a post for the comparison: a text and a box changed, a long text reworded, a field in a group, a
+// link swapped for another, and a list with an item changed and one removed
+const compareFields: Array<FieldSchema> = [
+  { type: 'text', name: 'title', label: 'Title' },
+  { type: 'textarea', name: 'intro', label: 'Intro' },
+  { type: 'boolean', name: 'featured', label: 'Featured' },
+  { type: 'group', name: 'seo', label: 'SEO', options: { fields: [{ type: 'text', name: 'title', label: 'Title' }] } },
+  { type: 'relationship', name: 'author', label: 'Author', options: { maximum: 1 } },
+  {
+    type: 'repeater',
+    name: 'links',
+    label: 'Links',
+    options: {
+      fields: [
+        { type: 'text', name: 'label', label: 'Label' },
+        { type: 'url', name: 'url', label: 'URL' },
+      ],
+    },
+  },
+]
+const sampleBefore = {
+  title: 'Spring sale',
+  intro: 'Our biggest sale of the year starts on Monday.',
+  featured: false,
+  seo: { title: 'Spring sale' },
+  author: 'ada',
+  links: [
+    { label: 'Shop', url: 'https://example.com/shop' },
+    { label: 'Terms', url: 'https://example.com/terms' },
+  ],
+}
+const sampleAfter = {
+  title: 'Spring sale',
+  intro: 'Our biggest sale of the year starts on Friday, online and in stores.',
+  featured: true,
+  seo: { title: 'Spring sale: up to 50% off' },
+  author: 'grace',
+  links: [{ label: 'Shop now', url: 'https://example.com/shop' }],
+}
+const sampleChanges = compare(compareFields, sampleBefore, sampleAfter)
+const sampleLinks = { ada: 'Ada Lovelace', grace: 'Grace Hopper' }
+
+// The version page's panel for each kind of version: an old one, the current one, the live one, and an archived
+// entry's, which can only be read
+const versionPanels: Array<{
+  label: string
+  restore?: boolean
+  remove?: boolean
+  name?: string | null
+  live?: boolean
+}> = [
+  { label: 'An old version', restore: true, remove: true, name: 'Before the rebrand' },
+  { label: 'The current version', name: '' },
+  { label: 'The live version', restore: true, name: 'Launch copy', live: true },
+  { label: "An archived entry's version", name: null },
+]
+
+// One of the version page's panels, whose buttons toast what they'd do
+function VersionPanel({ restore, remove, name, live }: Omit<(typeof versionPanels)[number], 'label'>) {
+  const toast = useToast()
+  return (
+    <Panel
+      label='About this version'
+      actions={
+        restore && (
+          <button type='button' className='iight-button iight-button--primary' onClick={() => toast('Restoring')}>
+            Restore
+          </button>
+        )
+      }
+      footer={
+        remove && (
+          <button type='button' className='iight-button iight-button--danger' onClick={() => toast('Asks first')}>
+            <Trash2 /> Delete version
+          </button>
+        )
+      }
+    >
+      <section>
+        <h2>Saved</h2>
+        <p>Levi · 27 Oct, 14:05</p>
+      </section>
+      {live && (
+        <section>
+          <h2>Last published</h2>
+          <p>Levi · 27 Oct, 15:00</p>
+        </section>
+      )}
+      {name !== null && (
+        <div className='cms-version-name'>
+          <Form schema={versionSchema} values={{ name }} />
+          <button type='button' className='iight-button' onClick={() => toast('Named the version')}>
+            Save name
+          </button>
+        </div>
+      )}
+    </Panel>
+  )
+}
 
 // The entry editor's panel for each kind of entry: new, before and after a publish that can't go ahead, changed since
 // its live version with the history shut and open, archived, and of a type without drafts, whose Save publishes
@@ -539,6 +647,67 @@ export default function Design() {
             <li key={label}>
               <h3>{label}</h3>
               <EntryPanel {...panel} />
+            </li>
+          ))}
+        </ul>
+      </PanelSlot.Provider>
+
+      <h2>Versions</h2>
+      <p>
+        Each version in an entry's history links to its page, where its name goes first, with its number under it, and a
+        version that went live says who published it last. The page compares the version with the one before it, or with
+        another picked, such as the live one, from the older to the newer. It shows each changed field by its path of
+        labels, a long text's words added and removed, a list's items matched by position, and entries' titles and
+        files' names for links. As JSON, it shows both versions' values a line at a time, keys in order, with the lines
+        added and removed.
+      </p>
+      <Form
+        schema={[
+          {
+            name: 'against',
+            label: 'Compare with',
+            type: 'select',
+            options: {
+              placeholder: 'Nothing, so every field counts as added',
+              choices: [
+                { value: '6', label: 'Version 6' },
+                { value: '5', label: 'Launch copy (version 5, live)' },
+              ],
+            },
+          },
+          {
+            name: 'view',
+            label: 'Show changes',
+            type: 'radio',
+            options: {
+              choices: [
+                { value: 'fields', label: 'By field' },
+                { value: 'json', label: 'As JSON' },
+              ],
+            },
+          },
+        ]}
+        values={{ against: '6', view: 'json' }}
+      />
+      <dl className='cms-pairs'>
+        <div>
+          <dt>Before</dt>
+          <dd>Version 6 · Levi · 28 Oct, 14:06</dd>
+        </div>
+        <div>
+          <dt>After</dt>
+          <dd>Version 7 (current) · Levi · 29 Oct, 14:07</dd>
+        </div>
+      </dl>
+      <ChangeList changes={sampleChanges} links={sampleLinks} />
+      <h3>As JSON</h3>
+      <JsonChanges before={sampleBefore} after={sampleAfter} />
+      <PanelSlot.Provider value={null}>
+        <ul className='cms-design__panels'>
+          {versionPanels.map(({ label, ...panel }) => (
+            <li key={label}>
+              <h3>{label}</h3>
+              <VersionPanel {...panel} />
             </li>
           ))}
         </ul>

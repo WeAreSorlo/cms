@@ -149,6 +149,7 @@ async function dev(db: Kysely<Database>) {
     media: config.media,
     delivery: config.delivery,
     forms: config.forms,
+    versions: config.versions,
   })
   const api = getRequestListener(app.fetch)
 
@@ -179,6 +180,7 @@ async function start(db: Kysely<Database>) {
     media: config.media,
     delivery: config.delivery,
     forms: config.forms,
+    versions: config.versions,
   })
 
   // Hands events on to automations, in this process

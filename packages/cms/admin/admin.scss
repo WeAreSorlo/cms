@@ -834,6 +834,142 @@ a.iight-button {
   overflow-wrap: anywhere;
 }
 
+// Terms beside what they describe, such as Before and After
+.cms-pairs {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--iight-size-1) var(--iight-size-3);
+  margin: 0 0 var(--iight-size-4);
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+
+  > div {
+    display: contents;
+  }
+
+  dt {
+    color: var(--cms-muted);
+  }
+
+  dd {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+// A version's changes: each field's labels and what happened to it, then its values, its words, or its list's items
+.cms-changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  .cms-pairs {
+    margin: 0;
+  }
+}
+
+.cms-change__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--iight-size-1) var(--iight-size-2);
+  margin-bottom: var(--iight-size-1);
+}
+
+.cms-change__label {
+  margin: 0;
+  font-size: var(--cms-text-base);
+  line-height: var(--cms-leading-base);
+  font-weight: var(--iight-font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+// A list's items, ruled off under their field
+.cms-change__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-3);
+  margin: var(--iight-size-2) 0 0;
+  padding: 0 0 0 var(--iight-size-3);
+  list-style: none;
+  border-left: var(--iight-size-px) solid var(--cms-rule);
+}
+
+.cms-change__text {
+  margin: 0;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  // Struck through and underlined as well as coloured, so the colour isn't all that tells them apart
+  del,
+  ins {
+    padding: 0 var(--iight-size-px);
+  }
+
+  del {
+    color: var(--cms-danger);
+    background: var(--cms-danger-tint);
+  }
+
+  ins {
+    color: var(--cms-success);
+    background: var(--cms-success-tint);
+  }
+
+  // Words that replace others
+  del + ins {
+    margin-left: var(--iight-size-1);
+  }
+}
+
+// Two versions' values as JSON, a line each, with lines added and removed marked by a sign and a tint. Each line is as
+// wide as the longest, and long ones scroll inside it.
+.cms-json-diff {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr);
+  overflow-x: auto;
+  margin: 0;
+  padding: var(--iight-size-2) 0;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  > * {
+    padding: 0 var(--iight-size-3);
+    text-decoration: none;
+    white-space: pre;
+  }
+
+  del {
+    color: var(--cms-danger);
+    background: var(--cms-danger-tint);
+  }
+
+  ins {
+    color: var(--cms-success);
+    background: var(--cms-success-tint);
+  }
+}
+
+.cms-version-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--iight-size-2);
+
+  > :first-child {
+    align-self: stretch;
+  }
+}
+
 // The bulk editor's actions, which need the page's full width. They stick to the bottom of the window while the grid
 // is longer than it.
 .cms-action-bar {

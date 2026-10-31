@@ -1,15 +1,17 @@
+import type { VersionOptions } from '.'
 import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
-import { isEmptyValue, pickValues, validateServerValues, validationError } from './core'
+import { inputs, isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { addEvents } from './events'
 import { EntryRow, StatusRow, listEntries, parseQuery, toAdminEntry, usedBy, withStatus } from './query'
 import { cmsInputs, saveRelations, serverInputs } from './relations'
-import type { EventName } from './schemas'
+import { EventName, versionSchema } from './schemas'
 import type { ContentType } from './types'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { FieldSchema, InputSchema, ValidationReport } from 'iight'
 import { Kysely, sql } from 'kysely'
+import { isDeepStrictEqual } from 'node:util'
 
 export type AdminEnv = { Variables: { user: { id: string; email: string; name: string } } }
 
@@ -129,6 +131,13 @@ async function goLive(trx: Kysely<Database>, type: ContentType, row: EntryRow, v
     .values({ id: row.id, ...live })
     .onConflict((oc) => oc.column('id').doUpdateSet(live))
     .execute()
+  // So each version records the last time it went live
+  await trx
+    .updateTable('entry_versions')
+    .set({ published_at: sql`now()`, published_by: user })
+    .where('entry_id', '=', row.id)
+    .where('number', '=', version)
+    .execute()
 
   const moved = type.structure === 'hierarchical' ? await followUri(trx, 'published_entries', row.id) : []
   await addEntryEvents(trx, 'entry.published', [row, ...moved])
@@ -139,7 +148,12 @@ export function entryRoutes(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
+  { keep }: Partial<VersionOptions> = {},
 ) {
+  if (keep !== undefined && (!Number.isInteger(keep) || keep < 1)) {
+    throw new Error('versions.keep in iight.config.ts needs a whole number from 1.')
+  }
+
   const app = new Hono<AdminEnv>()
 
   // The last content migration to run, which values saved now have been through (PLAN.md section 6)
@@ -299,6 +313,27 @@ export function entryRoutes(
         report = await validateServerValues(type.fields, values, inputs, { allowIncomplete: !publish })
         if (!report.isValid) return { report }
 
+        // A save that changes nothing does nothing once the entry has a version: no version, relations or events, and
+        // its updated_at stays. Values compare as stored, so their keys' order doesn't count. A publish still makes the
+        // newest version live while the live copy is older or missing.
+        const status =
+          existing &&
+          (await withStatus(trx)
+            .select(['version', 'published_version'])
+            .where('id', '=', existing.id)
+            .executeTakeFirstOrThrow())
+        if (
+          existing &&
+          status?.version &&
+          existing.parent_id === parentId &&
+          isDeepStrictEqual(JSON.parse(JSON.stringify(values)), existing.values)
+        ) {
+          if (publish && (status.published_version ?? 0) < status.version) {
+            await goLive(trx, type, existing, status.version, user)
+          }
+          return { id: existing.id }
+        }
+
         const slug: string | null = (type.slugField && values[type.slugField]) || null
         const hierarchical = type.structure === 'hierarchical'
         const uri = !hierarchical || !slug ? null : parent ? parent.uri && `${parent.uri}/${slug}` : slug
@@ -353,6 +388,19 @@ export function entryRoutes(
         }
 
         if (publish) await goLive(trx, type, row, number, user)
+
+        // The newest versions up to the cap, so the current one stays, besides the named ones and the live one. The
+        // name is checked again on each row as it's deleted, so a version named meanwhile stays.
+        if (keep) {
+          await sql`
+            delete from entry_versions where entry_id = ${row.id} and name is null and number in (
+              select number from entry_versions
+              where entry_id = ${row.id} and name is null
+                and number is distinct from (select version from published_entries where id = ${row.id})
+              order by number desc offset ${keep}
+            )
+          `.execute(trx)
+        }
         return { id: row.id }
       })
     } catch (error) {
@@ -617,37 +665,105 @@ export function entryRoutes(
     return c.body(null, 204)
   })
 
-  // Every saved version, newest first, with who saved it. Only saves write versions, so a version with no user was
-  // saved by a user deleted since. To restore one, save its values again, which the next route brings up to date.
-  app.get('/entries/:id/versions', async (c) => {
-    const { row } = await find(c.req.param('id'))
-    const versions = await db
+  // An entry's versions, newest first, or the one with the given number: its name, who saved it and when, and when it
+  // last went live and who published it then. Only saves and publishes record a user, so a version with none was saved
+  // or published by a user deleted since.
+  const listVersions = async (id: string, number?: number) => {
+    const rows = await db
       .selectFrom('entry_versions')
-      .leftJoin('users', 'users.id', 'entry_versions.created_by')
-      .select(['number', 'entry_versions.created_at', 'users.id as user_id', 'users.name as user_name'])
-      .where('entry_id', '=', row.id)
+      .leftJoin('users as saver', 'saver.id', 'entry_versions.created_by')
+      .leftJoin('users as publisher', 'publisher.id', 'entry_versions.published_by')
+      .select([
+        'number',
+        'entry_versions.name',
+        'entry_versions.created_at',
+        'entry_versions.published_at',
+        'saver.id as saver_id',
+        'saver.name as saver_name',
+        'publisher.id as publisher_id',
+        'publisher.name as publisher_name',
+      ])
+      .where('entry_id', '=', id)
+      .$if(number !== undefined, (qb) => qb.where('number', '=', number!))
       .orderBy('number', 'desc')
       .execute()
-    return c.json({
-      data: versions.map((version) => ({
-        number: version.number,
-        createdBy: version.user_id ? { id: version.user_id, name: version.user_name } : null,
-        createdAt: version.created_at,
-      })),
-    })
+    return rows.map((version) => ({
+      number: version.number,
+      name: version.name,
+      createdBy: version.saver_id ? { id: version.saver_id, name: version.saver_name } : null,
+      createdAt: version.created_at,
+      publishedAt: version.published_at,
+      publishedBy: version.publisher_id ? { id: version.publisher_id, name: version.publisher_name } : null,
+    }))
+  }
+
+  // A version's number in the URL, short enough to be a Postgres integer, or a 404
+  const numberOf = (param: string) => {
+    if (!/^\d{1,9}$/.test(param)) throw new HTTPException(404)
+    return Number(param)
+  }
+
+  // One of an entry's versions, as the list gives it, or a 404
+  const versionOf = async (id: string, number: number) => {
+    const [version] = await listVersions(id, number)
+    if (!version) throw new HTTPException(404)
+    return version
+  }
+
+  // To restore a version, save its values again, which GET /entries/:id/versions/:number brings up to date
+  app.get('/entries/:id/versions', async (c) => {
+    const { row } = await find(c.req.param('id'))
+    return c.json({ data: await listVersions(row.id) })
+  })
+
+  // Name a version, or clear its name with an empty one. An archived entry's versions stay as they are.
+  app.put('/entries/:id/versions/:number', async (c) => {
+    const { row } = await find(c.req.param('id'))
+    const { number } = await versionOf(row.id, numberOf(c.req.param('number')))
+    if (row.archived_at) throw new HTTPException(409, { message: archived })
+
+    const values = pickValues(versionSchema, (await c.req.json().catch(() => null)) ?? {}, inputs)
+    const report = await validateServerValues(versionSchema, values, inputs)
+    if (!report.isValid) return c.json(report, 422)
+
+    await db
+      .updateTable('entry_versions')
+      .set({ name: values.name?.trim() || null })
+      .where('entry_id', '=', row.id)
+      .where('number', '=', number)
+      .execute()
+    return c.json({ data: await versionOf(row.id, number) })
+  })
+
+  // Delete a version for good, except the current one, the live one and an archived entry's. Numbers never shift, and
+  // since the current version stays, new ones go on numbering from it. Only the newest version is ever published, so a
+  // version that passes these checks can't become current or live while it's deleted.
+  app.delete('/entries/:id/versions/:number', async (c) => {
+    const { row } = await find(c.req.param('id'))
+    const { number } = await versionOf(row.id, numberOf(c.req.param('number')))
+    if (row.archived_at) throw new HTTPException(409, { message: archived })
+    if (number === row.version) {
+      throw new HTTPException(409, { message: `Version ${number} is the current version, so it can't be deleted.` })
+    }
+    if (number === row.published_version) {
+      throw new HTTPException(409, {
+        message: `Version ${number} is live, so it can't be deleted. Publish another version first.`,
+      })
+    }
+
+    await db.deleteFrom('entry_versions').where('entry_id', '=', row.id).where('number', '=', number).execute()
+    return c.body(null, 204)
   })
 
   app.get('/entries/:id/versions/:number', async (c) => {
     const { row } = await find(c.req.param('id'))
-    const number = Number(c.req.param('number'))
-    const version = Number.isInteger(number)
-      ? await db
-          .selectFrom('entry_versions')
-          .selectAll()
-          .where('entry_id', '=', row.id)
-          .where('number', '=', number)
-          .executeTakeFirst()
-      : undefined
+    const number = numberOf(c.req.param('number'))
+    const version = await db
+      .selectFrom('entry_versions')
+      .selectAll()
+      .where('entry_id', '=', row.id)
+      .where('number', '=', number)
+      .executeTakeFirst()
     if (!version) throw new HTTPException(404)
 
     // Run the ups of the content migrations that ran after the version was saved, so its values fit the type's fields

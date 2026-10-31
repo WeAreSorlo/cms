@@ -286,13 +286,21 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
 
 export interface Version {
   number: number
+  // What people call it, such as Before the rebrand
+  name: string | null
   // Null once the user who saved it is deleted
   createdBy: { id: string; name: string } | null
   createdAt: string
+  // The last time it went live, and who published it then, null once they're deleted
+  publishedAt: string | null
+  publishedBy: { id: string; name: string } | null
 }
 
+// A version's page, which compares it with the one before
+export const versionHref = (entry: Entry, version: Version) => `#/entries/${entry.id}/versions/${version.number}`
+
 // An entry's versions, newest first: the current one, and the live one when that's older, until all of them are asked
-// for. Every version but the current one can be restored, unless the entry is archived.
+// for. Each links to its page, and every version but the current one can be restored, unless the entry is archived.
 export function Versions({
   versions,
   entry,
@@ -319,13 +327,19 @@ export function Versions({
           <li key={version.number}>
             <div>
               <div className='cms-versions__title'>
-                Version {version.number}
+                <a href={versionHref(entry, version)}>{version.name ?? `Version ${version.number}`}</a>
                 {version === current && <Badge tone='accent'>Current</Badge>}
                 {drafts && version.number === entry.publishedVersion && <StatusBadge status='published' />}
               </div>
+              {version.name && <div className='cms-versions__by'>Version {version.number}</div>}
               <div className='cms-versions__by'>
                 {version.createdBy?.name ?? 'Deleted user'} · {shortDate(version.createdAt)}
               </div>
+              {drafts && version.publishedAt && (
+                <div className='cms-versions__by'>
+                  Published by {version.publishedBy?.name ?? 'Deleted user'} · {shortDate(version.publishedAt, false)}
+                </div>
+              )}
             </div>
             {version !== current && !entry.archivedAt && (
               <button
@@ -348,6 +362,10 @@ export function Versions({
     </section>
   )
 }
+
+// A version to put in the form when its entry's editor opens next, from Restore on the version's page
+let restoreNext: { entryId: string; version: Version } | undefined
+export const restoreOnOpen = (entryId: string, version: Version) => (restoreNext = { entryId, version })
 
 // Create, edit and publish an entry with its type's fields, see the entries that link to it, and see and restore its
 // versions
@@ -455,7 +473,9 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
         form.current!.applyReport(reply)
         return showInvalid(publish, reply)
       }
-      toast(publish ? 'Published' : 'Saved')
+      // A save that changes nothing leaves the entry as it was, and a publish of what's live publishes nothing
+      const changed = !entry || reply.data.updatedAt !== entry.updatedAt || reply.data.publishedAt !== entry.publishedAt
+      toast(!changed ? 'No changes' : publish ? 'Published' : 'Saved')
       if (!entry) return void (location.hash = `#/entries/${reply.data.id}`)
 
       setEntry(reply.data)
@@ -481,6 +501,13 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
     show(entry!.values)
     setRestoring(undefined)
   }
+
+  // Taken once, so going back to the editor doesn't restore it again
+  useEffect(() => {
+    const next = restoreNext
+    restoreNext = undefined
+    if (entry && next?.entryId === entry.id) restoreVersion(next.version)
+  }, [])
 
   // Archiving swaps the panel's buttons for Restore and Delete for good, and restoring swaps them back, so once the page
   // shows the result, focus moves to the primary button: Restore, or Publish, or Save for a type without drafts

@@ -192,10 +192,11 @@ test('publishing writes entry.published, and taking entries off the live site wr
   const [unpublished] = await events()
   expect(unpublished.data.entry).toMatchObject({ id, status: 'draft', publishedAt: null })
   expect(await written()).toEqual(['entry.unpublished'])
+  // Its values haven't changed, so it publishes the version it has without saving another
   await admin('PUT', `/entries/${id}`, { values: { title: 'Hello', slug: 'hi' }, publish: true })
   const published = (await events()).find((event) => event.name === 'entry.published')
   expect(published?.data.entry).toMatchObject({ id, status: 'published', publishedAt: expect.any(String) })
-  expect(await written()).toEqual(['entry.published', 'entry.updated'])
+  expect(await written()).toEqual(['entry.published'])
   await admin('POST', `/entries/${id}/archive`)
   expect(await written()).toEqual(['entry.archived', 'entry.unpublished'])
 

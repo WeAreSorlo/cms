@@ -1,8 +1,8 @@
 import { idsOf } from '../src/fields'
-import { ContentType, Entry, TypesContext, api, errorMessage, formatValue, titleOf } from './api'
+import { ContentType, Entry, api, errorMessage, formatValue, titleOf } from './api'
+import { same } from './compare'
 import { CellText, FieldValue } from './entries'
-import { useInputs } from './fields'
-import type { Media } from './media'
+import { useInputs, useLinkNames } from './fields'
 import { Badge, Dialog, EmptyState, Loading, Notice, PageHeader, StatusBadge, useToast } from './ui'
 import Form, {
   FieldSchema,
@@ -20,7 +20,6 @@ import {
   ReactNode,
   memo,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -65,17 +64,6 @@ const setIn = (values: any, [name, ...rest]: Array<string>, value: unknown): Rec
   ...values,
   [name]: rest.length ? setIn(values?.[name], rest, value) : value,
 })
-
-// Whether two JSON values are the same, whatever order their keys are in, since Postgres reorders them
-const same = (a: any, b: any): boolean =>
-  a === b ||
-  (typeof a === 'object' &&
-    typeof b === 'object' &&
-    a !== null &&
-    b !== null &&
-    Array.isArray(a) === Array.isArray(b) &&
-    Object.keys(a).length === Object.keys(b).length &&
-    Object.keys(a).every((key) => same(a[key], b[key])))
 
 // The fields whose values differ from those saved. A group's fields are compared one by one, so it holds just those
 // that changed, which the bulk route merges into what's saved.
@@ -157,50 +145,13 @@ export function useRows(type: ContentType) {
   return { rows, setRows, check, change }
 }
 
-// The titles of the entries and the names of the files that link cells hold, loaded as they appear, with null for any
-// that have gone
+// The titles of the entries and the names of the files that link cells hold
 function useLinks(rows: Array<GridRow>, columns: Array<Column>) {
-  const types = useContext(TypesContext)
-  const [names, setNames] = useState<Record<string, string | null>>({})
-  const requested = useRef(new Set<string>())
-  const wanted = (kind: string) => {
-    const held = columns
+  const held = (kind: string) =>
+    columns
       .filter((column) => column.field.type === kind)
       .flatMap((column) => rows.flatMap((row) => idsOf(getIn(row.values, column.path))))
-    return [...new Set(held)].filter((id) => !requested.current.has(id))
-  }
-  const entries = wanted('relationship')
-  const files = wanted('media')
-
-  useEffect(() => {
-    if (!entries.length && !files.length) return
-    for (const id of [...entries, ...files]) requested.current.add(id)
-    const name = (found: Array<[string, string | null]>) =>
-      setNames((all) => ({ ...all, ...Object.fromEntries(found) }))
-
-    // shortcut: a request for each linked entry, as the relationship picker makes, add a route for many when grids
-    // link to hundreds of different entries
-    Promise.all(
-      entries.map(async (id): Promise<[string, string | null]> => {
-        const entry: Entry | undefined = await api('GET', `/entries/${id}`).then(
-          ({ body }) => body.data,
-          () => undefined,
-        )
-        const type = entry && types.get(entry.type)
-        return [id, type ? `${titleOf(type, entry)}${entry.archivedAt ? ' (archived)' : ''}` : null]
-      }),
-    ).then(name)
-
-    for (let start = 0; start < files.length; start += 100) {
-      const ids = files.slice(start, start + 100)
-      const where = encodeURIComponent(JSON.stringify([[{ field: 'id', op: 'in', value: ids }]]))
-      api('GET', `/media?perPage=100&where=${where}`)
-        .then(({ body }) => name(ids.map((id) => [id, body.data.find((file: Media) => file.id === id)?.name ?? null])))
-        .catch(() => name(ids.map((id) => [id, null])))
-    }
-  }, [entries.join(), files.join()])
-
-  return names
+  return useLinkNames(held('relationship'), held('media'))
 }
 
 // What a cell shows of its value: what the list shows, a summary of a list's items, or what a link holds

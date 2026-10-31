@@ -53,6 +53,18 @@ export const mediaSchema: Array<FieldSchema> = [
   },
 ]
 
+// A version's name, given on its page in the admin and checked by PUT /api/entries/:id/versions/:number. Empty clears
+// it.
+export const versionSchema: Array<FieldSchema> = [
+  {
+    name: 'name',
+    label: 'Name',
+    type: 'text',
+    instructions: 'Named versions are kept however many versions are saved after them.',
+    options: { maxLength: 100, placeholder: 'Before the rebrand' },
+  },
+]
+
 // A form's settings, rendered by the admin's form editor and checked by its routes. checkFormFields in types.ts checks
 // its fields.
 export const formSchema: Array<FieldSchema> = [

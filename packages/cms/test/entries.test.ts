@@ -82,9 +82,11 @@ test("creates and edits entries with the type's fields, saving a version each ti
   expect((await send('GET', `/entries/${entry.id}`)).body.data.slug).toBe('hello-again')
 
   const versions = await send('GET', `/entries/${entry.id}/versions`)
+  const saved = { name: null, createdBy: { id: userId, name: 'Ada' }, createdAt: expect.any(String) }
+  const unpublished = { publishedAt: null, publishedBy: null }
   expect(versions.body.data).toEqual([
-    { number: 2, createdBy: { id: userId, name: 'Ada' }, createdAt: expect.any(String) },
-    { number: 1, createdBy: { id: userId, name: 'Ada' }, createdAt: expect.any(String) },
+    { number: 2, ...saved, ...unpublished },
+    { number: 1, ...saved, ...unpublished },
   ])
 
   // A version saved by a user deleted since has no one to name

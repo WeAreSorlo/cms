@@ -12,6 +12,7 @@ import { Shell } from './shell'
 import './theme.scss'
 import { TypeEditor, TypeList } from './types'
 import { Notice, focusInvalid } from './ui'
+import { VersionPage } from './versions'
 import Form, { FormHandle } from 'iight'
 import 'iight/styles/base.scss'
 import 'iight/styles/layout.scss'
@@ -86,8 +87,9 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
   )
 }
 
-// The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>, #/media,
-// #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, or #/schema/blog and #/groups/seo in the type editor
+// The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
+// #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, or #/schema/blog
+// and #/groups/seo in the type editor
 function Page({
   hash,
   types,
@@ -135,6 +137,9 @@ function Page({
   if (section === 'keys' && name === 'new') return <KeyEditor key='new' />
   if (section === 'keys' && name) return <KeyPage key={name} id={name} />
   if (section === 'keys') return <KeyList />
+  if (section === 'entries' && name && action === 'versions' && ids) {
+    return <VersionPage key={hash} id={name} number={Number(ids)} types={types} />
+  }
   if (section === 'entries' && name) return <EntryPage key={name} id={name} types={types} />
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />

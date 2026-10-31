@@ -116,9 +116,10 @@ export function tree(entries: Array<Entry>, without?: string) {
 
 export const date = (iso: string) => new Date(iso).toLocaleString()
 
-// Such as 30 Oct, 14:02, with the year once it isn't this one
-export function shortDate(iso: string) {
+// Such as 30 Oct, 14:02, or 30 Oct without the time, with the year once it isn't this one
+export function shortDate(iso: string, time = true) {
   const when = new Date(iso)
   const year = when.getFullYear() === new Date().getFullYear() ? undefined : 'numeric'
-  return when.toLocaleString(undefined, { day: 'numeric', month: 'short', year, hour: 'numeric', minute: '2-digit' })
+  const clock = time ? ({ hour: 'numeric', minute: '2-digit' } as const) : {}
+  return when.toLocaleString(undefined, { day: 'numeric', month: 'short', year, ...clock })
 }

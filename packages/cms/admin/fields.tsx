@@ -62,6 +62,46 @@ function useLinks<T>(load: (ids: Array<string>) => Promise<Record<string, T | nu
   }
 }
 
+// The titles of linked entries and the names of linked files, loaded as they're asked for, with null for any that have
+// gone
+export function useLinkNames(entries: Array<string>, files: Array<string>) {
+  const types = useContext(TypesContext)
+  const [names, setNames] = useState<Record<string, string | null>>({})
+  const requested = useRef(new Set<string>())
+  const fresh = (ids: Array<string>) => [...new Set(ids)].filter((id) => !requested.current.has(id))
+  const [newEntries, newFiles] = [fresh(entries), fresh(files)]
+
+  useEffect(() => {
+    if (!newEntries.length && !newFiles.length) return
+    for (const id of [...newEntries, ...newFiles]) requested.current.add(id)
+    const name = (found: Array<[string, string | null]>) =>
+      setNames((all) => ({ ...all, ...Object.fromEntries(found) }))
+
+    // shortcut: a request for each linked entry, as the relationship picker makes, add a route for many when pages
+    // link to hundreds of different entries
+    Promise.all(
+      newEntries.map(async (id): Promise<[string, string | null]> => {
+        const entry: Entry | undefined = await api('GET', `/entries/${id}`).then(
+          ({ body }) => body.data,
+          () => undefined,
+        )
+        const type = entry && types.get(entry.type)
+        return [id, type ? `${titleOf(type, entry)}${entry.archivedAt ? ' (archived)' : ''}` : null]
+      }),
+    ).then(name)
+
+    for (let start = 0; start < newFiles.length; start += 100) {
+      const ids = newFiles.slice(start, start + 100)
+      const where = encodeURIComponent(JSON.stringify([[{ field: 'id', op: 'in', value: ids }]]))
+      api('GET', `/media?perPage=100&where=${where}`)
+        .then(({ body }) => name(ids.map((id) => [id, body.data.find((file: Media) => file.id === id)?.name ?? null])))
+        .catch(() => name(ids.map((id) => [id, null])))
+    }
+  }, [newEntries.join(), newFiles.join()])
+
+  return names
+}
+
 // A relationship field: the entries it links to, and a dialog that searches the types it takes for more
 function RelationshipPicker() {
   const { id, labelId, aria, label, options } = useFieldContext()

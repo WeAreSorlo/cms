@@ -14,6 +14,8 @@ export interface Config {
   mail?: MailOptions
   automations?: AutomationOptions
   webhooks?: WebhookOptions
+  // How many versions each entry keeps. Every version is kept if not given.
+  versions?: VersionOptions
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>
@@ -74,6 +76,12 @@ export interface WebhookOptions {
   // Networks on loopback, private and link-local addresses that webhooks may reach, such as 10.0.0.0/8 for a site's own
   // services or 127.0.0.1 for a test server. Webhooks can't reach any others.
   allowNetworks?: Array<string>
+}
+
+export interface VersionOptions {
+  // The newest versions each entry keeps besides its named ones and its live one, a whole number from 1. Each save
+  // that writes a version deletes the oldest beyond it, so an entry over it shrinks at its next save.
+  keep: number
 }
 
 // Every format of image, video and audio that a file's content can show, and PDFs

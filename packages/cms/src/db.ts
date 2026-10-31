@@ -44,8 +44,13 @@ export interface Database {
     number: number
     values: Record<string, any>
     migration: string | null
+    // What people call it, such as Before the rebrand. Named versions are never deleted to keep within the cap.
+    name: string | null
     created_by: string | null
     created_at: Generated<Date>
+    // The last time it went live, and who published it then
+    published_at: Date | null
+    published_by: string | null
   }
   // Each published entry's live copy, which the delivery API serves (PLAN.md section 17)
   published_entries: {

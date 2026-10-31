@@ -1,4 +1,4 @@
-import type { DeliveryOptions, FormOptions, MediaOptions, Storage } from '.'
+import type { DeliveryOptions, FormOptions, MediaOptions, Storage, VersionOptions } from '.'
 import { automationRoutes } from './automations'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
@@ -41,6 +41,8 @@ export interface AppOptions {
   delivery?: DeliveryOptions
   // Who can use the public form routes, and how often
   forms?: FormOptions
+  // How many versions each entry keeps
+  versions?: VersionOptions
   // The built admin's folder, which iight start serves at /admin/. iight dev serves the admin with Vite instead.
   admin?: string
 }
@@ -56,6 +58,7 @@ export function createApp(
     media,
     delivery,
     forms,
+    versions,
     admin,
   }: AppOptions = {},
 ) {
@@ -175,7 +178,7 @@ export function createApp(
   app.use('/api/automations/*', signedIn)
   app.use('/api/keys/*', signedIn)
   app.route('/api', typeRoutes(types, groups, editor))
-  app.route('/api', entryRoutes(db, types, migrations))
+  app.route('/api', entryRoutes(db, types, migrations, versions))
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
   app.route('/api', keyRoutes(db))
