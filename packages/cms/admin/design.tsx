@@ -1,7 +1,7 @@
 import { versionSchema } from '../src/schemas'
 import { ContentType, Entry, GroupsContext, SharedGroup, Status } from './api'
 import { Grid, columnsOf, useRows } from './bulk'
-import { compare } from './compare'
+import { compare, compareParent } from './compare'
 import { contrast, pairs } from './contrast'
 import './design.scss'
 import { Version, Versions } from './entries'
@@ -120,8 +120,9 @@ const sampleAfter = {
   author: 'grace',
   links: [{ label: 'Shop now', url: 'https://example.com/shop' }],
 }
-const sampleChanges = compare(compareFields, sampleBefore, sampleAfter)
-const sampleLinks = { ada: 'Ada Lovelace', grace: 'Grace Hopper' }
+// The page moved from Guide to Help too
+const sampleChanges = [...compareParent('guide', 'help'), ...compare(compareFields, sampleBefore, sampleAfter)]
+const sampleLinks = { ada: 'Ada Lovelace', grace: 'Grace Hopper', guide: 'Guide', help: 'Help' }
 
 // The version page's panel for each kind of version: an old one, the current one, the live one, and an archived
 // entry's, which can only be read
@@ -656,10 +657,10 @@ export default function Design() {
       <p>
         Each version in an entry's history links to its page, where its name goes first, with its number under it, and a
         version that went live says who published it last. The page compares the version with the one before it, or with
-        another picked, such as the live one, from the older to the newer. It shows each changed field by its path of
-        labels, a long text's words added and removed, a list's items matched by position, and entries' titles and
-        files' names for links. As JSON, it shows both versions' values a line at a time, keys in order, with the lines
-        added and removed.
+        another picked, such as the live one, from the older to the newer. It shows a page's move as its Parent, each
+        changed field by its path of labels, a long text's words added and removed, a list's items matched by position,
+        and entries' titles and files' names for links. As JSON, it shows both versions' values a line at a time, keys
+        in order, with the lines added and removed, and a page's parent beside its values.
       </p>
       <Form
         schema={[
@@ -701,7 +702,10 @@ export default function Design() {
       </dl>
       <ChangeList changes={sampleChanges} links={sampleLinks} />
       <h3>As JSON</h3>
-      <JsonChanges before={sampleBefore} after={sampleAfter} />
+      <JsonChanges
+        before={{ parentId: 'guide', values: sampleBefore }}
+        after={{ parentId: 'help', values: sampleAfter }}
+      />
       <PanelSlot.Provider value={null}>
         <ul className='cms-design__panels'>
           {versionPanels.map(({ label, ...panel }) => (

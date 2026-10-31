@@ -1,4 +1,4 @@
-import { compare, diffLines, diffWords, linksOf, toJson } from '../admin/compare'
+import { compare, compareParent, diffLines, diffWords, linksOf, parentField, toJson } from '../admin/compare'
 import type { FieldSchema } from 'iight'
 import { expect, test } from 'vitest'
 
@@ -269,4 +269,16 @@ test('the JSON view shows two versions with their keys in order, a line at a tim
   // Before a first version there's no JSON, so every line is added
   expect(diffLines(toJson(undefined), toJson({ a: 1 }))).toEqual([{ kind: 'added', text: '{\n  "a": 1\n}\n' }])
   expect(diffLines('', '')).toEqual([])
+})
+
+test("a page's move shows as a change of its Parent, where a null parent is the top level", () => {
+  expect(compareParent('guide', 'guide')).toEqual([])
+  expect(compareParent(null, null)).toEqual([])
+  // A first version at the top level has no parent to add
+  expect(compareParent(undefined, null)).toEqual([])
+  expect(summary(compareParent(undefined, 'guide'))).toEqual([['Parent', 'added']])
+  expect(compareParent('guide', null)).toEqual([
+    { labels: ['Parent'], field: parentField, kind: 'changed', before: 'guide', after: null },
+  ])
+  expect(linksOf(compareParent('guide', 'help'))).toEqual({ entries: ['guide', 'help'], files: [] })
 })

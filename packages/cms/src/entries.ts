@@ -374,6 +374,7 @@ export function entryRoutes(
             entry_id: row.id,
             number: sql`(select coalesce(max(number), 0) + 1 from entry_versions where entry_id = ${row.id})`,
             values,
+            parent_id: parentId,
             migration,
             created_by: user,
           })
@@ -710,7 +711,8 @@ export function entryRoutes(
     return version
   }
 
-  // To restore a version, save its values again, which GET /entries/:id/versions/:number brings up to date
+  // To restore a version, save its values again under its parent, which GET /entries/:id/versions/:number replies, with
+  // the values brought up to date
   app.get('/entries/:id/versions', async (c) => {
     const { row } = await find(c.req.param('id'))
     return c.json({ data: await listVersions(row.id) })
@@ -784,6 +786,7 @@ export function entryRoutes(
       data: {
         number: version.number,
         values,
+        parentId: version.parent_id,
         createdBy: version.created_by,
         createdAt: version.created_at,
       },

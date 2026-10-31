@@ -382,3 +382,24 @@ test('each version records the last time it went live, and who published it then
   const [saved] = await history()
   expect(saved).toEqual({ number: 4, publishedAt: expect.any(String), publishedBy: null })
 })
+
+test('each version records the parent it was saved under, bulk saves included', async () => {
+  const page = async (title: string, parentId: string | null = null) =>
+    (await send(fresh, 'POST', '/types/docs/entries', { values: { title, slug: title.toLowerCase() }, parentId })).body
+      .data
+  const setup = await page('Setup')
+  const help = await page('Help')
+  const linux = await page('Linux', setup.id)
+  await send(fresh, 'PUT', `/entries/${linux.id}`, { values: linux.values, parentId: help.id })
+  await send(fresh, 'PATCH', '/types/docs/entries', { entries: [{ id: linux.id, values: { title: 'Linux guide' } }] })
+  await send(fresh, 'PUT', `/entries/${linux.id}`, {
+    values: { ...linux.values, title: 'Linux guide' },
+    parentId: null,
+  })
+
+  const parents = []
+  for (const number of [1, 2, 3, 4]) {
+    parents.push((await send(fresh, 'GET', `/entries/${linux.id}/versions/${number}`)).body.data.parentId)
+  }
+  expect(parents).toEqual([setup.id, help.id, help.id, null])
+})

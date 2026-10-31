@@ -43,6 +43,8 @@ export interface Database {
     entry_id: string
     number: number
     values: Record<string, any>
+    // The parent it was saved under. It's no foreign key, so it keeps the ID of a parent deleted since.
+    parent_id: string | null
     migration: string | null
     // What people call it, such as Before the rebrand. Named versions are never deleted to keep within the cap.
     name: string | null

@@ -111,6 +111,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_28_000013_create_published_entries_table',
     '2026_10_30_000014_add_api_key_permissions',
     '2026_10_30_000015_add_version_names_and_publishes',
+    '2026_10_31_000016_add_version_parents',
   ])
 
   await migrate(db, migrations)
@@ -244,7 +245,7 @@ test('the migration that names versions gives each live version the publish its 
     .values({ ...post, created_at: at, updated_at: at, version: 2, published_at: at, published_by: user })
     .execute()
 
-  await migrate(db, migrations)
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name <= names)))
   const versionsOf = (entry: { id: string }) =>
     db
       .selectFrom('entry_versions')
@@ -270,4 +271,36 @@ test('the migration that names versions gives each live version the publish its 
     'created_by',
     'created_at',
   ])
+})
+
+test("the migration that records versions' parents gives each version the parent its entry has now", async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const parents = '2026_10_31_000016_add_version_parents'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < parents)))
+
+  const guide = { id: uuidv7(), type: 'docs', values: {}, slug: 'guide', uri: 'guide', position: 0 }
+  const install = { id: uuidv7(), type: 'docs', values: {}, slug: 'install', parent_id: guide.id, position: 0 }
+  await db.insertInto('entries').values([guide, install]).execute()
+  const version = (entry: { id: string }, number: number) => ({ entry_id: entry.id, number, values: {} })
+  await db
+    .insertInto('entry_versions')
+    .values([version(guide, 1), version(install, 1), version(install, 2)])
+    .execute()
+
+  await migrate(db, migrations)
+  const parentsOf = async (entry: { id: string }) =>
+    (
+      await db
+        .selectFrom('entry_versions')
+        .select('parent_id')
+        .where('entry_id', '=', entry.id)
+        .orderBy('number')
+        .execute()
+    ).map((row) => row.parent_id)
+  expect(await parentsOf(guide)).toEqual([null])
+  expect(await parentsOf(install)).toEqual([guide.id, guide.id])
+
+  expect(await rollback(db, migrations)).toEqual([parents])
+  const columns = (await db.introspection.getTables()).find((table) => table.name === 'entry_versions')?.columns
+  expect(columns?.map((column) => column.name)).not.toContain('parent_id')
 })

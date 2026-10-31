@@ -1,7 +1,7 @@
 import { idsOf } from '../src/fields'
 import { versionSchema } from '../src/schemas'
 import { ContentType, Entry, SectionContext, api, date, errorMessage, formatValue, shortDate, titleOf } from './api'
-import { Change, compare, diffLines, diffWords, linksOf, toJson } from './compare'
+import { Change, compare, compareParent, diffLines, diffWords, linksOf, parentField, toJson } from './compare'
 import { Version, restoreOnOpen } from './entries'
 import { useLinkNames } from './fields'
 import { Badge, Loading, Notice, PageHeader, Panel, StatusBadge, focusInvalid, useConfirm, useToast } from './ui'
@@ -22,6 +22,7 @@ const byAt = (user: Version['createdBy'], at: string) => `${user?.name ?? 'Delet
 
 // A value as text: entries' titles and files' names, Yes or No for a box, and otherwise what the lists show
 function valueText(field: FieldSchema, value: unknown, links: Record<string, string | null>) {
+  if (field === parentField && value === null) return 'None, at the top'
   if (field.type === 'relationship' || field.type === 'media') {
     const gone = field.type === 'media' ? 'A deleted file' : 'A deleted entry'
     return idsOf(value)
@@ -138,7 +139,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
   const [entry, setEntry] = useState<Entry>()
   const [versions, setVersions] = useState<Array<Version>>()
   // Versions' values by number, as the version route brings them up to date with the content migrations
-  const [values, setValues] = useState<Record<number, Record<string, any>>>({})
+  const [values, setValues] = useState<Record<number, { values: Record<string, any>; parentId: string | null }>>({})
   const requested = useRef(new Set<number>())
   // The version it's compared with, or null for none, when every field counts as added
   const [against, setAgainst] = useState<number | null>()
@@ -188,7 +189,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
     for (const wanting of wanted as Array<number>) {
       requested.current.add(wanting)
       api('GET', `/entries/${id}/versions/${wanting}`)
-        .then(({ body }) => setValues((all) => ({ ...all, [wanting]: body.data.values })))
+        .then(({ body }) => setValues((all) => ({ ...all, [wanting]: body.data })))
         .catch((error) => setError(errorMessage(error)))
     }
   }, [version, wanted.join()])
@@ -197,10 +198,13 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
   const [older, newer] =
     typeof against !== 'number' ? [undefined, number] : against < number ? [against, number] : [number, against]
   const ready = !!type && newer in values && (older === undefined || older in values)
-  const changes = useMemo(
-    () => (ready ? compare(type!.fields, older === undefined ? undefined : values[older], values[newer]) : undefined),
-    [ready, older, newer],
-  )
+  const changes = useMemo(() => {
+    if (!ready) return undefined
+    const [was, is] = [older === undefined ? undefined : values[older], values[newer]]
+    // A page's move comes first, as its parent picker does in the editor
+    const moved = type!.structure === 'hierarchical' ? compareParent(was?.parentId, is.parentId) : []
+    return [...moved, ...compare(type!.fields, was?.values, is.values)]
+  }, [ready, older, newer])
   const linked = linksOf(changes ?? [])
   const links = useLinkNames(linked.entries, linked.files)
 
@@ -249,6 +253,9 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
   if (!version) return <Notice tone='danger'>Version {number} doesn't exist, or it was deleted.</Notice>
 
   const archived = !!entry.archivedAt
+  // A page's versions as JSON hold the parent each was saved under beside its values
+  const asJson = (saved: (typeof values)[number]) =>
+    type.structure === 'hierarchical' ? { parentId: saved.parentId, values: saved.values } : saved.values
   const isCurrent = version === current
   const live = drafts && version.number === entry.publishedVersion
   const editor = type.structure === 'singleton' ? `#/types/${type.name}` : `#/entries/${entry.id}`
@@ -353,7 +360,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
       {!changes ? (
         <Loading />
       ) : view === 'json' ? (
-        <JsonChanges before={older === undefined ? undefined : values[older]} after={values[newer]} />
+        <JsonChanges before={older === undefined ? undefined : asJson(values[older])} after={asJson(values[newer])} />
       ) : changes.length ? (
         <ChangeList changes={changes} links={links} />
       ) : (

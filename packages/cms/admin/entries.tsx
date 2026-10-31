@@ -389,11 +389,13 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   // adopt a stale copy while an input is still updating, such as a slug generated from the title.
   const [shown, setShown] = useState(values)
   const [parentId, setParentId] = useState(loaded?.parentId ?? null)
-  const [shownParent] = useState({ parentId: parentId ?? '' })
+  // What the parent picker starts from, replaced only to load a version, as the form's values are
+  const [shownParent, setShownParent] = useState({ parentId: parentId ?? '' })
   const [parents, setParents] = useState<ReturnType<typeof tree>>([])
   const [versions, setVersions] = useState<Array<Version>>([])
   const [usedBy, setUsedBy] = useState<Array<Entry>>([])
-  const [restoring, setRestoring] = useState<Version>()
+  // The version in the form, and whether the page kept its own parent, since the version's can't take it back
+  const [restoring, setRestoring] = useState<{ number: number; parentKept: boolean }>()
   const [problem, setProblem] = useState('')
   // The action under way, such as save
   const [busy, setBusy] = useState<string>()
@@ -437,6 +439,11 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   const show = (next: Record<string, any>) => {
     setShown(next)
     setValues(next)
+  }
+
+  const showParent = (next: string | null) => {
+    setShownParent({ parentId: next ?? '' })
+    setParentId(next)
   }
 
   // Run an action, showing what went wrong if it fails. The buttons stay enabled while one runs, since disabling the
@@ -490,15 +497,21 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
       primaryButton.current?.focus()
     })
 
-  // Put an old version's values in the form, for saving as the newest version
+  // Put an old version's values in the form, and a page's parent in its picker, for saving as the newest version. A
+  // parent archived, deleted or moved under the page since can't take it back, so then the page keeps its own.
   const restoreVersion = (version: Version) =>
     act('version', async () => {
-      show((await api('GET', `/entries/${entry!.id}/versions/${version.number}`)).body.data.values)
-      setRestoring(version)
+      const { values, parentId: was } = (await api('GET', `/entries/${entry!.id}/versions/${version.number}`)).body.data
+      show(values)
+      const kept =
+        hierarchical && was !== null && !tree(await allEntries(type), entry!.id).some((row) => row.entry.id === was)
+      if (hierarchical) showParent(kept ? entry!.parentId : was)
+      setRestoring({ number: version.number, parentKept: kept })
     })
 
   const discard = () => {
     show(entry!.values)
+    if (hierarchical) showParent(entry!.parentId)
     setRestoring(undefined)
   }
 
@@ -562,7 +575,9 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
         {archived && <Notice tone='warning'>Archived on {date(entry.archivedAt!)}. Restore it to edit it.</Notice>}
         {restoring && (
           <Notice>
-            Version {restoring.number} is in the form. Save to restore it.{' '}
+            Version {restoring.number} is in the form. Save to restore it.
+            {restoring.parentKept &&
+              ' Its parent has been archived, deleted or moved under this page since, so the page stays where it is.'}{' '}
             <button type='button' className='iight-button' onClick={discard}>
               Discard
             </button>

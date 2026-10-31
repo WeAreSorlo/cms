@@ -93,6 +93,20 @@ function compareItems(field: FieldSchema, before: unknown, after: unknown): Arra
   })
 }
 
+// A page's parent, compared as a link, so its parents' titles load as other links' do
+export const parentField: FieldSchema = {
+  name: 'parentId',
+  label: 'Parent',
+  type: 'relationship',
+  options: { maximum: 1 },
+}
+
+// A page's move between two versions, where a null parent is the top level. With no version before, a parent is added.
+export const compareParent = (before: string | null | undefined, after: string | null): Array<Change> =>
+  before === after || (before === undefined && after === null)
+    ? []
+    : [{ labels: ['Parent'], field: parentField, kind: before === undefined ? 'added' : 'changed', before, after }]
+
 // The fields whose values differ between two versions, at any depth: a group's fields by their path of labels, and a
 // list's items by position. With no version before, as for a first version, every field with a value is added.
 export function compare(
