@@ -1,4 +1,4 @@
-import { ContentType, PageView, PageViewContext, SectionContext, pathOf, sectionOf } from './api'
+import { ContentType, PageView, PageViewContext, SectionContext, navigation, pathOf, sectionOf } from './api'
 import { AssistantContext, useAssistantState } from './chat'
 import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
 import {
@@ -160,6 +160,7 @@ export function Shell({
   mcp,
   ai,
   onSignOut,
+  onTypes,
   children,
 }: {
   hash: string
@@ -170,11 +171,13 @@ export function Shell({
   // Whether the assistant is on, with Assistant at the top of the nav
   ai: boolean
   onSignOut: () => void
+  // Loads the types again, once the assistant's Apply has changed one
+  onTypes?: () => Promise<unknown>
   children: ReactNode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
-  const assistant = useAssistantState(ai, user.id)
+  const assistant = useAssistantState(ai, user.id, onTypes)
   // What the page shows, which the assistant beside it takes "this" and "these" to mean
   const [view, setView] = useState<PageView | null>(null)
   // Whether the person has hidden the assistant's chat beside pages, which this browser remembers
@@ -234,7 +237,8 @@ export function Shell({
     if (path !== shownPath.current) {
       shownPath.current = path
       setMenuOpen(false)
-      pending.current = true
+      pending.current = !navigation.keepFocus
+      navigation.keepFocus = false
     }
     update()
   }, [path])

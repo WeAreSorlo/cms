@@ -117,6 +117,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_11_02_000019_add_changes_through_ai',
     '2026_11_02_000020_add_proposal_publishing',
     '2026_11_02_000021_add_form_first_opened',
+    '2026_11_02_000022_add_type_proposals',
   ])
 
   await migrate(db, migrations)
@@ -341,4 +342,45 @@ test('the migrations for changes through AI keep closed forms closed, and count 
   expect(await rollback(db, migrations)).toEqual([opened, '2026_11_02_000020_add_proposal_publishing'])
   await db.updateTable('forms').set({ open: true }).execute()
   expect(await rollback(db, migrations)).toEqual([changes])
+})
+
+test("the migration for content types' proposals keeps every proposal's target, and rolls back only without them", async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const types = '2026_11_02_000022_add_type_proposals'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < types)))
+  const user = uuidv7()
+  const chat = uuidv7()
+  const entry = uuidv7()
+  await db.insertInto('users').values({ id: user, name: 'Ada', email: 'ada@example.com', password_hash: '' }).execute()
+  await db.insertInto('chats').values({ id: chat, user_id: user }).execute()
+  const proposal = (kind: 'entry' | 'type', target_id: string) => ({
+    id: uuidv7(),
+    chat_id: chat,
+    tool_use_id: 'toolu_1',
+    kind,
+    target_id,
+    is_new: true,
+    after: {},
+  })
+  await db.insertInto('proposals').values(proposal('entry', entry)).execute()
+
+  await migrate(db, migrations)
+  const type = proposal('type', 'typ_k3x9q2mz')
+  await db
+    .insertInto('proposals')
+    .values({ ...type, wrote: { file: '2026_11_02_120000_jobs.ts', notes: [] } })
+    .execute()
+  expect(await db.selectFrom('proposals').select('target_id').orderBy('id').execute()).toEqual([
+    { target_id: entry },
+    { target_id: 'typ_k3x9q2mz' },
+  ])
+
+  // A type's id isn't a uuid, so its proposals stop the rollback
+  await expect(rollback(db, migrations)).rejects.toThrow("Can't roll back while proposals of content types exist")
+  await db.deleteFrom('proposals').where('kind', '=', 'type').execute()
+  expect(await rollback(db, migrations)).toEqual([types])
+  const columns = (await db.introspection.getTables()).find((table) => table.name === 'proposals')?.columns
+  expect(columns?.find((column) => column.name === 'target_id')?.dataType).toBe('uuid')
+  expect(columns?.map((column) => column.name)).not.toContain('wrote')
+  expect(await db.selectFrom('proposals').select('target_id').execute()).toEqual([{ target_id: entry }])
 })

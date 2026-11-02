@@ -1,9 +1,18 @@
 import type { Storage, VersionOptions } from '.'
 import type { ContentMigrationFile } from './content'
-import { inputs, pickValues, validateServerValues } from './core'
+import { baseInputSchemaFields, inputs, pickValues, validateInputSchemaFields, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { findEntry, listVersions, merge, readVersion } from './entries'
-import { mapFields } from './fields'
+import {
+  collapseUses,
+  expandFields,
+  expandedType,
+  isUse,
+  mapFields,
+  relationshipOptions,
+  sharedOptions,
+  someField,
+} from './fields'
 import { checkForm, saveForm, toForm } from './forms'
 import { detailsOf, findMedia, preview, toAdminMedia } from './media'
 import { EntryChange, MediaChange, changedEntry, messagesOf, proposals, sameForm, unchanged } from './proposals'
@@ -22,10 +31,11 @@ import {
 } from './query'
 import { cmsInputs, serverInputs } from './relations'
 import { mediaSchema } from './schemas'
-import type { ContentType } from './types'
+import { TypeSaver, createId, migrationFor, typeFrom } from './typeEditor'
+import type { ContentType, SharedGroup } from './types'
 import { DriveManager } from 'flydrive'
 import { HTTPException } from 'hono/http-exception'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema, Input } from 'iight'
 import { Kysely, SqlBool, sql } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { STATUS_CODES } from 'node:http'
@@ -55,6 +65,8 @@ export interface ToolContext {
   // Where the write tools' changes go: proposed in the assistant's chat, from one of its replies' tool calls, or saved
   // through a token with Save drafts. Without it, they're refused.
   writes?: { chat: string; call: string } | { token: string }
+  // The type editor's saves, where content types can change, as in iight dev
+  editor?: TypeSaver
 }
 
 export interface Tool<Input extends z.ZodObject = z.ZodObject> {
@@ -73,6 +85,8 @@ export interface Tool<Input extends z.ZodObject = z.ZodObject> {
   changes?: { destructive: boolean; idempotent: boolean }
   // Only the admin's assistant has it, since what it changes goes live as soon as it's applied, which a person does
   assistantOnly?: boolean
+  // Only offered with the type editor on, as in iight dev, since content types change nowhere else
+  editorOnly?: boolean
 }
 
 // A tool's reply, as MCP's tool results take it, which for the Claude API's tool_result blocks is the same but for
@@ -336,6 +350,322 @@ const formNote =
   'A form made through AI takes no submissions until a person opens it on its page in the admin, and can be changed ' +
   'until then.'
 
+// The field types a content type's fields can have, as the type editor's palette offers them: core's inputs and the
+// CMS's, a relationship choosing among the site's types, and a Shared group field among its shared groups once there
+// are any
+function palette(types: Map<string, ContentType>, groups: Map<string, SharedGroup>): Record<string, Input> {
+  const { shared, ...rest } = cmsInputs
+  return {
+    ...rest,
+    relationship: { ...cmsInputs.relationship, optionFields: () => relationshipOptions(types.values()) },
+    ...(groups.size ? { shared: { ...shared, optionFields: () => sharedOptions(groups.values()) } } : {}),
+  }
+}
+
+// What the schema builder's field editor shows for a field type: the common settings it takes, and its options
+function editorOf(input: Input) {
+  const schema = validateInputSchemaFields(input)
+  const options: Array<FieldSchema> = schema.find((field) => field.name === 'options')?.options?.fields ?? []
+  return { schema, settings: schema.filter((field) => field.name !== 'options'), options }
+}
+
+// The keys a field can hold besides the settings its field editor shows, which the schema builder keeps
+const keptKeys = ['id', 'type', 'defaultValue', 'readonly', 'disabled']
+
+const listOf = (value: unknown): Array<any> => (Array.isArray(value) ? value : [])
+
+// A field's or layout's place, by name, or by position when it has none
+const placeOf = (path: string, node: any, index: number) =>
+  `${path}.${typeof node?.name === 'string' && node.name ? node.name : index}`
+
+// What's wrong with fields a call sends, at any depth, by the checks the schema builder's field editor runs on each,
+// which the type editor's own saves leave to the browser: only the settings and options its type takes, holding what
+// they take. Each comes with its path, such as fields.location.options.choices. Types checkType doesn't know are left
+// to it.
+async function sentProblems(fields: unknown, types: Record<string, Input>, path = 'fields'): Promise<Array<string>> {
+  const problems: Array<string> = []
+  for (const [index, field] of listOf(fields).entries()) {
+    const at = placeOf(path, field, index)
+    const input = isObject(field) ? types[field.type] : undefined
+    if (!input) continue
+    const { schema, settings, options } = editorOf(input)
+    const keys = [...keptKeys, ...settings.map((setting) => setting.name), ...(options.length ? ['options'] : [])]
+    for (const key of Object.keys(field).filter((key) => !keys.includes(key))) {
+      problems.push(`${at}.${key}: ${field.type} fields take no ${key}.`)
+    }
+    const names = options.map((option) => option.name)
+    for (const key of Object.keys(isObject(field.options) ? field.options : {}).filter((key) => !names.includes(key))) {
+      const takes = names.length ? ` They take ${names.join(', ')}.` : ''
+      problems.push(`${at}.options.${key}: ${field.type} fields take no ${key} option.${takes}`)
+    }
+    const report = await validateServerValues(schema, field, inputs)
+    if (!report.isValid) problems.push(messagesOf(report, `${at}.`))
+    problems.push(...(await sentProblems(field.options?.fields, types, at)))
+    for (const [index, layout] of listOf(field.options?.layouts).entries()) {
+      const where = placeOf(at, layout, index)
+      const extra = Object.keys(isObject(layout) ? layout : {}).filter(
+        (key) => !['id', 'name', 'label', 'fields'].includes(key),
+      )
+      for (const key of extra) problems.push(`${where}.${key}: layouts take no ${key}.`)
+      problems.push(...(await sentProblems(layout?.fields, types, where)))
+    }
+  }
+  return problems
+}
+
+// Fields as a type's file has them, from fields as list_content_types shows them: each use of a shared group, shown
+// expanded into the group's fields, goes back to the use, as the type editor's collapseUses does. Those fields come from
+// the group, so a use whose fields differ from the group's is refused.
+function filed(fields: unknown, groups: Map<string, SharedGroup>, problems: Array<string>) {
+  const byId = new Map([...groups.values()].map((group) => [group.id, group]))
+  if (!listOf(fields).every(isObject)) problems.push('fields: each field must be an object, an iight core schema.')
+  const sent = listOf(fields).filter(isObject) as Array<FieldSchema>
+  mapFields(sent, (field) => {
+    const group = isUse(field) && Array.isArray(field.options?.fields) && byId.get(field.options!.group)
+    if (!group) return field
+    const { fields: inside, ...options } = field.options!
+    const [expected] = expandFields([{ ...field, type: 'shared', options }], byId)
+    if (!isDeepStrictEqual(JSON.parse(JSON.stringify(inside)), expected.options!.fields)) {
+      problems.push(
+        `fields.${field.name}: its fields come from the shared group ${group.label}, and can't change here. Send it as ` +
+          `it was, or as a use: { "type": "shared", "name": "${field.name}", "options": { "group": "${group.id}" } }.`,
+      )
+    }
+    return field
+  })
+  return collapseUses(sent)
+}
+
+// Fields sent for a type keep its fields' and layouts' ids, so content migrations follow them. One sent without an id
+// takes the id of the one of the same name at the same place, unless another sent node claims that id, and the place
+// is what it was: by id for those inside a field or layout that came with its id, however it was renamed or moved, or
+// else by name. One sent with an id the type doesn't have, in place of a field or layout of that name, is refused, so a
+// made-up id can't take a field's place and lose its values.
+function keepIds(
+  sent: Array<any>,
+  was: unknown,
+  old: Map<unknown, any>,
+  claimed: Set<unknown>,
+  problems: Array<string>,
+  path = 'fields',
+  kind: 'field' | 'layout' = 'field',
+): Array<any> {
+  return sent.map((node, index) => {
+    if (!isObject(node)) return node
+    const at = placeOf(path, node, index)
+    const same = listOf(was).find((each) => each?.name === node.name && !claimed.has(each.id))
+    if (same && node.id !== undefined && node.id !== same.id && !old.has(node.id)) {
+      problems.push(`${at}: the type's ${kind} ${node.name} has the id ${same.id}. Send that id to keep its values.`)
+    }
+    const id = node.id ?? same?.id
+    const kept = { ...node, ...(node.id === undefined && same && { id }) }
+    // What it was, by its id wherever it was, so what's inside it is matched with what was inside it
+    const before = id === undefined ? undefined : old.get(id)
+    if (kind === 'layout') {
+      return Array.isArray(node.fields)
+        ? { ...kept, fields: keepIds(node.fields, before?.fields, old, claimed, problems, at) }
+        : kept
+    }
+    if (!isObject(node.options)) return kept
+    const { fields, layouts } = node.options
+    return {
+      ...kept,
+      options: {
+        ...node.options,
+        ...(Array.isArray(fields) && { fields: keepIds(fields, before?.options?.fields, old, claimed, problems, at) }),
+        ...(Array.isArray(layouts) && {
+          layouts: keepIds(layouts, before?.options?.layouts, old, claimed, problems, at, 'layout'),
+        }),
+      },
+    }
+  })
+}
+
+// Every field and layout in some fields by id, at any depth, and those sent with an id
+function nodesById(fields: Array<FieldSchema>) {
+  const found = new Map<unknown, any>()
+  const add = <T extends { id?: string }>(node: T) => (node.id !== undefined && found.set(node.id, node), node)
+  mapFields(fields, add, add)
+  return found
+}
+
+// A type's own group swapped for a use of a shared group, or back, or one use for another, which is the type editor's
+// Make shared and Use shared group, since they show which values a swap keeps and which it deletes
+function swapsIn(fields: Array<FieldSchema>, old: Map<unknown, any>, problems: Array<string>) {
+  mapFields(fields, (field) => {
+    const was = old.get(field.id)
+    const swapped =
+      (was?.type === 'group' && field.type === 'shared') ||
+      (was?.type === 'shared' && field.type === 'group') ||
+      (was?.type === 'shared' && field.type === 'shared' && was.options?.group !== field.options?.group)
+    if (swapped) {
+      problems.push(
+        `fields.${field.name}: swapping a group for a use of a shared group, or back, or one shared group for ` +
+          "another, is the type editor's Make shared and Use shared group, which show what a swap keeps and deletes.",
+      )
+    }
+    return field
+  })
+}
+
+// Fields with their ids first, and each field's type after it, as the schema builder writes them, so a type's file reads
+// as if it was made in the type editor
+const idsFirst = (fields: Array<FieldSchema>) =>
+  mapFields(
+    fields,
+    (field) => {
+      if (!isObject(field)) return field
+      const { id, type, ...rest } = field
+      return { id, type, ...rest }
+    },
+    (layout) => {
+      if (!isObject(layout)) return layout
+      const { id, ...rest } = layout
+      return { id, ...rest }
+    },
+  )
+
+// The type editor's saves, which exist only in development
+function typeEditor(context: ToolContext) {
+  if (context.editor) return context.editor
+  throw refused('Content types can only be changed in development, with iight dev. Their changes ship through git.')
+}
+
+// Where a type tool's change goes, which is only ever a proposal in the assistant's chat, and the type editor's saves
+function typeWriting(context: ToolContext) {
+  const writes = writing(context)
+  if (!('chat' in writes)) throw refused("Content types change only through the admin's assistant.")
+  return { editor: typeEditor(context), chat: writes }
+}
+
+// The new types proposed in the chat and not applied yet
+const pendingTypes = (context: ToolContext, chat: string) =>
+  context.db
+    .selectFrom('proposals')
+    .select(['target_id', 'type', 'after'])
+    .where('chat_id', '=', chat)
+    .where('kind', '=', 'type')
+    .where('is_new', '=', true)
+    .where('status', '=', 'pending')
+    .orderBy('created_at')
+    .orderBy('id')
+    .execute()
+
+// A new type proposed in the chat, the latest by that name, with its uses expanded, so its first entries can be
+// proposed with it and checked against its fields
+async function proposedType(context: ToolContext, name: string) {
+  const writes = context.writes
+  if (!writes || !('chat' in writes) || context.types.has(name)) return undefined
+  const row = (await pendingTypes(context, writes.chat)).filter((row) => row.type === name).at(-1)
+  return row && expandedType(row.after as ContentType, context.editor?.groups.values())
+}
+
+// Checks a new type or a change to one, by every check the type editor's save runs and, on the fields the call sent,
+// those its schema builder runs in the browser, then proposes it in the chat, saying what applying it writes
+async function proposeType(
+  context: ToolContext,
+  {
+    body,
+    fields,
+    before,
+    current,
+    id,
+    sent,
+  }: {
+    body: Record<string, any>
+    fields: Array<FieldSchema>
+    before?: ContentType
+    current?: ContentType
+    id?: string
+    sent: Array<string>
+  },
+) {
+  const { editor, chat } = typeWriting(context)
+  const problems = [...sent, ...(await sentProblems(fields, palette(context.types, editor.groups)))]
+  // A type proposed in the chat has no id here until it's applied, so nothing links to it before then
+  const pending = new Set((await pendingTypes(context, chat.chat)).map((row) => row.target_id))
+  const linked = new Set<string>()
+  someField(body.fields ?? [], (field) => {
+    if (field.type === 'relationship')
+      for (const id of listOf(field.options?.types)) if (pending.has(id)) linked.add(id)
+    return false
+  })
+  for (const id of linked) {
+    problems.push(
+      `${id} is a content type proposed in this chat, which nothing can link to until the person applies it. Propose this after they do.`,
+    )
+  }
+  if (problems.length) throw refused(`It doesn't pass its checks:\n${problems.join('\n')}`)
+
+  const { type, report } = await editor.check(body, current, id)
+  if (report) throw refused(`It doesn't pass its checks:\n${messagesOf(report)}`)
+  // Each as the type editor would write it, so a file with "drafts": true or empty listColumns changes nothing
+  if (before && isDeepStrictEqual(type, typeFrom(before, before).type)) {
+    throw refused('Nothing to change: the type already holds these.')
+  }
+
+  const changes = proposals(context.db, context.types, context.migrations, context.versions)
+  const proposal = await changes.propose(chat.chat, chat.call, {
+    kind: 'type',
+    target_id: type.id,
+    is_new: !before,
+    type: before?.name ?? type.name,
+    before: before ?? null,
+    after: type,
+  })
+  const file = `schema/types/${type.name}.json`
+  const migration = before && migrationFor(before, type, editor.groups)
+  const writes = !before
+    ? `Applying it writes ${file}, and it needs no content migration. Its entries can be proposed now with ` +
+      `create_entry, with the type ${type.name}, and applying one applies the type first.`
+    : migration
+      ? `Applying it writes ${file} and a content migration, which a developer checks and runs with iight migrate. ` +
+        'Until it runs, no entry can be saved, so propose entries of this type after that.' +
+        (migration.notes.length
+          ? ` The migration will say:\n${migration.notes.map((note) => `- ${note}`).join('\n')}`
+          : '')
+      : `Applying it writes ${file}, and it needs no content migration.`
+  return {
+    data: { proposal, id: type.id, name: type.name, label: type.label },
+    note: notes(
+      'Proposed. Nothing is written until the person applies it, which only a person does. The system message after ' +
+        'their next message says what they did.',
+      writes,
+    ),
+  }
+}
+
+// A type's settings, as create_content_type and update_content_type take them
+const label = z.string().describe('What the admin calls it, such as Job openings.')
+const typeName = z
+  .string()
+  .describe(
+    'A letter, then letters, digits or underscores, such as jobs. It names its file, schema/types/<name>.json, and ' +
+      "its API routes, as in /v1/entries/jobs, and the site's code calls it by it.",
+  )
+const typeFields = z
+  .array(z.record(z.string(), z.unknown()))
+  .describe(
+    'Fields as iight core schemas, as list_field_types describes them: each with a type, a name, which is its key in ' +
+      "an entry's values, a label, and the settings and options it needs, with the fields inside groups, repeaters " +
+      'and flexible layouts in their options. A new field needs no id, which it gets when proposed.',
+  )
+const structure = z
+  .enum(['collection', 'hierarchical', 'singleton'])
+  .describe(
+    'collection for many entries, such as posts, hierarchical for pages under parents, singleton for one entry.',
+  )
+const settings = {
+  singular: z.string().describe('What the admin calls one entry, such as Job opening.'),
+  drafts: z
+    .boolean()
+    .describe("false for a type whose every save publishes, such as site settings. Drafts are on if it's left out."),
+  icon: z.string().describe("A Lucide icon's name, such as briefcase."),
+  titleField: z.string().describe('The top-level field that titles each entry, by name, such as title.'),
+  slugField: z.string().describe("A top-level identifier field that's each entry's slug, by name, such as slug."),
+  listColumns: z.array(z.string()).describe("The top-level fields the admin's lists show, by name."),
+}
+
 export const tools = [
   tool({
     name: 'list_content_types',
@@ -578,7 +908,10 @@ export const tools = [
         .describe("For a page, the id of the page it goes under. Left out or null, it's at the top level."),
     }),
     run: async (context, { type: name, values, parentId }) => {
-      const type = draftable(context.types, name, context.writes)
+      // A type proposed in the same chat can have its first entries proposed with it, which carry its id, so they go
+      // into that type alone
+      const proposed = await proposedType(context, name)
+      const type = proposed ?? draftable(context.types, name, context.writes)
       if (type.structure === 'singleton') {
         throw refused(
           `${type.label} has one entry already. Change it with update_entry, with the id list_entries gives.`,
@@ -586,7 +919,8 @@ export const tools = [
       }
       if (parentId && type.structure !== 'hierarchical') throw refused(`${type.label} has no parents, only pages do.`)
       picker(type, Object.keys(values))
-      const after = { values: pickValues(type.fields, values, cmsInputs), parentId: parentId ?? null }
+      const picked = pickValues(type.fields, values, cmsInputs)
+      const after = { values: picked, parentId: parentId ?? null, ...(proposed && { typeId: proposed.id }) }
       return committed(await commitEntry(context, { type, id: uuidv7(), after }))
     },
     changes: { destructive: false, idempotent: false },
@@ -969,6 +1303,147 @@ export const tools = [
     },
     changes: { destructive: true, idempotent: true },
     assistantOnly: true,
+  }),
+  tool({
+    name: 'list_field_types',
+    description:
+      "Lists the field types a content type's fields can have, as the type editor offers them: each one's type, " +
+      'what it is for, which of the common settings it takes, described once in settings (name, label, required, ' +
+      'instructions, width and conditions), and its options as iight core schemas, with the choices they take, such ' +
+      'as the content types a relationship links to, by id. Also the shared groups, by id, which a type uses with a ' +
+      'shared field. Call it before create_content_type and update_content_type. A field shows only when its ' +
+      'conditions match: [{ "rules": [{ "field": "<a field beside it>", "operator": "equals", "value": "…" }] }] ' +
+      'matches when every rule in any one group does, with the operators equals, notEquals, contains, notContains, ' +
+      `startsWith, greaterThan, lessThan, empty and notEmpty. ${asData}`,
+    input: z.object({}),
+    run: async (context) => {
+      const editor = typeEditor(context)
+      const fieldTypes = Object.entries(palette(context.types, editor.groups)).flatMap(([type, input]) => {
+        const { schema, settings, options } = editorOf(input)
+        if (!schema.length) return []
+        const named = { name: input.name?.(), description: input.description?.(), category: input.category?.() }
+        return [{ type, ...named, settings: settings.map((setting) => setting.name), options }]
+      })
+      return { data: { settings: baseInputSchemaFields(), fieldTypes, groups: [...editor.groups.values()] } }
+    },
+    assistantOnly: true,
+    editorOnly: true,
+  }),
+
+  tool({
+    name: 'create_content_type',
+    description:
+      'Proposes a new content type, such as job openings, with its settings and its fields as iight core schemas, as ' +
+      'list_field_types describes them. Give it a titleField, and for entries with their own pages a slug, an ' +
+      'identifier field whose source is the title field, as its slugField. A use of a shared group is a field ' +
+      '{ "type": "shared", "name": "seo", "label": "SEO", "options": { "group": "<its id>" } }, whose fields come ' +
+      'from the group. Applying it, which only the person does, writes the type file as the type editor saves it. ' +
+      'Its first entries can be proposed straight after, with create_entry under its name, and applying one applies ' +
+      `the type first. ${asData}`,
+    input: z.object({
+      label,
+      name: typeName,
+      singular: settings.singular.optional(),
+      structure,
+      drafts: settings.drafts.optional(),
+      icon: settings.icon.optional(),
+      titleField: settings.titleField.optional(),
+      slugField: settings.slugField.optional(),
+      listColumns: settings.listColumns.optional(),
+      fields: typeFields,
+    }),
+    run: async (context, input) => {
+      const { editor } = typeWriting(context)
+      const sent: Array<string> = []
+      const fields = idsFirst(withIds(filed(input.fields, editor.groups, sent)) as Array<FieldSchema>)
+      return proposeType(context, { body: { ...input, fields }, fields, id: createId('typ'), sent })
+    },
+    changes: { destructive: false, idempotent: false },
+    assistantOnly: true,
+    editorOnly: true,
+  }),
+
+  tool({
+    name: 'update_content_type',
+    description:
+      'Proposes a change to a content type: the settings given, where null clears one, the top-level fields in ' +
+      'fields, each sent whole with the fields inside it, and the top-level fields named in remove. A field with the ' +
+      "id of one of the type's top-level fields replaces it, so a rename is that field with its id and a new name, " +
+      'and one without an id replaces the field of the same name, or is added at the end. Keep the ids ' +
+      'list_content_types gives, since content migrations follow fields by id. The fields inside a use of a shared ' +
+      'group come from the group, and change nowhere here. titleField, slugField and listColumns follow a renamed ' +
+      'field and let a removed one go. Applying it, which only the person does, writes the type file, and a content ' +
+      'migration when its entries need one, which a developer runs with iight migrate. Renaming, removing or ' +
+      "retyping a field changes the entries and what the site's API returns, so say so, and remove fields only when " +
+      `the person asks. A type with entries keeps its structure. ${asData}`,
+    input: z.object({
+      type: z.string().describe("The type's name now, from list_content_types."),
+      name: typeName.optional().describe('A new name for the type, which renames its file and its API routes.'),
+      label: label.optional(),
+      singular: settings.singular.nullable().optional(),
+      structure: structure.optional(),
+      drafts: settings.drafts.nullable().optional(),
+      icon: settings.icon.nullable().optional(),
+      titleField: settings.titleField.nullable().optional(),
+      slugField: settings.slugField.nullable().optional(),
+      listColumns: settings.listColumns.nullable().optional(),
+      fields: typeFields
+        .optional()
+        .describe(
+          'Only the top-level fields to add or change, each whole with the fields inside it, as iight core schemas. ' +
+            'A field keeps the id list_content_types gives it, and a new one needs none.',
+        ),
+      remove: z.array(z.string()).min(1).optional().describe('Top-level fields to take out, by name.'),
+    }),
+    run: async (context, { type: name, fields: given, remove = [], ...changed }) => {
+      const { editor } = typeWriting(context)
+      const current = typeNamed(context.types, name)
+      const before = (await editor.fileOf(current.name)) as ContentType | undefined
+      if (!before) throw refused(`${current.label}'s file is gone from schema/types, so it can't change here.`)
+
+      // Each field sent replaces the top-level one with its id, or else its name, and the rest are added
+      const sent: Array<string> = []
+      const collapsed = filed(given ?? [], editor.groups, sent)
+      const old = nodesById(before.fields)
+      const kept = keepIds(collapsed, before.fields, old, new Set(nodesById(collapsed).keys()), sent)
+      swapsIn(kept, old, sent)
+      let fields = [...before.fields]
+      for (const field of kept) {
+        const at = fields.findIndex((each) => each.id !== undefined && each.id === field.id)
+        if (at >= 0) fields[at] = field
+        else fields.push(field)
+      }
+      for (const removed of remove) {
+        const field = before.fields.find((each) => each.name === removed)
+        if (!field) sent.push(`remove: ${before.name} has no top-level field named ${removed}.`)
+        else if (kept.some((each) => each.id === field.id)) sent.push(`remove: ${removed} is in fields too.`)
+        else fields = fields.filter((each) => each.id !== field.id)
+      }
+
+      // As in the type editor, settings that name a field follow it when it's renamed, and let it go when it's removed
+      const follow = (field: unknown) => {
+        const id = before.fields.find((each) => each.name === field)?.id
+        return id ? fields.find((each) => each.id === id)?.name : undefined
+      }
+      const followed = {
+        titleField: follow(before.titleField),
+        slugField: follow(before.slugField),
+        listColumns: (before.listColumns ?? []).map(follow).filter(Boolean),
+      }
+      const set = Object.fromEntries(
+        Object.entries(changed).flatMap(([key, value]) => (value === undefined ? [] : [[key, value ?? undefined]])),
+      )
+      // Fields that come with their ids keep their keys' order, so a field nobody changed is written as it was
+      const ordered = fields.map((field) => (before.fields.includes(field) ? field : idsFirst([field])[0]))
+      const body = { ...before, ...followed, ...set, fields: withIds(ordered) as Array<FieldSchema> }
+      const ids = new Set(kept.map((field) => field.id))
+      // Only what the call sends gets the schema builder's checks, so a hand-written field elsewhere never stops it
+      const changedFields = body.fields.filter((field) => ids.has(field.id) || !old.has(field.id))
+      return proposeType(context, { body, fields: changedFields, before, current, sent })
+    },
+    changes: { destructive: true, idempotent: true },
+    assistantOnly: true,
+    editorOnly: true,
   }),
 ]
 

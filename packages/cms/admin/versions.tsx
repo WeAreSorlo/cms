@@ -23,7 +23,11 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 // Comparing versions (PLAN.md section 20): a version's page, with what it changed from the version before it or from
 // another one, its name, and Restore and Delete
 
-const kinds = { added: ['Added', 'success'], removed: ['Removed', 'danger'], changed: ['Changed', 'warning'] } as const
+export const kinds = {
+  added: ['Added', 'success'],
+  removed: ['Removed', 'danger'],
+  changed: ['Changed', 'warning'],
+} as const
 
 // Such as Launch copy, or Version 3 for a version with no name
 export const nameOf = (version: Version) => version.name ?? `Version ${version.number}`

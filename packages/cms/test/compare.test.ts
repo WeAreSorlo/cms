@@ -1,4 +1,13 @@
-import { compare, compareParent, diffLines, diffWords, linksOf, parentField, toJson } from '../admin/compare'
+import {
+  compare,
+  compareParent,
+  compareTypes,
+  diffLines,
+  diffWords,
+  linksOf,
+  parentField,
+  toJson,
+} from '../admin/compare'
 import type { FieldSchema } from 'iight'
 import { expect, test } from 'vitest'
 
@@ -284,4 +293,134 @@ test("a page's move shows as a change of its Parent, where a null parent is the 
     { labels: ['Parent'], field: parentField, kind: 'changed', before: 'guide', after: null },
   ])
   expect(linksOf(compareParent('guide', 'help'))).toEqual({ entries: ['guide', 'help'], files: [], forms: [] })
+})
+
+test("a content type's proposal compares its fields by id: renamed, moved, retyped, changed, added and removed", () => {
+  const before = {
+    id: 'typ_post',
+    name: 'post',
+    label: 'Posts',
+    structure: 'collection',
+    titleField: 'title',
+    fields: [
+      { id: 'fld_title', type: 'text', name: 'title', label: 'Title' },
+      { id: 'fld_intro', type: 'text', name: 'intro', label: 'Intro' },
+      {
+        id: 'fld_tag',
+        type: 'select',
+        name: 'tag',
+        label: 'Tag',
+        options: { choices: [{ value: 'a' }, { value: 'b' }] },
+      },
+      {
+        id: 'fld_old',
+        type: 'group',
+        name: 'old',
+        label: 'Old',
+        options: { fields: [{ id: 'fld_inner', type: 'text', name: 'inner' }] },
+      },
+      { id: 'fld_meta', type: 'group', name: 'meta', label: 'Meta', options: { fields: [] } },
+    ],
+  }
+  const after = {
+    ...before,
+    name: 'article',
+    drafts: false,
+    fields: [
+      { id: 'fld_title', type: 'text', name: 'title', label: 'Title', required: true },
+      { id: 'fld_intro', type: 'textarea', name: 'summary', label: 'Summary' },
+      {
+        id: 'fld_tag',
+        type: 'select',
+        name: 'tag',
+        label: 'Tag',
+        options: { choices: [{ value: 'b' }, { value: 'c' }] },
+      },
+      {
+        id: 'fld_meta',
+        type: 'group',
+        name: 'meta',
+        label: 'Meta',
+        options: {
+          fields: [
+            {
+              id: 'fld_new',
+              type: 'group',
+              name: 'extra',
+              options: { fields: [{ id: 'fld_deep', type: 'text', name: 'deep' }] },
+            },
+          ],
+        },
+      },
+    ],
+  }
+  const names: Record<string, string> = { text: 'Text', textarea: 'Long text', group: 'Group', select: 'Select' }
+  expect(compareTypes(before, after, (type) => names[type])).toEqual([
+    { labels: ['Name'], kind: 'changed', details: ['post → article'], api: true },
+    { labels: ['Drafts'], kind: 'changed', details: ['on → off'], api: false },
+    { labels: ['Title'], kind: 'changed', details: ['Now required'], api: false },
+    {
+      labels: ['Summary'],
+      kind: 'changed',
+      details: ['Renamed from intro to summary', 'Text → Long text', 'Label Intro → Summary'],
+      api: true,
+    },
+    { labels: ['Tag'], kind: 'changed', details: ['Lost the choice a', 'New choice c'], api: false },
+    // A new group counts once, with what's inside it
+    { labels: ['Meta', 'extra'], kind: 'added', details: ['Group'], api: false },
+    { labels: ['Old'], kind: 'removed', details: [], api: true },
+  ])
+  expect(compareTypes(before, before)).toEqual([])
+})
+
+test("a type's comparison says conditions and choices in words, whatever shape the conditions take", () => {
+  const field = { id: 'fld_venue', type: 'group', name: 'venue', label: 'Venue', options: { fields: [] } }
+  const choices = { id: 'fld_format', type: 'radio', name: 'format', label: 'Format' }
+  const before = {
+    fields: [
+      { ...field, conditions: [{ field: 'format', operator: 'notEquals', value: 'online' }] },
+      { ...choices, options: { choices: [{ value: 'online', label: 'Online' }] } },
+    ],
+  }
+  const after = {
+    fields: [
+      {
+        ...field,
+        conditions: [
+          { rules: [{ field: 'format', operator: 'equals', value: 'in_person' }] },
+          { rules: [{ field: 'venue.name', operator: 'notEmpty' }] },
+        ],
+      },
+      {
+        ...choices,
+        options: {
+          choices: [
+            { value: 'online', label: 'On the web' },
+            { value: 'hybrid', label: 'Hybrid' },
+          ],
+        },
+      },
+    ],
+  }
+  expect(compareTypes(before, after).map((change) => change.details)).toEqual([
+    ['New conditions: format is in_person, or venue.name is not empty'],
+    ['New choice Hybrid (hybrid)', 'Relabelled online from Online to On the web'],
+  ])
+  expect(
+    compareTypes(after, {
+      ...after,
+      fields: [
+        after.fields[0],
+        {
+          ...after.fields[1],
+          options: {
+            choices: [
+              { value: 'online', label: 'Online' },
+              { value: 'hybrid', label: 'Hybrid' },
+            ],
+          },
+        },
+      ],
+    })[0].details,
+  ).toEqual(['Relabelled online from On the web to Online'])
 })

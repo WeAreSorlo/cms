@@ -551,7 +551,8 @@ const sampleMessages: Array<ChatMessage> = [
 ]
 // Changes the assistant proposed: one waiting on an entry with other changes that aren't live, a find and replace with
 // one applied and published, one stale and one waiting, a new form with the event that shows it, which applying makes
-// first, and new alt text for two files, one applied
+// first, new alt text for two files, one applied, a new content type with its first entry, a change to a type that
+// renames, adds, requires and removes fields, and one applied
 const proposalTypes = new Map<string, ContentType>([
   [
     'post',
@@ -585,6 +586,75 @@ const proposalTypes = new Map<string, ContentType>([
     },
   ],
 ])
+// A new type for job openings, whose first opening is proposed with it
+const jobsType: ContentType = {
+  id: 'typ_jobs',
+  name: 'jobs',
+  label: 'Jobs',
+  singular: 'Job',
+  structure: 'collection',
+  titleField: 'title',
+  slugField: 'slug',
+  fields: [
+    { id: 'fld_job_title', type: 'text', name: 'title', label: 'Title', required: true },
+    {
+      id: 'fld_job_slug',
+      type: 'identifier',
+      name: 'slug',
+      label: 'Slug',
+      required: true,
+      options: { source: 'title', format: 'kebab' },
+    },
+    {
+      id: 'fld_job_location',
+      type: 'select',
+      name: 'location',
+      label: 'Location',
+      options: {
+        choices: [
+          { value: 'remote', label: 'Remote' },
+          { value: 'london', label: 'London' },
+        ],
+      },
+    },
+    {
+      id: 'fld_job_details',
+      type: 'group',
+      name: 'details',
+      label: 'Details',
+      options: {
+        fields: [
+          { id: 'fld_job_salary', type: 'text', name: 'salary', label: 'Salary' },
+          { id: 'fld_job_closes', type: 'date', name: 'closes_on', label: 'Closes on' },
+        ],
+      },
+    },
+    { id: 'fld_job_seo', type: 'shared', name: 'seo', label: 'SEO', options: { group: 'grp_sample' } },
+  ],
+}
+// Posts as their file has them, then with the intro renamed, a reading time added, the subtitle gone and the title
+// required
+const postFile: ContentType = {
+  id: 'typ_post',
+  name: 'post',
+  label: 'Posts',
+  singular: 'Post',
+  structure: 'collection',
+  titleField: 'title',
+  fields: [
+    { id: 'fld_post_title', type: 'text', name: 'title', label: 'Title' },
+    { id: 'fld_post_subtitle', type: 'text', name: 'subtitle', label: 'Subtitle' },
+    { id: 'fld_post_intro', type: 'textarea', name: 'intro', label: 'Intro' },
+  ],
+}
+const postChanged: ContentType = {
+  ...postFile,
+  fields: [
+    { id: 'fld_post_title', type: 'text', name: 'title', label: 'Title', required: true },
+    { id: 'fld_post_intro', type: 'textarea', name: 'summary', label: 'Summary' },
+    { id: 'fld_post_reading', type: 'number', name: 'reading_time', label: 'Reading time', options: { min: 1 } },
+  ],
+}
 const proposalOf = (proposal: Partial<Proposal>): Proposal => ({
   id: 'prp_sample',
   kind: 'entry',
@@ -732,6 +802,109 @@ const proposalMessages: Array<ChatMessage> = [
         ],
       },
       { type: 'text', text: 'Both are simple marks, so the alt text says what they show.' },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: 'Make a jobs type with a title, a location, a salary and a closing date, and add a designer' },
+  {
+    role: 'assistant',
+    parts: [
+      { type: 'step', text: 'Read the field types', failed: false },
+      {
+        type: 'step',
+        text: 'Proposed a new content type, “Jobs”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'jobs',
+            kind: 'type',
+            targetId: 'typ_jobs',
+            isNew: true,
+            type: 'jobs',
+            after: jobsType,
+            title: 'Jobs',
+            migration: null,
+          }),
+        ],
+      },
+      {
+        type: 'step',
+        text: 'Proposed a new job, “Designer”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'designer',
+            isNew: true,
+            type: 'jobs',
+            after: { values: { title: 'Designer', slug: 'designer', location: 'remote' }, parentId: null },
+            needs: ['jobs'],
+            title: 'Designer',
+          }),
+        ],
+      },
+      { type: 'text', text: 'Apply the opening, and the type is made first.' },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: 'In posts, rename the intro to summary, add a reading time and drop the subtitle' },
+  {
+    role: 'assistant',
+    parts: [
+      {
+        type: 'step',
+        text: 'Proposed changes to the content type “Posts”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'posts',
+            kind: 'type',
+            targetId: 'typ_post',
+            type: 'post',
+            before: postFile,
+            after: postChanged,
+            title: 'Posts',
+            entries: 12,
+            migration: {
+              file: null,
+              notes: [
+                "Flagged: deletes the values of subtitle, which down can't bring back. Old versions keep them",
+                'Flagged: title is now required, so some entries may not pass. Run iight migrate --check',
+              ],
+            },
+          }),
+        ],
+      },
+      {
+        type: 'text',
+        text: 'Renaming and removing fields changes what the API returns, so the site needs updating too.',
+      },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: 'Call the posts Articles' },
+  {
+    role: 'assistant',
+    parts: [
+      {
+        type: 'step',
+        text: 'Proposed changes to the content type “Posts”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'articles',
+            kind: 'type',
+            targetId: 'typ_post',
+            type: 'post',
+            before: postFile,
+            after: { ...postFile, label: 'Articles', singular: 'Article' },
+            title: 'Articles',
+            entries: 12,
+            status: 'applied',
+            migration: null,
+          }),
+        ],
+      },
+      { type: 'text', text: 'Only its labels change, so it needed no migration.' },
     ],
     notice: null,
   },
@@ -1194,12 +1367,14 @@ export default function Design() {
             <h3>{label}</h3>
             <div className='cms-design__assistant'>
               <TypesContext.Provider value={proposalTypes}>
-                <AssistantContext.Provider value={sampleAssistant(assistant, toast)}>
-                  <AssistantChat
-                    view={{ page: {}, label: 'Kubecon 2026, version 4' }}
-                    onCollapse={() => toast('Collapsed the assistant')}
-                  />
-                </AssistantContext.Provider>
+                <GroupsContext.Provider value={sampleGroups}>
+                  <AssistantContext.Provider value={sampleAssistant(assistant, toast)}>
+                    <AssistantChat
+                      view={{ page: {}, label: 'Kubecon 2026, version 4' }}
+                      onCollapse={() => toast('Collapsed the assistant')}
+                    />
+                  </AssistantContext.Provider>
+                </GroupsContext.Provider>
               </TypesContext.Provider>
             </div>
           </li>

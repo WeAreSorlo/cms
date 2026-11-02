@@ -1028,6 +1028,12 @@ a.iight-button {
 .cms-proposal__outcome {
   display: flex;
   gap: var(--iight-size-1);
+  // A migration's file name has no spaces to break at
+  overflow-wrap: anywhere;
+
+  > span {
+    min-width: 0;
+  }
 
   > svg {
     flex: none;
@@ -1096,6 +1102,27 @@ a.iight-button {
   > .cms-proposal {
     border-width: var(--iight-size-px) 0 0;
     border-radius: 0;
+  }
+}
+
+// Holds a page's forms still, such as the type editor's while the assistant's change to its type is applied, with no
+// border or space of its own
+.cms-lock {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+// A changed content type's file before and after as JSON, folded under its changes
+.cms-proposal__json {
+  > summary {
+    width: fit-content;
+    cursor: pointer;
+  }
+
+  > .cms-json-diff {
+    margin-top: var(--iight-size-2);
   }
 }
 

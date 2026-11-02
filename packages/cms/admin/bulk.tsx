@@ -716,7 +716,9 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
   // Once a proposal for one of its entries is applied, the grid loads them again, after the person has saved its edits,
   // since a save would send back what the grid showed before
   useBeside({
-    shows: (proposal) => proposal.kind === 'entry' && !!rows?.some((row) => row.entry.id === proposal.targetId),
+    shows: (proposal) =>
+      (proposal.kind === 'entry' && !!rows?.some((row) => row.entry.id === proposal.targetId)) ||
+      (proposal.kind === 'type' && proposal.targetId === type.id),
     touched: () => edited.length > 0,
     reload: load,
   })

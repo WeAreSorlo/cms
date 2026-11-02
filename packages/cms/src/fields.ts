@@ -121,6 +121,30 @@ export const collapseUses = (fields: Array<FieldSchema>) =>
     return { ...field, type: 'shared', options }
   })
 
+// Fields with each use of a shared group, at any depth, expanded into a group of the shared group's fields. Their ids,
+// and their layouts', get the use's id in front, so each stays unique in a type that uses the group twice, and the
+// group keeps the use's options.group, which marks where they came from (PLAN.md section 19). Groups are by id, and
+// must have passed checkGroup and cycleOf.
+export function expandFields(fields: Array<FieldSchema>, groups: Map<string, SharedGroup>): Array<FieldSchema> {
+  return mapFields(fields, (field) => {
+    if (field.type !== 'shared') return field
+    const qualify = <T extends { id?: string }>(node: T) => ({ ...node, id: `${field.id}.${node.id}` })
+    const inside = mapFields(expandFields(groups.get(field.options!.group)!.fields, groups), qualify, qualify)
+    return { ...field, type: 'group', options: { ...field.options, fields: inside } }
+  })
+}
+
+// A type as its file has it, with its uses expanded as types load, such as one proposed and not written yet. A use of
+// a shared group that's gone since stays as it is.
+export function expandedType(type: ContentType, groups: Iterable<SharedGroup> = []): ContentType {
+  const byId = new Map([...groups].map((group) => [group.id, group]))
+  try {
+    return { ...type, fields: expandFields(type.fields, byId) }
+  } catch {
+    return type
+  }
+}
+
 // One ID, or a list of different IDs within the field's minimum and maximum. The server checks what they link to.
 const validateValue: InputValidateValue = (value, schema) => {
   const ids = idsOf(value)

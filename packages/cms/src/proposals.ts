@@ -3,11 +3,13 @@ import type { ContentMigrationFile } from './content'
 import { flattenValidationReport, inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
 import { entrySaver } from './entries'
+import { expandedType } from './fields'
 import { FormRow, FormValues, checkForm, opening, saveForm } from './forms'
 import { findMedia, saveMediaDetails } from './media'
 import { EntryRow, toAdminEntry, withStatus } from './query'
 import { formsOf } from './relations'
 import { mediaSchema } from './schemas'
+import { TypeSaver, migrationFor } from './typeEditor'
 import type { ContentType } from './types'
 import { HTTPException } from 'hono/http-exception'
 import type { ValidationReport } from 'iight'
@@ -25,15 +27,20 @@ export type ProposalRow = Selectable<Database['proposals']>
 export interface EntryChange {
   values: Record<string, any>
   parentId?: string | null
+  // For a new entry of a type proposed in the same chat, that type's id, so it goes into that type alone
+  typeId?: string
 }
 
-// What the chat shows beside a proposal: what it changes is called, an entry's title as it stands, a form's label or a
-// file's name, and for an entry that exists, its status, since publishing makes all of its draft live, and for an
-// image, where it's served
+// What the chat shows beside a proposal: what it changes is called, an entry's title as it stands, a form's label, a
+// file's name or a type's label, and for an entry that exists, its status, since publishing makes all of its draft live,
+// and for an image, where it's served. For a content type, how many entries it has, which its migration changes, and
+// that migration: what it will say, or once applied, the file written, or none.
 interface Shown {
   title?: string | null
   entryStatus?: 'draft' | 'published' | 'changed'
   image?: string | null
+  entries?: number
+  migration?: { file: string | null; notes: Array<string> } | null
 }
 
 // A proposal as the chat shows it, with the proposed forms an entry names, which applying it makes first
@@ -91,14 +98,24 @@ export interface ApplyOptions {
   origin: string
 }
 
-// The pending form proposals each entry proposal names in its form fields, by proposal
-function needsOf(rows: Array<ProposalRow>, types: Map<string, ContentType>) {
+// The proposal of the new type an entry proposal was made for, by the type's id it carries
+const typeProposalOf = (rows: Array<ProposalRow>, row: ProposalRow) => {
+  const typeId = row.kind === 'entry' && (row.after as EntryChange).typeId
+  return typeId ? rows.find((each) => each.kind === 'type' && each.target_id === typeId) : undefined
+}
+
+// What each pending entry proposal needs applied first, by proposal: the new type it was made for, while that waits,
+// and the pending form proposals it names in its form fields
+function needsOf(rows: Array<ProposalRow>, types: Map<string, ContentType>, editor?: TypeSaver) {
   const forms = rows.filter((row) => row.kind === 'form' && row.is_new && row.status === 'pending')
   return (row: ProposalRow) => {
-    const type = row.kind === 'entry' && row.status === 'pending' && forms.length && types.get(row.type!)
-    if (!type) return []
-    const named = formsOf(type, row.after.values ?? {})
-    return forms.filter((form) => named.includes(form.target_id)).map((form) => form.id)
+    if (row.kind !== 'entry' || row.status !== 'pending') return []
+    const proposed = typeProposalOf(rows, row)
+    const waiting = proposed?.status === 'pending' ? proposed : undefined
+    const type = waiting ? expandedType(waiting.after as ContentType, editor?.groups.values()) : types.get(row.type!)
+    const named = type && forms.length ? formsOf(type, row.after.values ?? {}) : []
+    const made = forms.filter((form) => named.includes(form.target_id)).map((form) => form.id)
+    return [...(waiting ? [waiting.id] : []), ...made]
   }
 }
 
@@ -114,6 +131,8 @@ export function proposals(
   types: Map<string, ContentType>,
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
   versions?: VersionOptions,
+  // The type editor's saves, where content types can change, as in iight dev
+  editor?: TypeSaver,
 ) {
   const saver = entrySaver(db, types, migrations, versions)
   const rowsOf = (chat: string) =>
@@ -149,7 +168,7 @@ export function proposals(
   // A chat's proposals as it shows them, by the tool call that made each
   const byCall = async (chat: string) => {
     const rows = await rowsOf(chat)
-    const needs = needsOf(rows, types)
+    const needs = needsOf(rows, types, editor)
     const targets = (kind: ProposalRow['kind']) =>
       rows.filter((row) => row.kind === kind && !row.is_new).map((row) => row.target_id)
     const [changed, files] = [targets('entry'), targets('media')]
@@ -157,14 +176,39 @@ export function proposals(
     const media = files.length
       ? await db.selectFrom('media').select(['id', 'name', 'mime']).where('id', 'in', files).execute()
       : []
+    // How many entries each type a proposal changes has, archived ones included, as its migration changes them all
+    const changing = rows.filter((row) => row.kind === 'type' && !row.is_new).map((row) => row.type!)
+    const counts = changing.length
+      ? await db
+          .selectFrom('entries')
+          .select(['type', (eb) => eb.fn.countAll<string>().as('count')])
+          .where('type', 'in', changing)
+          .groupBy('type')
+          .execute()
+      : []
     const shownOf = (row: ProposalRow): Shown => {
       if (row.kind === 'form') return { title: row.after.label as string }
+      if (row.kind === 'type') {
+        const after = row.after as ContentType
+        // What its migration will say while it waits, and once it's applied, what it wrote
+        const migration =
+          row.status === 'applied'
+            ? row.wrote
+            : row.status === 'pending' && row.before && editor
+              ? migrationOrNone(row.before as ContentType, after)
+              : null
+        const count = counts.find((each) => each.type === row.type)?.count
+        // A change is called by the label the type had, which it may change
+        const title = (row.before as ContentType | null)?.label ?? after.label
+        return { title, ...(!row.is_new && { entries: Number(count ?? 0) }), migration }
+      }
       if (row.kind === 'media') {
         const file = media.find((file) => file.id === row.target_id)
         const image = file?.mime.startsWith('image/') ? `/media/${file.id}/${encodeURIComponent(file.name)}` : null
         return { title: file?.name ?? null, image }
       }
-      const type = types.get(row.type ?? '')
+      // An entry of a type proposed in the chat takes its title from the proposed type
+      const type = types.get(row.type ?? '') ?? (typeProposalOf(rows, row)?.after as ContentType | undefined)
       const entry = entries.find((entry) => entry.id === row.target_id)
       const values = row.is_new ? row.after.values : entry?.values
       const title = type?.titleField && values?.[type.titleField]
@@ -181,6 +225,15 @@ export function proposals(
   }
 
   // A chat's proposals as it shows them, by id
+  // What a pending change to a type needs of a content migration, or none when a shared group it uses is gone since
+  const migrationOrNone = (before: ContentType, after: ContentType) => {
+    try {
+      return migrationFor(before, after, editor!.groups)
+    } catch {
+      return null
+    }
+  }
+
   const byId = async (chat: string) =>
     new Map([...(await byCall(chat)).values()].flat().map((proposal) => [proposal.id, proposal]))
 
@@ -211,7 +264,7 @@ export function proposals(
       .updateTable('forms')
       .set(opening)
       .where('id', 'in', named)
-      .where('id', 'in', made)
+      .where(sql<string>`id::text`, 'in', made)
       .where('first_opened_at', 'is', null)
       .returning('id')
       .execute()
@@ -243,6 +296,9 @@ export function proposals(
   const applyEntry = async (row: ProposalRow, user: string, publish: boolean) => {
     const type = types.get(row.type!)
     if (!type) throw new HTTPException(409, { message: 'Its content type has been removed.' })
+    // An entry proposed with a new type goes only into that type, never another that took its name since
+    const typeId = (row.after as EntryChange).typeId
+    if (typeId && type.id !== typeId) throw new Stale()
     const applied = await saver.migrated()
     // Values proposed before a content migration ran have the fields as they were
     if ((applied.at(-1) ?? null) !== row.migration) throw new Stale()
@@ -310,6 +366,39 @@ export function proposals(
     })
   }
 
+  // Writes a type's file as the person, through the type editor's own save, in its turn, then the content migration for
+  // the change, which a developer runs, never Apply. Types have no drafts, so applying publishes nothing. What it
+  // changes must still be as it was proposed, on disk too, since someone may have edited its file by hand since.
+  const applyType = async (row: ProposalRow, user: string) => {
+    if (!editor) {
+      throw new HTTPException(403, { message: 'Content types can only be changed in development, with iight dev.' })
+    }
+    return editor.queued(async () => {
+      const after = row.after as ContentType
+      const current = [...types.values()].find((type) => type.id === after.id)
+      const taken = [...types.keys()].some((name) => name.toLowerCase() === after.name.toLowerCase())
+      if (row.is_new && (current || taken)) throw new Stale()
+      if (!row.is_new && !current) throw new HTTPException(404)
+      if (!row.is_new && !isDeepStrictEqual(await editor.fileOf(current!.name), row.before)) throw new Stale()
+
+      const { type, report } = await editor.check(after, current, after.id)
+      if (report) return report
+      // Claimed once the file and its migration are written, and when the claim fails, they go back as they were
+      await editor.commit(
+        (changes) => editor.writeType(type, current, changes),
+        (migration) =>
+          db.transaction().execute(async (trx) => {
+            await claim(row.id, user, false)(trx, null)
+            await trx
+              .updateTable('proposals')
+              .set({ wrote: migration.file ? { file: migration.file, notes: migration.notes } : null })
+              .where('id', '=', row.id)
+              .execute()
+          }),
+      )
+    })
+  }
+
   // Each proposal's result, with the proposal as it ends up, which a failure leaves pending or makes stale
   type Result = { id: string; status: number; data?: Proposal; message?: string; report?: ValidationReport }
 
@@ -325,7 +414,9 @@ export function proposals(
           ? await applyForm(row, user, publish)
           : row.kind === 'media'
             ? await applyMedia(row, user, origin)
-            : await applyEntry(row, user, publish)
+            : row.kind === 'type'
+              ? await applyType(row, user)
+              : await applyEntry(row, user, publish)
       if (report)
         return {
           status: 422,
@@ -350,6 +441,12 @@ export function proposals(
     }
   }
 
+  // Marks an entry proposal stale along with the new type it was made for
+  const stale = async (row: ProposalRow, user: string) => {
+    await markStale(row.id, user)
+    return { status: 409, message: staleMessage }
+  }
+
   // Applies one of the chat's pending proposals, after the proposed forms it names, replying a result for each. A
   // failed check leaves it pending, and what it changes having changed since makes it stale.
   const applyOne = async (chat: string, id: string, user: string, options: ApplyOptions): Promise<Array<Result>> => {
@@ -357,7 +454,7 @@ export function proposals(
     const row = rows.find((row) => row.id === id)
     if (!row) return [{ id, status: 404, message: "There's no proposal with this id in this chat." }]
     const results: Array<Result> = []
-    const needs = needsOf(rows, types)(row)
+    const needs = needsOf(rows, types, editor)(row)
     const failure =
       row.status !== 'pending'
         ? { status: 409, message: 'It was already applied or skipped.' }
@@ -366,9 +463,15 @@ export function proposals(
             for (const need of needs) {
               const [made] = await applyOne(chat, need, user, { ...options, publish: false })
               results.push(made)
-              if (made.status !== 200)
+              if (made.status === 200) continue
+              if (rows.find((each) => each.id === need)?.kind !== 'type') {
                 return { status: 409, message: `Not applied, since its form wasn't made: ${made.message}` }
+              }
+              // An entry whose new type won't be made now turns stale with it
+              if ((await rowsOf(chat)).find((each) => each.id === need)?.status === 'stale') return stale(row, user)
+              return { status: 409, message: `Not applied, since its content type wasn't made: ${made.message}` }
             }
+            if (typeProposalOf(rows, row)?.status === 'stale') return stale(row, user)
             return tryApply(row, user, options)
           })()
     return [...results, { id, status: 200, ...failure }]
@@ -376,24 +479,30 @@ export function proposals(
 
   const apply = async (chat: string, ids: Array<string>, user: string, options: ApplyOptions) => {
     const rows = await rowsOf(chat)
-    const needs = needsOf(rows, types)
+    const needs = needsOf(rows, types, editor)
     // A form that a page in the batch shows is made closed, and opens only once the page goes live
     const shown = new Set(rows.filter((row) => ids.includes(row.id)).flatMap(needs))
-    const results: Array<Result> = []
-    for (const id of ids) {
+    // A change to a type that exists goes after the batch's entries, since a migration it writes stops entries saving
+    // until it runs. A new type goes before the entries that need it.
+    const changing = (id: string) => rows.some((row) => row.id === id && row.kind === 'type' && !row.is_new)
+    const ordered = [...ids.filter((id) => !changing(id)), ...ids.filter(changing)]
+    // Each id's results, those of what it needed first, which reply in the order the ids came
+    const results = new Map<string, Array<Result>>()
+    const done = (id: string) => [...results.values()].some((each) => each.some((result) => result.id === id))
+    for (const id of ordered) {
       const own = shown.has(id) ? { ...options, publish: false } : options
       // A form that an entry before it named was applied with it
-      if (!results.some((done) => done.id === id)) results.push(...(await applyOne(chat, id, user, own)))
+      if (!done(id)) results.set(id, await applyOne(chat, id, user, own))
     }
     // Each with the proposal as the chat shows it now, its warnings and image included
     const now = await byId(chat)
-    return results.map((result) => ({ ...result, data: now.get(result.id) }))
+    return ids.flatMap((id) => results.get(id) ?? []).map((result) => ({ ...result, data: now.get(result.id) }))
   }
 
   // Skips pending proposals, and with a proposed form, the entries proposed to name it
   const skip = async (chat: string, ids: Array<string>, user: string) => {
     const rows = await rowsOf(chat)
-    const needs = needsOf(rows, types)
+    const needs = needsOf(rows, types, editor)
     const skipping = new Set(
       rows.filter((row) => ids.includes(row.id) && row.status === 'pending').map((row) => row.id),
     )
@@ -433,7 +542,9 @@ export function proposals(
         .map((row) => row.id)
     const [applied, skipped, stale] = [decided('applied'), decided('skipped'), decided('stale')]
     const published = applied.filter((id) => rows.find((row) => row.id === id)!.published)
-    const drafts = applied.filter((id) => !published.includes(id))
+    // Types have no drafts
+    const typed = applied.filter((id) => rows.find((row) => row.id === id)!.kind === 'type')
+    const drafts = applied.filter((id) => !published.includes(id) && !typed.includes(id))
     const pending = rows.filter((row) => row.status === 'pending').map((row) => row.id)
     const list = (ids: Array<string>) =>
       ids.length > 20 ? `${ids.slice(0, 20).join(', ')} and ${ids.length - 20} more` : ids.join(', ')
@@ -441,6 +552,7 @@ export function proposals(
     const done = [
       drafts.length && `applied ${of(drafts.length)} as drafts: ${list(drafts)}`,
       published.length && `applied and published ${of(published.length)}: ${list(published)}`,
+      typed.length && `applied ${of(typed.length)} to content types: ${list(typed)}`,
       skipped.length && `skipped ${of(skipped.length)}: ${list(skipped)}`,
     ].filter(Boolean)
     return [

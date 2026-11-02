@@ -1,6 +1,8 @@
 import { collapseUses, mapFields } from '../src/fields'
 import { typeSchema } from '../src/schemas'
-import { ContentType, SharedGroup, api, errorMessage } from './api'
+import { ContentType, SharedGroup, api, errorMessage, navigation, usePageView } from './api'
+import { useBeside } from './chat'
+import { toJson } from './compare'
 import { iconInput, useInputs } from './fields'
 import { MakeShared, TypeGroups, UseShared } from './groups'
 import { Badge, EmptyState, Notice, PageHeader, Panel, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
@@ -17,6 +19,28 @@ const readOnly = 'Content types can only be changed in development, with iight d
 
 // What a save said, kept for the page it moves to when a type is created or renamed
 let flash: { message: string; notes: Array<string> } | undefined
+
+// What the settings form starts from for a type, where drafts are on unless its file says otherwise
+const settingsOf = (type?: ContentType) => {
+  const { fields, id, ...rest } = type ?? { structure: 'collection' }
+  return { drafts: true, ...rest } as Record<string, any>
+}
+
+// A type's settings and fields as its file would hold them, as the server writes them, so two compare equal when a save
+// would write the same
+const asFile = (settings: Record<string, any>, fields: Array<FieldSchema>) =>
+  toJson({
+    name: settings.name,
+    label: settings.label,
+    singular: settings.singular || undefined,
+    structure: settings.structure,
+    drafts: settings.drafts === false ? false : undefined,
+    icon: settings.icon || undefined,
+    titleField: settings.titleField || undefined,
+    slugField: settings.slugField || undefined,
+    listColumns: settings.listColumns?.length ? settings.listColumns : undefined,
+    fields,
+  })
 
 // Every content type, each opening in the type editor
 export function TypeList({ types, editable }: { types: Map<string, ContentType>; editable: boolean }) {
@@ -74,7 +98,8 @@ export function TypeList({ types, editable }: { types: Map<string, ContentType>;
 
 // Create or change a content type: its settings, and its fields in core's schema builder. Saving writes the type's file
 // and a content migration for the change, whose flags and TODOs the page lists. Its own groups can become shared, or
-// give way to a shared group, beside the form.
+// give way to a shared group, beside the form. Beside the assistant, "this" is the type, and a proposal for it applied
+// there loads it again.
 export function TypeEditor({
   type,
   editable,
@@ -82,20 +107,17 @@ export function TypeEditor({
 }: {
   type?: ContentType
   editable: boolean
-  onSaved: () => Promise<void>
+  // Loads the types again, replying them
+  onSaved: () => Promise<Map<string, ContentType>>
 }) {
   const settingsForm = useRef<FormHandle>(null)
   const fieldsForm = useRef<FormHandle>(null)
   // Around both forms, for finding the fields that stop a save
-  const forms = useRef<HTMLDivElement>(null)
+  const forms = useRef<HTMLFieldSetElement>(null)
   const inputs = useInputs()
   const confirm = useConfirm()
   const toast = useToast()
-  // Drafts are on unless a type's file says otherwise
-  const [settings, setSettings] = useState<Record<string, any>>(() => {
-    const { fields, id, ...rest } = type ?? { structure: 'collection' }
-    return { drafts: true, ...rest }
-  })
+  const [settings, setSettings] = useState(() => settingsOf(type))
   // What the settings form starts from, replaced only when a renamed field takes a setting with it
   const [shown, setShown] = useState(settings)
   // As the type's file has them, with each use of a shared group as its Shared group field
@@ -116,6 +138,52 @@ export function TypeEditor({
   const [problem, setProblem] = useState('')
   // The action under way, such as save
   const [busy, setBusy] = useState<string>()
+
+  // The type as the editor loaded it, or last saved it, which Save sends back, so the server can refuse to write over a
+  // change made since, and which tells whether the forms hold changes
+  const [base, setBase] = useState(type)
+  // From Apply until the editor has loaded what the assistant changed, or for good once loading it again failed
+  const [held, setHeld] = useState(false)
+  const [failed, setFailed] = useState('')
+  const locked = held || !!failed
+
+  usePageView(base ? { page: { schema: base.name }, label: base.label } : null)
+  // The forms hold changes when a save would write something else than what was loaded, however they were made, such
+  // as by typing, pasting or dictating, which the assistant beside the editor asks to have saved before it applies a
+  // proposal to the type
+  const loaded = useMemo(() => base && asFile(settingsOf(base), collapseUses(base.fields)), [base])
+  // Once a proposal for the type is applied, the editor loads it again, or opens it under its new name, leaving focus
+  // where it is, since a later Save would otherwise send back what it showed before
+  useBeside(
+    {
+      shows: (proposal) => proposal.kind === 'type' && proposal.targetId === base?.id,
+      touched: () => !!loaded && asFile(settings, fields) !== loaded,
+      hold: setHeld,
+      reload: async () => {
+        try {
+          const now = [...(await onSaved()).values()].find((each) => each.id === base?.id)
+          if (!now) throw new Error("it isn't one of the site's content types now")
+          if (now.name !== base!.name) {
+            navigation.keepFocus = true
+            return location.replace(`#/schema/${now.name}`)
+          }
+          setSettings(settingsOf(now))
+          setShown(settingsOf(now))
+          setFields(collapseUses(now.fields))
+          setShownFields({ fields: collapseUses(now.fields) })
+          setBase(now)
+          setResult(undefined)
+          setFailed('')
+        } catch (error) {
+          setFailed(
+            `The assistant changed this type, but the editor couldn't load it again: ${errorMessage(error)}. Reload ` +
+              'the page before you change it.',
+          )
+        }
+      },
+    },
+    !!type,
+  )
 
   // Settings that name a field follow it when the builder renames it, and let it go when it's removed
   const changeFields = (next: Array<FieldSchema> = []) => {
@@ -161,7 +229,7 @@ export function TypeEditor({
   // Run an action, showing what went wrong if it fails. The buttons stay enabled, so the focused one keeps focus, and
   // a second click is ignored here instead.
   const act = async (name: string, action: () => Promise<unknown>) => {
-    if (busy) return
+    if (busy || locked) return
     setBusy(name)
     setProblem('')
     try {
@@ -179,7 +247,7 @@ export function TypeEditor({
   const save = () =>
     act('save', async () => {
       if (!settingsForm.current?.validate().isValid) return showInvalid()
-      const body = { ...settings, fields }
+      const body = { ...settings, fields, ...(base && { loaded: base }) }
       const { status, body: reply } = type
         ? await api('PUT', `/types/${type.name}`, body)
         : await api('POST', '/types', body)
@@ -196,6 +264,7 @@ export function TypeEditor({
         ? { message: `Saved, with the migration migrations/${file}. Run iight migrate to update the entries.`, notes }
         : { message: 'Saved. No entries need a migration.', notes }
       toast('Saved')
+      setBase(reply.data)
       await onSaved()
       if (reply.data.name === type?.name) return setResult(saved)
       flash = saved
@@ -204,6 +273,7 @@ export function TypeEditor({
 
   // It asks before the action starts, so the question's dialog hands focus back to Delete
   const remove = async () => {
+    if (locked) return
     const sure = await confirm({
       title: `Delete the content type ${type!.label}?`,
       body: 'Its entries stay until you delete them, and iight migrate --check lists them.',
@@ -227,7 +297,9 @@ export function TypeEditor({
         meta={type && <Badge>{type.structure}</Badge>}
       />
 
-      <div ref={forms}>
+      <fieldset ref={forms} className='cms-lock' disabled={locked}>
+        {failed && <Notice tone='danger'>{failed}</Notice>}
+        {held && <Notice>Loading the assistant's change to this type…</Notice>}
         {!editable && <Notice>{readOnly}</Notice>}
         {result && (
           <Notice tone='success'>
@@ -249,7 +321,7 @@ export function TypeEditor({
           values={shownFields}
           onValuesChange={(next) => changeFields(next.fields)}
         />
-      </div>
+      </fieldset>
 
       <Panel
         label='Details'
@@ -260,6 +332,7 @@ export function TypeEditor({
               type='button'
               className='iight-button iight-button--primary'
               aria-busy={busy === 'save'}
+              aria-disabled={locked || undefined}
               onClick={save}
             >
               {busy === 'save' ? 'Saving…' : 'Save'}
@@ -269,7 +342,12 @@ export function TypeEditor({
         footer={
           editable &&
           type && (
-            <button type='button' className='iight-button iight-button--danger' onClick={remove}>
+            <button
+              type='button'
+              className='iight-button iight-button--danger'
+              aria-disabled={locked || undefined}
+              onClick={remove}
+            >
               <Trash2 /> Delete
             </button>
           )
@@ -283,7 +361,9 @@ export function TypeEditor({
             {settings.label || 'Untitled'}
           </p>
         </section>
-        <TypeGroups fields={fields} editable={editable} onMakeShared={setMaking} onUseShared={setUsing} />
+        <fieldset className='cms-lock' disabled={locked}>
+          <TypeGroups fields={fields} editable={editable} onMakeShared={setMaking} onUseShared={setUsing} />
+        </fieldset>
       </Panel>
 
       {making && (

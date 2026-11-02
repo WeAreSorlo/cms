@@ -507,7 +507,10 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
   // Once a proposal for the entry is applied, the editor loads the draft it saved
   useBeside({
-    shows: (proposal) => proposal.kind === 'entry' && proposal.targetId === entry?.id,
+    // A change to the type's fields changes the form too
+    shows: (proposal) =>
+      (proposal.kind === 'entry' && proposal.targetId === entry?.id) ||
+      (proposal.kind === 'type' && proposal.targetId === type.id),
     touched: () => touched.current,
     reload: async () => {
       if (!entry) return
@@ -818,9 +821,31 @@ export function EntryPage({ id, types }: { id: string; types: Map<string, Conten
   }, [entry, showSection])
 
   const type = entry && types.get(entry.type)
+  // The server finds no entry whose type it doesn't have, such as one renamed that iight migrate hasn't moved it to yet
+  if (error === 'Not Found') {
+    return (
+      <Notice tone='danger'>
+        There's no entry with this id among the site's content types now. If its type was renamed, iight migrate moves
+        its entries to the new name, and they open from there.
+      </Notice>
+    )
+  }
   if (error) return <Notice tone='danger'>{error}</Notice>
+  if (entry && !type) return <TypeGone name={entry.type} />
   return type ? <EntryEditor type={type} entry={entry} /> : <Loading />
 }
+
+// A page of a content type that isn't one of the site's now, such as one renamed since, whose entries keep its old name
+// until iight migrate moves them
+export const TypeGone = ({ name }: { name: string }) => (
+  <div className='cms-page'>
+    <PageHeader title={name} />
+    <Notice>
+      There's no content type named {name} now. If it was renamed, iight migrate moves its entries to the new name, and
+      they open from there.
+    </Notice>
+  </div>
+)
 
 // A singleton opens straight into its one entry
 export function SingletonPage({ type }: { type: ContentType }) {

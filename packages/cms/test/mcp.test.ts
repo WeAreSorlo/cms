@@ -170,7 +170,10 @@ test("a client lists the tools and calls them, as the token's maker, and the tok
 
   // A token without Save drafts only reads
   const listed = await client.listTools()
-  expect(listed.tools.map((tool) => tool.name)).toEqual(tools.filter((tool) => !tool.changes).map((tool) => tool.name))
+  // Only the tools that read, and none only the assistant has
+  expect(listed.tools.map((tool) => tool.name)).toEqual(
+    tools.filter((tool) => !tool.changes && !tool.assistantOnly).map((tool) => tool.name),
+  )
   for (const tool of listed.tools) {
     expect(tool.description).toBe(tools.find((each) => each.name === tool.name)!.description)
     expect(tool.inputSchema.type).toBe('object')

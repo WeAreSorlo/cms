@@ -99,7 +99,7 @@ export function GroupEditor({
 }: {
   group?: SharedGroup
   editable: boolean
-  onSaved: () => Promise<void>
+  onSaved: () => Promise<unknown>
 }) {
   const settingsForm = useRef<FormHandle>(null)
   const fieldsForm = useRef<FormHandle>(null)

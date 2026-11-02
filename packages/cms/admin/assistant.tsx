@@ -1,7 +1,8 @@
+import { expandedType, form, media, relationship, shared } from '../src/fields'
 import { chatMessageSchema, chatTitleSchema, mediaSchema } from '../src/schemas'
-import { PageView, TypesContext, api, errorMessage, shortDate } from './api'
+import { ContentType, GroupsContext, PageView, TypesContext, api, errorMessage, shortDate } from './api'
 import { Chat, ChatMessage, Proposal, SharedChat, editing, useAssistant } from './chat'
-import { compare, compareParent, linksOf } from './compare'
+import { compare, compareParent, compareTypes, linksOf } from './compare'
 import { useLinkNames } from './fields'
 import {
   Badge,
@@ -15,7 +16,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
-import { ChangeList, JsonChanges } from './versions'
+import { ChangeList, JsonChanges, kinds } from './versions'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
 import {
   ArrowUp,
@@ -37,6 +38,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -102,26 +104,168 @@ const statuses = {
   stale: ['Not applied', 'warning'],
 } as const
 
+// Finds an entry proposal's content type: one of the site's, or one proposed in the chat and not made yet, by the id the
+// proposal carries, or for one made before entries carried it, the latest by that name, with its uses of shared groups
+// expanded
+function useTypeLookup() {
+  const types = useContext(TypesContext)
+  const groups = useContext(GroupsContext)
+  const chatProposals = useContext(ChatProposals)
+  return useCallback(
+    (proposal: Proposal): ContentType | undefined => {
+      const type = types.get(proposal.type ?? '')
+      const typeId: string | undefined = proposal.kind === 'entry' ? proposal.after?.typeId : undefined
+      if (proposal.kind !== 'entry' || (type && (!typeId || type.id === typeId))) return type
+      const made = [...chatProposals.values()]
+        .filter(
+          (each) =>
+            each.kind === 'type' && each.isNew && (typeId ? each.targetId === typeId : each.type === proposal.type),
+        )
+        .at(-1)
+      return made && expandedType(made.after as ContentType, groups.values())
+    },
+    [types, groups, chatProposals],
+  )
+}
+
+// An entry proposal's content type, as useTypeLookup finds it
+function useTypeOf(proposal: Proposal) {
+  const typeOf = useTypeLookup()
+  return useMemo(() => typeOf(proposal), [typeOf, proposal])
+}
+
+// A field type's name, as the type editor's palette shows it, such as Long text for textarea
+const fieldTypes: Record<string, { name?: () => string }> = { ...inputs, relationship, media, form, shared }
+const typeName = (type: string) => fieldTypes[type]?.name?.() ?? type
+
 // What a proposal is called, such as New event: Kubecon stall, or Changes to Launch day
 function useProposalName(proposal: Proposal) {
-  const type = useContext(TypesContext).get(proposal.type ?? '')
+  const type = useTypeOf(proposal)
   const title = proposal.title ? `“${proposal.title}”` : undefined
+  if (proposal.kind === 'type') {
+    return proposal.isNew ? `New content type: ${title}` : `Changes to the content type ${title}`
+  }
   if (proposal.kind === 'media') return `New details for ${title ?? 'a file'}`
   if (proposal.kind === 'form') return proposal.isNew ? `New form: ${title}` : `Changes to the form ${title}`
   if (!proposal.isNew) return `Changes to ${title ?? 'an entry'}`
   return `New ${type?.singular?.toLowerCase() ?? `${type?.label ?? proposal.type} entry`}: ${title ?? 'Untitled'}`
 }
 
-// Whether a proposal can be applied as a draft: an entry of a type with drafts, or a form, which applied as a draft
-// stays closed. A file's details and a type without drafts go live once applied.
-const draftable = (proposal: Proposal, types: Map<string, { drafts?: boolean }>) =>
-  proposal.kind === 'form' || (proposal.kind === 'entry' && types.get(proposal.type ?? '')?.drafts !== false)
+// Whether a proposal can be applied as a draft: an entry of a type with drafts, one proposed in the chat included, or a
+// form, which applied as a draft stays closed. A file's details and a type without drafts go live once applied.
+const draftable = (proposal: Proposal, typeOf: (proposal: Proposal) => { drafts?: boolean } | undefined) =>
+  proposal.kind === 'form' || (proposal.kind === 'entry' && typeOf(proposal)?.drafts !== false)
+
+// A new type's fields, as a new form's card lists them, with the fields inside groups, repeaters and layouts under them,
+// and each one's instructions and choices, since they're text the model wrote, which the assistant reads later as the
+// site's types
+function TypeFields({ fields }: { fields: Array<FieldSchema> }) {
+  const groups = useContext(GroupsContext)
+  return (
+    <ul className='cms-proposal__fields'>
+      {fields.map((field, index) => {
+        const group = field.type === 'shared' && [...groups.values()].find((each) => each.id === field.options?.group)
+        const layouts: Array<{ name: string; label?: string; fields?: Array<FieldSchema> }> =
+          field.options?.layouts ?? []
+        const choices: Array<{ value?: unknown; label?: string }> = field.options?.choices ?? []
+        return (
+          <li key={index}>
+            {field.label || field.name}{' '}
+            <span className='cms-muted'>
+              {group ? `the shared group ${group.label}` : typeName(field.type)}
+              {field.required && ', required'}
+            </span>
+            {field.instructions && <div className='cms-muted'>{field.instructions}</div>}
+            {choices.length > 0 && (
+              <div className='cms-muted'>
+                Choices: {choices.map((choice) => choice.label || String(choice.value)).join(', ')}
+              </div>
+            )}
+            {!!field.options?.fields?.length && <TypeFields fields={field.options.fields} />}
+            {layouts.length > 0 && (
+              <ul className='cms-proposal__fields'>
+                {layouts.map((layout, index) => (
+                  <li key={index}>
+                    {layout.label || layout.name} <span className='cms-muted'>layout</span>
+                    {!!layout.fields?.length && <TypeFields fields={layout.fields} />}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+const structures = { collection: 'Collection', hierarchical: 'Hierarchical', singleton: 'Singleton' }
+
+// A content type's proposal: a new type's settings and fields, or a change's changes by field, as make:migration matches
+// them by id, with the file before and after as JSON in a fold, and what its content migration says
+function TypeChanges({ proposal }: { proposal: Proposal }) {
+  const after = proposal.after as ContentType
+  const before = proposal.before as ContentType | null
+  const changes = useMemo(() => (before ? compareTypes(before, after, typeName) : []), [before, after])
+  const field = (name?: string) => after.fields.find((each) => each.name === name)
+  const titled = field(after.titleField)
+  const notes = proposal.migration?.notes ?? []
+  return (
+    <>
+      {before ? (
+        changes.length ? (
+          <ol className='cms-changes'>
+            {changes.map((change, index) => (
+              <li key={index}>
+                <div className='cms-change__head'>
+                  <div className='cms-change__label'>{change.labels.join(' › ')}</div>
+                  <Badge tone={kinds[change.kind][1]}>{kinds[change.kind][0]}</Badge>
+                </div>
+                {change.details.map((detail) => (
+                  <p key={detail} className='cms-muted'>
+                    {detail}
+                  </p>
+                ))}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className='cms-muted'>It changes nothing the type editor shows.</p>
+        )
+      ) : (
+        <>
+          <p className='cms-muted'>
+            {structures[after.structure]}, {after.drafts === false ? 'without drafts' : 'with drafts'}
+            {titled && `, titled by ${titled.label || titled.name}`}
+          </p>
+          <TypeFields fields={after.fields} />
+        </>
+      )}
+      {notes.length > 0 && (
+        <Notice tone='warning' quiet>
+          {proposal.status === 'applied' ? 'Its migration says:' : 'The migration applying it writes will say:'}
+          <ul>
+            {notes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </Notice>
+      )}
+      {before && (
+        <details className='cms-proposal__json'>
+          <summary>As JSON</summary>
+          <JsonChanges before={before} after={after} />
+        </details>
+      )}
+    </>
+  )
+}
 
 // What a proposal sets, as the version page compares fields: every field of a new entry, or the fields a change sets,
 // a page's move first, or a file's name, alt text and caption beside the image. A new form lists its fields, and a
-// change to one shows its JSON before and after.
+// change to one shows its JSON before and after. A content type shows its fields, or its changes by field.
 function ProposalChanges({ proposal }: { proposal: Proposal }) {
-  const type = useContext(TypesContext).get(proposal.type ?? '')
+  const type = useTypeOf(proposal)
   const changes = useMemo(() => {
     if (proposal.kind === 'media') return compare(mediaSchema, proposal.before, proposal.after)
     if (proposal.kind !== 'entry' || !type) return []
@@ -141,6 +285,7 @@ function ProposalChanges({ proposal }: { proposal: Proposal }) {
     if (form.kind === 'form' && form.isNew) links[form.targetId] ??= form.title ?? null
   }
 
+  if (proposal.kind === 'type') return <TypeChanges proposal={proposal} />
   if (proposal.kind === 'form' && !proposal.isNew) {
     return <JsonChanges before={proposal.before} after={proposal.after} />
   }
@@ -176,15 +321,42 @@ function ProposalChanges({ proposal }: { proposal: Proposal }) {
   )
 }
 
+// What applying a waiting change to a content type writes, and what it changes for the entries and the site's code
+function typeWarning(proposal: Proposal) {
+  const after = proposal.after as ContentType
+  const before = proposal.before as ContentType | null
+  const file = `schema/types/${after.name}.json`
+  if (!before) return `Applying it writes ${file}. It needs no content migration, since the type has no entries yet.`
+  const changes = compareTypes(before, after)
+  const entries = proposal.entries === 1 ? '1 entry' : `${(proposal.entries ?? 0).toLocaleString('en')} entries`
+  return [
+    `Applying it writes ${file}${before.name !== after.name ? `, in place of ${before.name}.json` : ''}`,
+    proposal.migration
+      ? `, and a content migration for its ${entries}, archived ones included, which a developer checks and runs ` +
+        'with iight migrate. Until it runs, no entry can be saved.'
+      : '. It needs no content migration.',
+    changes.some((change) => change.api) &&
+      " It changes what the site's API returns, so the site's code that reads what it renames or removes needs " +
+        'changing, and npx iight types pull updates its types.',
+    before.drafts !== false &&
+      after.drafts === false &&
+      " Without drafts, every save publishes, and an entry's unpublished changes go live at its next save.",
+  ]
+    .filter(Boolean)
+    .join('')
+}
+
 // What applying a waiting proposal does besides what it shows, so no one publishes more than they meant to
 function useWarning(proposal: Proposal) {
-  const type = useContext(TypesContext).get(proposal.type ?? '')
+  const type = useTypeOf(proposal)
   const chatProposals = useContext(ChatProposals)
   const forms = proposal.needs
     .map((id) => chatProposals.get(id))
-    .filter((form) => form?.status === 'pending')
+    .filter((form) => form?.status === 'pending' && form.kind === 'form')
     .map((form) => `“${form!.title}”`)
+  const made = proposal.needs.map((id) => chatProposals.get(id)).find((need) => need?.kind === 'type')
   if (proposal.status !== 'pending') return undefined
+  if (proposal.kind === 'type') return typeWarning(proposal)
   if (proposal.kind === 'media') return 'Applying it changes the file on the site at once, since files have no drafts.'
   if (proposal.kind === 'form') {
     return proposal.isNew
@@ -198,6 +370,7 @@ function useWarning(proposal: Proposal) {
     proposal.entryStatus === 'draft' && "It isn't live yet, so publishing makes all of it live, not just this change.",
     forms.length > 0 &&
       `Applying it makes the form ${forms.join(' and ')} first, which opens when the page is published.`,
+    made?.status === 'pending' && `Applying it makes the content type “${made.title}” first.`,
   ]
     .filter(Boolean)
     .join(' ')
@@ -220,6 +393,19 @@ function Outcome({ proposal, focus }: { proposal: Proposal; focus: React.RefObje
       'Skipped.'
     ) : proposal.status !== 'applied' ? null : proposal.kind === 'media' ? (
       "Applied, so the file's details are on the site now."
+    ) : proposal.kind === 'type' ? (
+      <>
+        {proposal.isNew ? 'Made ' : 'Applied to '}
+        <a href={`#/schema/${proposal.after.name}`}>the content type</a>
+        {proposal.migration?.file ? (
+          <>
+            , with the migration <code>migrations/{proposal.migration.file}</code>, which iight migrate runs
+          </>
+        ) : (
+          ', which needed no content migration'
+        )}
+        .
+      </>
     ) : proposal.kind === 'form' ? (
       <>
         {proposal.isNew ? 'Made ' : 'Applied to '}
@@ -246,7 +432,7 @@ function Outcome({ proposal, focus }: { proposal: Proposal; focus: React.RefObje
 // and then loads that page again
 function useDecide(proposals: Array<Proposal>, focus: () => void) {
   const assistant = useAssistant()
-  const types = useContext(TypesContext)
+  const typeOf = useTypeLookup()
   const toast = useToast()
   const [busy, setBusy] = useState<'apply' | 'publish' | 'skip'>()
   // How many are done, of how many there were when it started, since decided ones leave the list as it goes
@@ -267,6 +453,9 @@ function useDecide(proposals: Array<Proposal>, focus: () => void) {
     const ids = proposals.map((proposal) => proposal.id)
     setBusy(action)
     setTotal(ids.length)
+    // The page beside holds still until it has loaded what was applied
+    if (shown) beside?.hold?.(true)
+    const at = location.hash
     try {
       const failed = await assistant.decide(action, ids, setDone)
       const many = ids.length > 1
@@ -277,7 +466,7 @@ function useDecide(proposals: Array<Proposal>, focus: () => void) {
         toast(
           many
             ? `${verb} ${ids.length - failed} of ${ids.length} changes`
-            : `${verb} the change${action === 'apply' && draftable(proposals[0], types) ? ' as a draft' : ''}`,
+            : `${verb} the change${action === 'apply' && draftable(proposals[0], typeOf) ? ' as a draft' : ''}`,
         )
       }
       // One change says why under it, and a batch says how many weren't applied, each marked so
@@ -285,11 +474,14 @@ function useDecide(proposals: Array<Proposal>, focus: () => void) {
         const which = failed === ids.length ? `None of the ${ids.length} changes were` : `${failed} of them weren't`
         setProblem(`${which} applied. Each one marked Not applied says why when it's opened.`)
       }
-      if (shown) await beside?.reload()
+      // Only a page still at the address it had, since the person may have left it meanwhile. Loading the types again
+      // can take the page away, as a renamed type's editor goes, so it's the address that counts.
+      if (shown && location.hash === at) await beside?.reload()
       setTimeout(focus)
     } catch (error) {
       setProblem(errorMessage(error))
     } finally {
+      if (shown) beside?.hold?.(false)
       setBusy(undefined)
       setDone(0)
     }
@@ -311,7 +503,7 @@ function Decide({
   name?: string
   focus: () => void
 }) {
-  const types = useContext(TypesContext)
+  const typeOf = useTypeLookup()
   const { busy, done, total, problem, decide } = useDecide(proposals, focus)
   const count = proposals.length
   // Past a hundred, it says how far it's got
@@ -320,12 +512,26 @@ function Decide({
   // Named for the proposal, starting with what the button says, other than while it works, when it says that
   const named = (label: string, action: typeof busy) =>
     busy === action ? undefined : name && `${label}: ${lower(name)}`
-  const drafts = proposals.some((proposal) => draftable(proposal, types))
-  const live = proposals.filter((proposal) => !draftable(proposal, types)).length
+  const drafts = proposals.some((proposal) => draftable(proposal, typeOf))
+  // Types have no drafts and publish nothing, so on their own they're applied. In a batch, a new type goes before the
+  // entries that need it, and a change to a type after the batch's entries, since its migration stops entries saving.
+  const typesOnly = proposals.every((proposal) => proposal.kind === 'type')
+  const live = proposals.filter((proposal) => proposal.kind !== 'type' && !draftable(proposal, typeOf)).length
   return (
     <>
       <div className='cms-proposal__actions'>
-        {drafts && (
+        {typesOnly && (
+          <button
+            type='button'
+            className='iight-button iight-button--primary'
+            aria-label={named('Apply', 'apply')}
+            aria-busy={busy === 'apply'}
+            onClick={() => decide('apply')}
+          >
+            {busy === 'apply' ? working('Applying') : name ? 'Apply' : `Apply all ${count}`}
+          </button>
+        )}
+        {!typesOnly && drafts && (
           <button
             type='button'
             className='iight-button'
@@ -336,15 +542,17 @@ function Decide({
             {busy === 'apply' ? working('Applying') : name ? 'Apply as draft' : 'Apply all as drafts'}
           </button>
         )}
-        <button
-          type='button'
-          className='iight-button iight-button--primary'
-          aria-label={named('Apply and publish', 'publish')}
-          aria-busy={busy === 'publish'}
-          onClick={() => decide('publish')}
-        >
-          {busy === 'publish' ? working('Publishing') : name ? 'Apply and publish' : `Apply and publish all ${count}`}
-        </button>
+        {!typesOnly && (
+          <button
+            type='button'
+            className='iight-button iight-button--primary'
+            aria-label={named('Apply and publish', 'publish')}
+            aria-busy={busy === 'publish'}
+            onClick={() => decide('publish')}
+          >
+            {busy === 'publish' ? working('Publishing') : name ? 'Apply and publish' : `Apply and publish all ${count}`}
+          </button>
+        )}
         <button
           type='button'
           className='iight-button'
@@ -391,7 +599,7 @@ function ProposalCard({ proposal, folded = false }: { proposal: Proposal; folded
       {proposal.status === 'pending' && !readOnly && (
         <Decide proposals={[proposal]} name={name} focus={() => outcome.current?.focus()} />
       )}
-      {problem && proposal.status === 'pending' && (
+      {problem && (proposal.status === 'pending' || proposal.kind === 'type') && (
         <p className='cms-problem' role='alert'>
           <CircleAlert /> {problem}
         </p>

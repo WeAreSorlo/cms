@@ -132,20 +132,22 @@ export interface Database {
     usage: Record<string, any> | null
     created_at: Generated<Date>
   }
-  // The changes the assistant proposes, a row for each entry or form, which the person applies or skips
+  // The changes the assistant proposes, a row for each entry, form, file or content type, which the person applies or
+  // skips
   proposals: {
     id: string
     chat_id: string
     // The tool call that made it, which the chat shows it under
     tool_use_id: string
-    kind: 'entry' | 'form' | 'media'
-    // The entry, form or file it changes, or the id a new one is made with
+    kind: 'entry' | 'form' | 'media' | 'type'
+    // The entry, form, file or content type it changes, or the id a new one is made with
     target_id: string
     is_new: boolean
-    // An entry's content type
+    // An entry's content type, or the name a content type had when it was proposed
     type: string | null
     // For an entry, { values, parentId }: a new one's, or only the top-level fields a change sets and a page's parent
     // when it moves, with before holding what they were when it was proposed. For a form, its label, name and fields.
+    // For a content type, its file as it was and as Apply writes it.
     before: Record<string, any> | null
     after: Record<string, any>
     // The last content migration when it was proposed, which values it fits
@@ -154,6 +156,8 @@ export interface Database {
     // The version Apply saved, and whether Apply also published it, opened its form, or changed its file on the site
     version: number | null
     published: Generated<boolean>
+    // For a content type, the content migration Apply wrote, if it wrote one
+    wrote: { file: string; notes: Array<string> } | null
     decided_by: string | null
     decided_at: Date | null
     created_at: Generated<Date>

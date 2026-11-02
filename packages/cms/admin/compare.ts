@@ -1,5 +1,5 @@
 import { idsOf } from '../src/fields'
-import { FieldSchema, isEmptyValue } from 'iight'
+import { FieldSchema, isEmptyValue, normaliseConditions } from 'iight'
 
 // What changed between two versions of an entry (PLAN.md section 20), from their values and the type's fields
 
@@ -232,3 +232,181 @@ export const toJson = (values: unknown) =>
             : value,
         2,
       )
+
+// A change a proposal makes to a content type (PLAN.md section 21): one of its settings, or a field or layout added,
+// removed or changed, named by its labels from the top, such as Blocks › Quote, with what changed about it
+export interface TypeChange {
+  labels: Array<string>
+  kind: Kind
+  details: Array<string>
+  // Whether it changes what the site's API returns: a field's or layout's key, place or type, or the type's name
+  api: boolean
+}
+
+interface TypeNode {
+  kind: 'field' | 'layout'
+  schema: { name: string; label?: string; [key: string]: any }
+  // The field or layout it sits in, by id, or '' at the top
+  parent: string
+  labels: Array<string>
+}
+
+// Every field and layout in a type's fields by id, as make:migration matches them
+function nodesOf(fields: Array<FieldSchema>) {
+  const nodes = new Map<string, TypeNode>()
+  const add = (list: unknown, kind: TypeNode['kind'], parent: string, labels: Array<string>) => {
+    for (const schema of Array.isArray(list) ? list : []) {
+      const named = [...labels, label(schema)]
+      nodes.set(schema.id, { kind, schema, parent, labels: named })
+      if (kind === 'layout') add(schema.fields, 'field', schema.id, named)
+      else {
+        add(schema.options?.fields, 'field', schema.id, named)
+        add(schema.options?.layouts, 'layout', schema.id, named)
+      }
+    }
+  }
+  add(fields, 'field', '', [])
+  return nodes
+}
+
+const settingNames: Record<string, string> = {
+  label: 'Label',
+  name: 'Name',
+  singular: 'Singular label',
+  structure: 'Structure',
+  drafts: 'Drafts',
+  icon: 'Icon',
+  titleField: 'Title field',
+  slugField: 'Slug field',
+  listColumns: 'List columns',
+}
+
+const shown = (value: unknown): string =>
+  value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)
+    ? 'none'
+    : Array.isArray(value) && value.every((item) => typeof item !== 'object' || item === null)
+      ? value.join(', ')
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value)
+
+const operators: Record<string, string> = {
+  equals: 'is',
+  notEquals: 'is not',
+  contains: 'contains',
+  notContains: 'does not contain',
+  startsWith: 'starts with',
+  greaterThan: 'is more than',
+  lessThan: 'is less than',
+  empty: 'is empty',
+  notEmpty: 'is not empty',
+}
+
+// A field's conditions as words, such as format is online, or venue is empty, read in any shape core takes them
+const conditionsText = (schema: FieldSchema) => {
+  const groups = normaliseConditions(schema)
+  const rule = ({ field, operator, value }: { field: string; operator: string; value?: unknown }) =>
+    [field, operators[operator] ?? operator, ...(/mpty$/.test(operator) ? [] : [shown(value)])].join(' ')
+  return groups.length ? groups.map((group) => group.map(rule).join(' and ')).join(', or ') : 'none'
+}
+
+// Choices by their labels, with the value each stores where it differs, since the label is what people see
+const choicesText = (list: Array<any>) =>
+  list
+    .map((choice) =>
+      choice?.label && choice.label !== choice.value ? `${choice.label} (${choice.value})` : String(choice?.value),
+    )
+    .join(', ')
+
+// What a field's settings say that people see, which the model wrote if it proposed them: its instructions and choices
+const wording = (schema: Record<string, any>) => [
+  ...(schema.instructions ? [`Instructions: ${schema.instructions}`] : []),
+  ...(Array.isArray(schema.options?.choices) && schema.options.choices.length
+    ? [`Choices: ${choicesText(schema.options.choices)}`]
+    : []),
+]
+
+// What changed between two versions of a type's file, by id: its settings first, then its fields and layouts in the
+// new order, and those removed last. A field added or removed counts once, with what's inside it. typeName names a
+// field type, such as Long text for textarea.
+export function compareTypes(
+  before: Record<string, any>,
+  after: Record<string, any>,
+  typeName: (type: string) => string = (type) => type,
+): Array<TypeChange> {
+  const changes: Array<TypeChange> = []
+  for (const key of Object.keys(settingNames)) {
+    const drafts = (type: Record<string, any>) => (type.drafts === false ? 'off' : 'on')
+    const [was, now] = key === 'drafts' ? [drafts(before), drafts(after)] : [before[key], after[key]]
+    if (!same(was ?? null, now ?? null)) {
+      const details = [`${shown(was)} → ${shown(now)}`]
+      changes.push({ labels: [settingNames[key]], kind: 'changed', details, api: key === 'name' })
+    }
+  }
+
+  const old = nodesOf(before.fields ?? [])
+  const now = nodesOf(after.fields ?? [])
+  const place = (nodes: Map<string, TypeNode>, parent: string) =>
+    parent ? nodes.get(parent)!.labels.join(' › ') : 'the top'
+  for (const [id, node] of now) {
+    const was = old.get(id)
+    if (!was) {
+      // Inside a container that's new too, it's part of that container's addition
+      if (!node.parent || old.has(node.parent)) {
+        const what = node.kind === 'layout' ? 'A layout' : typeName(node.schema.type)
+        changes.push({
+          labels: node.labels,
+          kind: 'added',
+          details: [node.schema.required ? `${what}, required` : what, ...wording(node.schema)],
+          api: false,
+        })
+      }
+      continue
+    }
+    const details: Array<string> = []
+    if (was.schema.name !== node.schema.name) details.push(`Renamed from ${was.schema.name} to ${node.schema.name}`)
+    if (was.parent !== node.parent) details.push(`Moved from ${place(old, was.parent)} to ${place(now, node.parent)}`)
+    if (was.schema.type !== node.schema.type) {
+      details.push(`${typeName(was.schema.type)} → ${typeName(node.schema.type)}`)
+    }
+    if (label(was.schema) !== label(node.schema)) details.push(`Label ${label(was.schema)} → ${label(node.schema)}`)
+    if (!was.schema.required !== !node.schema.required) {
+      details.push(node.schema.required ? 'Now required' : 'No longer required')
+    }
+    for (const key of ['instructions', 'width', 'defaultValue', 'conditions', 'readonly', 'disabled']) {
+      if (same(was.schema[key] ?? null, node.schema[key] ?? null)) continue
+      details.push(
+        `New ${key}: ${key === 'conditions' ? conditionsText(node.schema as FieldSchema) : shown(node.schema[key])}`,
+      )
+    }
+    const options = new Set([...Object.keys(was.schema.options ?? {}), ...Object.keys(node.schema.options ?? {})])
+    for (const key of options) {
+      if (key === 'fields' || key === 'layouts') continue
+      const [a, b] = [was.schema.options?.[key], node.schema.options?.[key]]
+      if (same(a ?? null, b ?? null)) continue
+      if (key === 'choices') {
+        const list = (choices: unknown): Array<any> => (Array.isArray(choices) ? choices : [])
+        const find = (choices: unknown, choice: any) => list(choices).find((other) => other?.value === choice?.value)
+        const lost = list(a).filter((choice) => !find(b, choice))
+        const gained = list(b).filter((choice) => !find(a, choice))
+        const relabelled = list(b).filter((choice) => find(a, choice) && find(a, choice).label !== choice.label)
+        if (lost.length) details.push(`Lost the choice${lost.length > 1 ? 's' : ''} ${choicesText(lost)}`)
+        if (gained.length) details.push(`New choice${gained.length > 1 ? 's' : ''} ${choicesText(gained)}`)
+        for (const choice of relabelled) {
+          details.push(`Relabelled ${choice.value} from ${shown(find(a, choice).label)} to ${shown(choice.label)}`)
+        }
+        if (!lost.length && !gained.length && !relabelled.length)
+          details.push(`Choices reordered: ${choicesText(list(b))}`)
+      } else details.push(`${key}: ${shown(a)} → ${shown(b)}`)
+    }
+    const api =
+      was.schema.name !== node.schema.name || was.parent !== node.parent || was.schema.type !== node.schema.type
+    if (details.length) changes.push({ labels: node.labels, kind: 'changed', details, api })
+  }
+  for (const [id, node] of old) {
+    if (!now.has(id) && (!node.parent || now.has(node.parent))) {
+      changes.push({ labels: node.labels, kind: 'removed', details: [], api: true })
+    }
+  }
+  return changes
+}

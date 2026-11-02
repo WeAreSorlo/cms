@@ -33,6 +33,10 @@ export interface PageView {
   label: string
 }
 
+// Set by a page just before it moves itself to another address, such as the type editor once its type is renamed through
+// the assistant, so the shell leaves focus where it is rather than moving it to the new page's heading
+export const navigation = { keepFocus: false }
+
 // Each page tells the shell what it shows, for the shell's assistant to send with each message
 export const PageViewContext = createContext((view: PageView | null) => {})
 

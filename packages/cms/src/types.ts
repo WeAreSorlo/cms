@@ -1,10 +1,12 @@
 import { inputs } from './core'
-import { mapFields, usesOf } from './fields'
+import { expandFields, usesOf } from './fields'
 import { cmsInputs } from './relations'
 import type { FieldSchema, Input } from 'iight'
 import { existsSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+
+export { expandFields }
 
 // A content type, read from a JSON file in the site project's schema/types folder (PLAN.md section 4)
 export interface ContentType {
@@ -208,19 +210,6 @@ export function cycleOf(id: string, groups: Map<string, SharedGroup>) {
 
 export const cycleProblem = (through: Array<string>) =>
   `It uses itself${through.length ? `, through ${through.join(' then ')}` : ''}.`
-
-// Fields with each use of a shared group, at any depth, expanded into a group of the shared group's fields. Their ids,
-// and their layouts', get the use's id in front, so each stays unique in a type that uses the group twice, and the
-// group keeps the use's options.group, which marks where they came from (PLAN.md section 19). Groups are by id, and
-// must have passed checkGroup and cycleOf.
-export function expandFields(fields: Array<FieldSchema>, groups: Map<string, SharedGroup>): Array<FieldSchema> {
-  return mapFields(fields, (field) => {
-    if (field.type !== 'shared') return field
-    const qualify = <T extends { id?: string }>(node: T) => ({ ...node, id: `${field.id}.${node.id}` })
-    const inside = mapFields(expandFields(groups.get(field.options!.group)!.fields, groups), qualify, qualify)
-    return { ...field, type: 'group', options: { ...field.options, fields: inside } }
-  })
-}
 
 // Every JSON file in a folder by its name, and the problems of those that can't be read
 async function readFolder(dir: string, problems: Array<string>) {

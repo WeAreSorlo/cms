@@ -12,7 +12,7 @@ import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
-import { EditorDirs, typeRoutes } from './typeEditor'
+import { EditorDirs, typeRoutes, typeSaver } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
 import { typesFile } from './typescript'
 import { serveStatic } from '@hono/node-server/serve-static'
@@ -73,6 +73,8 @@ export function createApp(
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
   const app = new Hono<AdminEnv>()
+  // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
+  const saver = editor && typeSaver(db, types, groups, editor)
 
   // Every error except a failed validation replies { message }, as Laravel does
   app.notFound((c) => c.json({ message: 'Not Found' }, 404))
@@ -188,7 +190,7 @@ export function createApp(
   app.use('/api/keys/*', signedIn)
   if (mcp) app.use('/api/tokens/*', signedIn)
   if (ai) app.use('/api/chats/*', signedIn)
-  app.route('/api', typeRoutes(types, groups, editor, { mcp, ai: !!ai }))
+  app.route('/api', typeRoutes(types, groups, saver, { mcp, ai: !!ai }))
   app.route('/api', entryRoutes(db, types, migrations, versions))
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
@@ -202,7 +204,7 @@ export function createApp(
   }
 
   // The admin's assistant reads the same way, with the site's own model (PLAN.md section 21)
-  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage))
+  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage, saver))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
   app.route('/v1', publicFormRoutes(db, forms))

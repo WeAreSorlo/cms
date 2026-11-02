@@ -20,6 +20,9 @@ export interface Beside {
   shows(proposal: Pick<Proposal, 'kind' | 'targetId'>): boolean
   touched(): boolean
   reload(): void | Promise<void>
+  // Holds the page still from Apply until it has loaded again, so nothing typed meanwhile is lost and nothing it saves
+  // sends back what it showed before
+  hold?(held: boolean): void
 }
 export const editing: { page?: Beside } = {}
 
@@ -34,6 +37,7 @@ export function useBeside(beside: Beside, on = true) {
       shows: (proposal) => latest.current.shows(proposal),
       touched: () => latest.current.touched(),
       reload: () => latest.current.reload(),
+      hold: (held) => latest.current.hold?.(held),
     }
     editing.page = page
     return () => {
@@ -119,8 +123,9 @@ const spoken = (reply: Reply) =>
 
 const stopped: ReplyNotice = { tone: 'info', text: 'Stopped.' }
 
-// The assistant's state for the shell, which only loads anything with the assistant on
-export function useAssistantState(on: boolean, me: string): Assistant {
+// The assistant's state for the shell, which only loads anything with the assistant on. onTypes loads the types again
+// once Apply has changed one, as the type editor's Save does.
+export function useAssistantState(on: boolean, me: string, onTypes?: () => Promise<unknown>): Assistant {
   const [chats, setChats] = useState<Array<Chat>>([])
   const [page, setPage] = useState({ number: 1, last: 1 })
   const [chat, setChat] = useState<Chat | null>(null)
@@ -273,6 +278,8 @@ export function useAssistantState(on: boolean, me: string): Assistant {
     progress?: (done: number) => void,
   ) => {
     let failed = 0
+    // The content types applied, after which the admin loads the types again
+    const typed: Array<string> = []
     if (!chat) return failed
     for (let start = 0; start < ids.length; start += 100) {
       const route = action === 'skip' ? 'skip' : 'apply'
@@ -291,7 +298,15 @@ export function useAssistantState(on: boolean, me: string): Assistant {
         status === 200 ? '' : message || "It wasn't applied."
       setProblems((all) => ({ ...all, ...Object.fromEntries(results.map((result) => [result.id, problem(result)])) }))
       failed += results.filter(({ status }) => status !== 200).length
+      typed.push(...results.flatMap(({ id, status, data }) => (status === 200 && data?.kind === 'type' ? [id] : [])))
       progress?.(Math.min(start + 100, ids.length))
+    }
+    // They're applied either way, so a failure here says so on their cards rather than as the decision's failure
+    if (typed.length) {
+      await onTypes?.().catch((error: Error) => {
+        const said = `Applied, but the admin couldn't load the content types again: ${error.message}. Reload the page.`
+        setProblems((all) => ({ ...all, ...Object.fromEntries(typed.map((id) => [id, said])) }))
+      })
     }
     // Other proposals for the same entries show their status as it is now
     await refresh()

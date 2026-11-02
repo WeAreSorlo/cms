@@ -3,7 +3,7 @@ import './admin.scss'
 import { ContentType, GroupsContext, SharedGroup, TypesContext, api, pathOf } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { BulkEditor } from './bulk'
-import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
+import { EntryEditor, EntryList, EntryPage, SingletonPage, TypeGone } from './entries'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { GroupEditor, GroupList } from './groups'
 import { KeyEditor, KeyList, KeyPage } from './keys'
@@ -110,7 +110,7 @@ function Page({
   editable: boolean
   mcp: boolean
   ai: boolean
-  reloadTypes: () => Promise<void>
+  reloadTypes: () => Promise<Map<string, ContentType>>
 }) {
   const path = pathOf(hash)
   const query = hash.slice(path.length + 1)
@@ -168,6 +168,7 @@ function Page({
   if (type) {
     return <EntryList key={`${type.name}/${action}`} type={type} archived={action === 'archive'} query={query} />
   }
+  if (section === 'types' && name) return <TypeGone name={name} />
   return <p>{types.size ? 'Choose a content type.' : 'Add a content type to schema/types to get started.'}</p>
 }
 
@@ -196,14 +197,16 @@ function App() {
       .catch(() => setUser(null))
   }, [])
 
-  // Loaded again after each change in the type editor, with the shared groups
+  // Loaded again after each change in the type editor or through the assistant, with the shared groups
   const reloadTypes = useCallback(async () => {
     const { body } = await api('GET', '/types')
-    setTypes(new Map(body.data.map((type: ContentType) => [type.name, type])))
+    const loaded = new Map<string, ContentType>(body.data.map((type: ContentType) => [type.name, type]))
+    setTypes(loaded)
     setGroups(new Map(body.groups.map((group: SharedGroup) => [group.name, group])))
     setEditable(body.editable)
     setMcp(body.mcp)
     setAi(body.ai)
+    return loaded
   }, [])
 
   useEffect(() => {
@@ -223,7 +226,7 @@ function App() {
   return (
     <TypesContext.Provider value={types}>
       <GroupsContext.Provider value={groups}>
-        <Shell hash={hash} types={types} user={user} mcp={mcp} ai={ai} onSignOut={signOut}>
+        <Shell hash={hash} types={types} user={user} mcp={mcp} ai={ai} onSignOut={signOut} onTypes={reloadTypes}>
           <Page
             hash={hash}
             types={types}
