@@ -788,6 +788,8 @@ a.iight-button {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  // So a long chat name in the header ellipsizes rather than widening the chat, in the full-screen sheet's row
+  min-width: 0;
 }
 
 // The chat's name, which opens the person's other chats, and New chat
@@ -950,6 +952,139 @@ a.iight-button {
   }
 }
 
+// A step with the changes it proposed under it
+.cms-chat__part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+}
+
+// A change the assistant proposed, its fields compared as the version page compares them, then Apply and Skip, or what
+// became of it
+.cms-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+  padding: var(--iight-size-3);
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  > p {
+    margin: 0;
+  }
+
+  .cms-change__label {
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+  }
+
+  .cms-changes {
+    gap: var(--iight-size-3);
+  }
+}
+
+.cms-proposal__name {
+  font-weight: var(--iight-font-weight-bold);
+  overflow-wrap: anywhere;
+}
+
+.cms-proposal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--iight-size-2);
+}
+
+.cms-proposal__outcome {
+  display: flex;
+  gap: var(--iight-size-1);
+
+  > svg {
+    flex: none;
+    margin-top: calc((var(--cms-leading-sm) - 1rem) / 2);
+    color: var(--cms-success);
+  }
+}
+
+.cms-proposal__fields {
+  margin: 0;
+  padding-left: var(--cms-size-6);
+}
+
+// A file's image above its details, contained on the media library's checkerboard, so transparency shows in both themes
+.cms-proposal__file {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+
+  > img {
+    align-self: flex-start;
+    max-width: 100%;
+    max-height: 8rem;
+    object-fit: contain;
+    background: repeating-conic-gradient(var(--cms-checker) 0 25%, var(--cms-checker-alt) 0 50%) 0 0 / 1rem 1rem;
+    border-radius: var(--iight-size-1);
+  }
+}
+
+// A find and replace's changes, each entry's folded under its name with what became of it
+.cms-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+}
+
+.cms-proposals__head {
+  margin: 0;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  font-weight: var(--iight-font-weight-bold);
+}
+
+.cms-proposals__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--cms-surface);
+  border: var(--iight-size-px) solid var(--cms-rule);
+  border-radius: var(--iight-size-2);
+
+  > li + li {
+    border-top: var(--iight-size-px) solid var(--cms-rule);
+  }
+}
+
+.cms-proposal__fold {
+  > summary {
+    padding: var(--iight-size-2) var(--iight-size-3);
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+
+  > .cms-proposal {
+    border-width: var(--iight-size-px) 0 0;
+    border-radius: 0;
+  }
+}
+
+// What waits at the end of a reply that proposed changes in more than one step, and who can read the chat once one's
+// applied
+.cms-proposals__end {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+
+  > p {
+    margin: 0;
+  }
+}
+
 // A reply's text, from its Markdown
 .cms-reply {
   overflow-wrap: anywhere;
@@ -1028,12 +1163,13 @@ a.iight-button {
 .cms-composer {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   gap: var(--iight-size-2);
   align-items: flex-end;
   padding: var(--iight-size-3);
   border-top: var(--iight-size-px) solid var(--cms-rule);
 
-  > :first-child {
+  > .iight-form {
     flex: 1;
     min-width: 0;
   }
@@ -1059,6 +1195,23 @@ a.iight-button {
     flex: none;
     gap: var(--iight-size-1);
     align-items: center;
+  }
+}
+
+// What "this" means beside a page, on a line of its own above the box to write in
+.cms-composer__about {
+  display: flex;
+  flex: 1 0 100%;
+  gap: var(--iight-size-1);
+  margin: 0;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  color: var(--cms-muted);
+  overflow-wrap: anywhere;
+
+  > svg {
+    flex: none;
+    margin-top: calc((var(--cms-leading-sm) - 1rem) / 2);
   }
 }
 

@@ -198,11 +198,11 @@ export function createApp(
   // AI clients read the site's content as a person, with a token that person made (PLAN.md section 21)
   if (mcp) {
     app.route('/api', tokenRoutes(db))
-    app.route('/', mcpRoutes(db, types, migrations))
+    app.route('/', mcpRoutes(db, types, migrations, versions, storage))
   }
 
   // The admin's assistant reads the same way, with the site's own model (PLAN.md section 21)
-  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai))
+  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
   app.route('/v1', publicFormRoutes(db, forms))

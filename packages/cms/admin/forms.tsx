@@ -1,7 +1,8 @@
 import { isEmpty, showValue } from '../src/fields'
 import { formSchema } from '../src/schemas'
-import { api, date, errorMessage } from './api'
+import { api, date, errorMessage, usePageView } from './api'
 import { FormAutomations } from './automations'
+import { useBeside } from './chat'
 import {
   Badge,
   EmptyState,
@@ -29,6 +30,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 
 // A form as the admin API returns it
 interface FormRecord {
@@ -37,6 +39,8 @@ interface FormRecord {
   label: string
   version: number
   fields: Array<FieldSchema>
+  // Whether it takes submissions. Forms made through AI start closed, until someone opens them.
+  open: boolean
   // HTML for pasting the form into a page, as it was last saved
   embed: string
 }
@@ -103,7 +107,7 @@ export function FormList() {
               {forms.map((form) => (
                 <tr key={form.id}>
                   <td>
-                    <a href={`#/forms/${form.id}`}>{form.label}</a>
+                    <a href={`#/forms/${form.id}`}>{form.label}</a> {!form.open && <Badge tone='warning'>Closed</Badge>}
                   </td>
                   <td>
                     <code>{form.name}</code>
@@ -131,22 +135,67 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
   const forms = useRef<HTMLDivElement>(null)
   const toast = useToast()
   const [form, setForm] = useState(loaded)
+  // The assistant beside the editor takes "this" to be the form, once it's saved
+  usePageView(form ? { page: { form: form.id }, label: form.label } : null)
   const [settings, setSettings] = useState<Record<string, any>>({ label: loaded?.label, name: loaded?.name })
-  const [shown] = useState(settings)
+  // What the forms start from, replaced only once a proposal for the form is applied
+  const [shown, setShown] = useState(settings)
   const [fields, setFields] = useState<Array<FieldSchema>>(loaded?.fields ?? [])
-  const [shownFields] = useState({ fields })
+  const [shownFields, setShownFields] = useState({ fields })
+  // Whether the forms hold changes the person made since the form loaded or saved, which the assistant beside it asks
+  // to have saved before it applies a proposal to the form. As in the entry editor, only a change after a key or a
+  // pointer counts, and one made while it saves stays unsaved.
+  const touched = useRef(false)
+  const interacted = useRef(false)
+  const edits = useRef(0)
+  const changed = () => void (interacted.current && ((touched.current = true), edits.current++))
+  useBeside({
+    shows: (proposal) => proposal.kind === 'form' && proposal.targetId === form?.id,
+    touched: () => touched.current,
+    reload: async () => {
+      if (!form) return
+      const { body } = await api('GET', `/forms/${form.id}`)
+      const next = { label: body.data.label, name: body.data.name }
+      setForm(body.data)
+      setSettings(next)
+      setShown(next)
+      setFields(body.data.fields)
+      setShownFields({ fields: body.data.fields })
+      touched.current = interacted.current = false
+    },
+  })
   const [problem, setProblem] = useState('')
   const [copyProblem, setCopyProblem] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<string>()
+  // Save, or Open form once a closed form opens, where focus goes once the button that opened or closed it goes
+  const primary = useRef<HTMLButtonElement>(null)
+
+  // Open a form to submissions, or close it, such as once its event is over
+  const setOpen = async (open: boolean) => {
+    if (busy || !form) return
+    setProblem('')
+    setBusy(open ? 'open' : 'close')
+    try {
+      const { body } = await api('POST', `/forms/${form.id}/${open ? 'open' : 'close'}`)
+      flushSync(() => setForm(body.data))
+      toast(open ? 'Opened the form, which takes submissions now' : 'Closed the form, which takes no submissions now')
+      primary.current?.focus()
+    } catch (error) {
+      setProblem(errorMessage(error))
+    } finally {
+      setBusy(undefined)
+    }
+  }
 
   // The button stays enabled while it saves, so it keeps focus, and a second click is ignored here instead
   const save = async () => {
     if (busy) return
     setProblem('')
     if (!settingsForm.current?.validate().isValid) return focusInvalid(forms.current).then(setProblem)
-    setBusy(true)
+    setBusy('save')
     try {
       const body = { ...settings, fields }
+      const at = edits.current
       const { status, body: reply } = form
         ? await api('PUT', `/forms/${form.id}`, body)
         : await api('POST', '/forms', body)
@@ -164,10 +213,11 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
       const { version } = reply.data
       toast(version > form.version ? `Saved as version ${version}, which new submissions are checked against` : 'Saved')
       setForm(reply.data)
+      if (edits.current === at) touched.current = interacted.current = false
     } catch (error) {
       setProblem(errorMessage(error))
     } finally {
-      setBusy(false)
+      setBusy(undefined)
     }
   }
 
@@ -184,16 +234,40 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
       <PageHeader
         back={{ href: '#/forms', label: 'Forms' }}
         title={form ? form.label : 'New form'}
-        meta={form && <Badge>Version {form.version}</Badge>}
+        meta={
+          form && (
+            <>
+              <Badge>Version {form.version}</Badge>
+              {!form.open && <Badge tone='warning'>Closed</Badge>}
+            </>
+          )
+        }
       />
 
-      <div ref={forms}>
-        <Form ref={settingsForm} schema={formSchema} values={shown} onValuesChange={setSettings} />
+      {form && !form.open && (
+        <Notice tone='warning'>
+          It takes no submissions until it's opened, so its embed and the SDK get a 403 for now. A form made through AI
+          starts closed.
+        </Notice>
+      )}
+      <div ref={forms} onKeyDown={() => (interacted.current = true)} onPointerDown={() => (interacted.current = true)}>
+        <Form
+          ref={settingsForm}
+          schema={formSchema}
+          values={shown}
+          onValuesChange={(next) => {
+            setSettings(next)
+            changed()
+          }}
+        />
         <Form
           ref={fieldsForm}
           schema={fieldsSchema}
           values={shownFields}
-          onValuesChange={(next) => setFields(next.fields ?? [])}
+          onValuesChange={(next) => {
+            setFields(next.fields ?? [])
+            changed()
+          }}
         />
       </div>
 
@@ -202,15 +276,39 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
         problem={problem}
         actions={
           <>
-            <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={save}>
-              {busy ? 'Saving…' : 'Save'}
+            <button
+              ref={form?.open === false ? undefined : primary}
+              type='button'
+              className={`iight-button${form?.open === false ? '' : ' iight-button--primary'}`}
+              aria-busy={busy === 'save'}
+              onClick={save}
+            >
+              {busy === 'save' ? 'Saving…' : 'Save'}
             </button>
+            {form?.open === false && (
+              <button
+                ref={primary}
+                type='button'
+                className='iight-button iight-button--primary'
+                aria-busy={busy === 'open'}
+                onClick={() => setOpen(true)}
+              >
+                {busy === 'open' ? 'Opening…' : 'Open form'}
+              </button>
+            )}
             {form && (
               <a className='iight-button' href={`#/forms/${form.id}/inbox`}>
                 <InboxIcon /> Inbox
               </a>
             )}
           </>
+        }
+        footer={
+          form?.open && (
+            <button type='button' className='iight-button' aria-busy={busy === 'close'} onClick={() => setOpen(false)}>
+              {busy === 'close' ? 'Closing…' : 'Close form'}
+            </button>
+          )
         }
       />
 
@@ -276,6 +374,7 @@ const done = { archive: 'Archived', restore: 'Restored', spam: 'Marked as spam',
 // submission opens with the fields of the version it was checked against.
 export function Inbox({ id, view }: { id: string; view: View }) {
   const [form, setForm] = useState<FormRecord>()
+  usePageView(form ? { page: { form: form.id }, label: form.label } : null)
   const [list, setList] = useState<{ data: Array<Submission>; pagination: Pagination }>()
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState<Submission>()

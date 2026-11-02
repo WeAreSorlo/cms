@@ -95,6 +95,61 @@ export const toMedia = (row: MediaRow, origin: string) => ({
 
 export const toAdminMedia = (row: MediaRow, origin: string) => ({ ...toMedia(row, origin), createdBy: row.created_by })
 
+// A file's name, alt text and caption as they're saved: the name kept to an extension of the type the file was stored
+// as, and empty alt text or caption as none
+export const detailsOf = (
+  row: { path: string },
+  values: { name: string; alt?: string | null; caption?: string | null },
+) => ({
+  name: safeName(values.name, extname(row.path).slice(1)),
+  alt: values.alt || null,
+  caption: values.caption || null,
+})
+
+export interface MediaSaveOptions {
+  // Runs on the file as it is, locked, before it's changed, and can throw to stop the save
+  guard?: (current: MediaRow) => void
+  // Runs in the save's transaction once it's written, such as to claim the proposal it applies
+  during?: (trx: Kysely<Database>) => Promise<void>
+}
+
+// Saves a file's checked name, alt text and caption, as the media library's details do, with the event automations
+// take, keeping any of the three that values leaves out. Files have no drafts, so the change shows on the site at once.
+export const saveMediaDetails = (
+  db: Kysely<Database>,
+  id: string,
+  values: Partial<{ name: string; alt: string | null; caption: string | null }>,
+  origin: string,
+  { guard, during }: MediaSaveOptions = {},
+) =>
+  db.transaction().execute(async (trx) => {
+    const row = await trx.selectFrom('media').selectAll().where('id', '=', id).forUpdate().executeTakeFirst()
+    if (!row) throw new HTTPException(404)
+    guard?.(row)
+    const merged = { name: row.name, alt: row.alt, caption: row.caption, ...values }
+    const updated = await trx
+      .updateTable('media')
+      .set({ ...detailsOf(row, merged), updated_at: sql`now()` })
+      .where('id', '=', row.id)
+      .returningAll()
+      .executeTakeFirstOrThrow()
+    await addEvents(trx, 'media.updated', [{ media: toAdminMedia(updated, origin) }])
+    await during?.(trx)
+    return updated
+  })
+
+// An image as a model takes it: turned upright and scaled to fit 512 pixels, with an SVG drawn at that size, as a PNG
+// where it has transparency and otherwise a JPEG. An animated image gives its first frame.
+export async function preview(bytes: Buffer, mime: string) {
+  const { width, height, hasAlpha } = await sharp(bytes).metadata()
+  // An SVG's size is at 72 dots an inch, so it's drawn at the density that makes it 512 pixels
+  const density =
+    mime === 'image/svg+xml' && width && height ? Math.min(2400, (72 * 512) / Math.max(width, height)) : undefined
+  const image = sharp(bytes, { density }).autoOrient().resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+  const data = await (hasAlpha ? image.png() : image.jpeg({ quality: 80 })).toBuffer()
+  return { data: data.toString('base64'), mimeType: hasAlpha ? 'image/png' : 'image/jpeg' }
+}
+
 export async function findMedia(db: Kysely<Database>, id: string) {
   const row = isUuid(id) ? await db.selectFrom('media').selectAll().where('id', '=', id).executeTakeFirst() : undefined
   if (!row) throw new HTTPException(404)
@@ -189,21 +244,7 @@ export function mediaRoutes(
     const report = await validateServerValues(mediaSchema, values, inputs)
     if (!report.isValid) return c.json(report, 422)
 
-    const updated = await db.transaction().execute(async (trx) => {
-      const updated = await trx
-        .updateTable('media')
-        .set({
-          name: safeName(values.name, extname(row.path).slice(1)),
-          alt: values.alt || null,
-          caption: values.caption || null,
-          updated_at: sql`now()`,
-        })
-        .where('id', '=', row.id)
-        .returningAll()
-        .executeTakeFirstOrThrow()
-      await addEvents(trx, 'media.updated', [{ media: toAdminMedia(updated, origin(c)) }])
-      return updated
-    })
+    const updated = await saveMediaDetails(db, row.id, values, origin(c))
     return c.json({ data: toAdminMedia(updated, origin(c)) })
   })
 

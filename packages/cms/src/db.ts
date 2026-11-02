@@ -53,6 +53,9 @@ export interface Database {
     // The last time it went live, and who published it then
     published_at: Date | null
     published_by: string | null
+    // The assistant's chat or the MCP token it was saved through, kept after the chat is deleted (PLAN.md section 21)
+    chat_id: string | null
+    token_id: string | null
   }
   // Each published entry's live copy, which the delivery API serves (PLAN.md section 17)
   published_entries: {
@@ -96,9 +99,13 @@ export interface Database {
     user_id: string
     name: string
     token_hash: string
+    // What the token can do besides reading: drafts saves drafts
+    scopes: Generated<Array<string>>
     // Written at most once a minute
     last_used_at: Date | null
     created_at: Generated<Date>
+    // Revoking keeps the row, so versions saved through the token keep its name
+    revoked_at: Date | null
   }
   // Each person's chats with the admin's assistant (PLAN.md section 21)
   chats: {
@@ -125,6 +132,32 @@ export interface Database {
     usage: Record<string, any> | null
     created_at: Generated<Date>
   }
+  // The changes the assistant proposes, a row for each entry or form, which the person applies or skips
+  proposals: {
+    id: string
+    chat_id: string
+    // The tool call that made it, which the chat shows it under
+    tool_use_id: string
+    kind: 'entry' | 'form' | 'media'
+    // The entry, form or file it changes, or the id a new one is made with
+    target_id: string
+    is_new: boolean
+    // An entry's content type
+    type: string | null
+    // For an entry, { values, parentId }: a new one's, or only the top-level fields a change sets and a page's parent
+    // when it moves, with before holding what they were when it was proposed. For a form, its label, name and fields.
+    before: Record<string, any> | null
+    after: Record<string, any>
+    // The last content migration when it was proposed, which values it fits
+    migration: string | null
+    status: Generated<'pending' | 'applied' | 'skipped' | 'stale'>
+    // The version Apply saved, and whether Apply also published it, opened its form, or changed its file on the site
+    version: number | null
+    published: Generated<boolean>
+    decided_by: string | null
+    decided_at: Date | null
+    created_at: Generated<Date>
+  }
   media: {
     id: string
     // The FlyDrive service that stores the file, and the file's key there
@@ -148,6 +181,10 @@ export interface Database {
     label: string
     fields: JsonList<FieldSchema>
     version: number
+    // Whether it takes submissions. Forms made through AI start closed, until a person opens them.
+    open: Generated<boolean>
+    // When it was first opened, or null for a form that has never taken submissions, which only those MCP changes
+    first_opened_at: Date | null
     created_by: string | null
     updated_by: string | null
     created_at: Generated<Date>

@@ -9,10 +9,13 @@ import {
   errorMessage,
   formatField,
   formatValue,
+  listView,
   shortDate,
   titleOf,
   tree,
+  usePageView,
 } from './api'
+import { AssistantContext, useBeside } from './chat'
 import { useInputs } from './fields'
 import { entryFields, fieldChoicesOf, filterOf, sortable, whereOf } from './lists'
 import { UsedBy } from './media'
@@ -67,6 +70,8 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
   const [error, setError] = useState('')
   // The entries ticked for bulk editing, in the order they were ticked, kept as pages, sorts and filters change
   const [ticked, setTicked] = useState<Array<string>>([])
+  // The archive, search and filter the total was counted for, so the assistant's line never shows another's count
+  const [counted, setCounted] = useState('')
   const list = useListQuery(query)
   const { page, setPage } = list
   const fields = useMemo(() => entryFields(type.fields), [type])
@@ -97,6 +102,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
   // A slow reply to an earlier search mustn't replace a newer one
   const loads = useRef(0)
   const filter = JSON.stringify(where)
+  const order = sort ? { [`values.${sort.name}`]: sort.direction } : { createdAt: 'desc' }
   const load = useCallback(async () => {
     const mine = ++loads.current
     try {
@@ -109,7 +115,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
 
       const params = new URLSearchParams({
         archived: String(archived),
-        order: JSON.stringify(sort ? { [`values.${sort.name}`]: sort.direction } : { createdAt: 'desc' }),
+        order: JSON.stringify(order),
         page: String(page),
       })
       if (where.length) params.set('where', filter)
@@ -117,6 +123,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
       if (mine !== loads.current) return
       setRows(body.data.map((entry: Entry) => ({ entry, depth: 0, index: 0, siblings: 1 })))
       setPagination(body.pagination)
+      setCounted(`${archived}${filter}`)
       setError('')
     } catch (error) {
       if (mine === loads.current) setError(errorMessage(error))
@@ -138,6 +145,19 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
     if (sort?.name !== name) setSort({ name, direction: 'asc' })
     else setSort(sort.direction === 'asc' ? { name, direction: 'desc' } : undefined)
   }
+
+  // The assistant beside the list takes "these" to be the ticked entries, or those the search and filter match
+  usePageView(
+    listView(type, {
+      ticked,
+      where,
+      order,
+      total: ordered || counted !== `${archived}${filter}` ? undefined : pagination?.total,
+      searched: !!search,
+      filtered: filterOf(list.params).length > 0,
+      archived,
+    }),
+  )
 
   const tick = (ids: Array<string>, on: boolean) =>
     setTicked((all) =>
@@ -349,7 +369,14 @@ export interface Version {
   // The last time it went live, and who published it then, null once they're deleted
   publishedAt: string | null
   publishedBy: { id: string; name: string } | null
+  // The assistant's chat or the MCP token it was saved through, with the chat's title, null once it's deleted, or the
+  // token's name
+  via: { kind: 'chat' | 'token'; id: string; name: string | null } | null
 }
+
+// How a version was saved besides who saved it, such as through Claude Desktop, or with the assistant
+export const viaText = (via: Version['via']) =>
+  !via ? '' : via.kind === 'token' ? `, through ${via.name ?? 'an MCP token'}` : ', with the assistant'
 
 // A version's page, which compares it with the one before
 export const versionHref = (entry: Entry, version: Version) => `#/entries/${entry.id}/versions/${version.number}`
@@ -388,7 +415,8 @@ export function Versions({
               </div>
               {version.name && <div className='cms-versions__by'>Version {version.number}</div>}
               <div className='cms-versions__by'>
-                {version.createdBy?.name ?? 'Deleted user'} · {shortDate(version.createdAt)}
+                {version.createdBy?.name ?? 'Deleted user'}
+                {viaText(version.via)} · {shortDate(version.createdAt)}
               </div>
               {drafts && version.publishedAt && (
                 <div className='cms-versions__by'>
@@ -436,6 +464,8 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   const confirm = useConfirm()
   const toast = useToast()
   const [entry, setEntry] = useState(loaded)
+  // The assistant beside the editor takes "this" to be the entry, once it's saved
+  usePageView(entry ? { page: { entry: entry.id }, label: titleOf(type, entry) } : null)
   // A new entry starts from its fields' defaults, as core's new flexible blocks do, so conditions can see them
   const [values, setValues] = useState<Record<string, any>>(
     () => loaded?.values ?? Object.fromEntries(type.fields.map((field) => [field.name, field.defaultValue])),
@@ -457,6 +487,15 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   const hierarchical = type.structure === 'hierarchical'
   // Without drafts, Save publishes, so it runs every check, and an entry has no status to show
   const drafts = type.drafts !== false
+  // Whether the form holds changes the person made since it last loaded or saved, which the assistant beside it asks
+  // to have saved before it applies a proposal to the entry. Values change as the form loads too, so only a change
+  // after a key or a pointer in the form counts.
+  const touched = useRef(false)
+  const interacted = useRef(false)
+  // Counts the person's changes, so a save that ends doesn't clear one made while it was saving
+  const edits = useRef(0)
+  const changed = () => void (interacted.current && ((touched.current = true), edits.current++))
+  const assistant = useContext(AssistantContext)
 
   const loadVersions = useCallback(async () => {
     if (entry) setVersions((await api('GET', `/entries/${entry.id}/versions`)).body.data)
@@ -465,6 +504,22 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   useEffect(() => {
     loadVersions().catch((error) => setProblem(errorMessage(error)))
   }, [loadVersions])
+
+  // Once a proposal for the entry is applied, the editor loads the draft it saved
+  useBeside({
+    shows: (proposal) => proposal.kind === 'entry' && proposal.targetId === entry?.id,
+    touched: () => touched.current,
+    reload: async () => {
+      if (!entry) return
+      const { body } = await api('GET', `/entries/${entry.id}`)
+      setEntry(body.data)
+      show(body.data.values)
+      if (hierarchical) showParent(body.data.parentId)
+      setRestoring(undefined)
+      touched.current = interacted.current = false
+      await loadVersions()
+    },
+  })
 
   useEffect(() => {
     if (!entry) return
@@ -527,6 +582,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
       const checked = form.current!.validate({ allowIncomplete: drafts && !publish })
       if (!checked.isValid) return showInvalid(publish, checked)
       const body = { values, parentId, publish }
+      const at = edits.current
       const { status, body: reply } = entry
         ? await api('PUT', `/entries/${entry.id}`, body)
         : await api('POST', `/types/${type.name}/entries`, body)
@@ -542,6 +598,9 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
       setEntry(reply.data)
       setRestoring(undefined)
+      if (edits.current === at) touched.current = interacted.current = false
+      // The assistant's proposals for the entry show its status as it is now
+      void assistant?.refresh()
       await loadVersions()
     })
 
@@ -562,12 +621,14 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
         hierarchical && was !== null && !tree(await allEntries(type), entry!.id).some((row) => row.entry.id === was)
       if (hierarchical) showParent(kept ? entry!.parentId : was)
       setRestoring({ number: version.number, parentKept: kept })
+      touched.current = true
     })
 
   const discard = () => {
     show(entry!.values)
     if (hierarchical) showParent(entry!.parentId)
     setRestoring(undefined)
+    touched.current = interacted.current = false
   }
 
   // Taken once, so going back to the editor doesn't restore it again
@@ -626,7 +687,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
         }
       />
 
-      <div ref={fields}>
+      <div ref={fields} onKeyDown={() => (interacted.current = true)} onPointerDown={() => (interacted.current = true)}>
         {archived && <Notice tone='warning'>Archived on {date(entry.archivedAt!)}. Restore it to edit it.</Notice>}
         {restoring && (
           <Notice>
@@ -643,10 +704,22 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
           <Form
             schema={parentSchema}
             values={shownParent}
-            onValuesChange={(next) => setParentId(next.parentId || null)}
+            onValuesChange={(next) => {
+              setParentId(next.parentId || null)
+              changed()
+            }}
           />
         )}
-        <Form ref={form} schema={type.fields} inputs={inputs} values={shown} onValuesChange={setValues} />
+        <Form
+          ref={form}
+          schema={type.fields}
+          inputs={inputs}
+          values={shown}
+          onValuesChange={(next) => {
+            setValues(next)
+            changed()
+          }}
+        />
       </div>
 
       <Panel

@@ -114,6 +114,9 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_31_000016_add_version_parents',
     '2026_11_02_000017_create_personal_tokens_table',
     '2026_11_02_000018_create_chats_tables',
+    '2026_11_02_000019_add_changes_through_ai',
+    '2026_11_02_000020_add_proposal_publishing',
+    '2026_11_02_000021_add_form_first_opened',
   ])
 
   await migrate(db, migrations)
@@ -132,6 +135,7 @@ test("the CMS's own migrations run forward and back", async () => {
     'media',
     'migrations',
     'personal_tokens',
+    'proposals',
     'published_entries',
     'sessions',
     'submissions',
@@ -308,4 +312,33 @@ test("the migration that records versions' parents gives each version the parent
   expect(await rollback(db, migrations)).toEqual([parents])
   const columns = (await db.introspection.getTables()).find((table) => table.name === 'entry_versions')?.columns
   expect(columns?.map((column) => column.name)).not.toContain('parent_id')
+})
+
+test('the migrations for changes through AI keep closed forms closed, and count every form so far as opened', async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const upTo = (last: string) => Object.fromEntries(Object.entries(migrations).filter(([name]) => name <= last))
+  const changes = '2026_11_02_000019_add_changes_through_ai'
+  const opened = '2026_11_02_000021_add_form_first_opened'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < changes)))
+  await migrate(db, upTo(changes))
+  const form = (name: string, open: boolean) => ({ id: uuidv7(), name, label: name, fields: '[]', version: 1, open })
+  await db
+    .insertInto('forms')
+    .values([form('sign_ups', true), form('made_by_ai', false)])
+    .execute()
+
+  // Without the open column every form takes submissions, so a closed one stops the rollback
+  await expect(rollback(db, migrations)).rejects.toThrow("Can't roll back while forms are closed")
+  expect(await db.selectFrom('forms').select('name').where('open', '=', false).execute()).toEqual([
+    { name: 'made_by_ai' },
+  ])
+
+  await migrate(db, upTo(opened))
+  expect(await db.selectFrom('forms').select(['name', 'first_opened_at']).orderBy('name').execute()).toEqual([
+    { name: 'made_by_ai', first_opened_at: expect.any(Date) },
+    { name: 'sign_ups', first_opened_at: expect.any(Date) },
+  ])
+  expect(await rollback(db, migrations)).toEqual([opened, '2026_11_02_000020_add_proposal_publishing'])
+  await db.updateTable('forms').set({ open: true }).execute()
+  expect(await rollback(db, migrations)).toEqual([changes])
 })

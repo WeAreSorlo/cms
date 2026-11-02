@@ -216,6 +216,7 @@ test('a version can be named, renamed and have its name cleared', async () => {
         createdAt: expect.any(String),
         publishedAt: null,
         publishedBy: null,
+        via: null,
       },
     },
   })

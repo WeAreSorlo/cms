@@ -1,5 +1,6 @@
 import { idsOf } from '../src/fields'
-import { ContentType, Entry, api, errorMessage, formatValue, titleOf } from './api'
+import { ContentType, Entry, api, errorMessage, formatValue, listView, titleOf, usePageView } from './api'
+import { AssistantContext, useBeside } from './chat'
 import { same } from './compare'
 import { CellText, FieldValue } from './entries'
 import { useInputs, useLinkNames } from './fields'
@@ -20,6 +21,7 @@ import {
   ReactNode,
   memo,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -668,6 +670,10 @@ interface Result {
 // drafts. Each sends the edited rows that pass their checks, every check for Publish. The rows that save take what
 // was saved, and the rest stay highlighted with their messages, with focus on the first cell to fix.
 export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string> }) {
+  // The grid's rows are the entries that were ticked, which the assistant beside it takes "these" to be
+  usePageView(
+    listView(type, { ticked: ids, where: [], order: undefined, searched: false, filtered: false, archived: false }),
+  )
   const toast = useToast()
   const inputs = useAllInputs()
   const area = useRef<HTMLDivElement>(null)
@@ -683,18 +689,21 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
   const [failures, setFailures] = useState(0)
   const drafts = type.drafts !== false
   const wanted = ids.slice(0, 100)
+  const assistant = useContext(AssistantContext)
 
-  useEffect(() => {
+  const load = async () => {
     if (!wanted.length) return setRows([])
     const where = encodeURIComponent(JSON.stringify([[{ field: 'id', op: 'in', value: wanted }]]))
-    api('GET', `/types/${type.name}/entries?perPage=100&where=${where}`)
+    await api('GET', `/types/${type.name}/entries?perPage=100&where=${where}`)
       .then(({ body }) => {
         const found: Array<Entry> = wanted.flatMap((id) => body.data.filter((entry: Entry) => entry.id === id))
         setRows(found.map((entry) => check({ entry, values: entry.values })))
         setGone(wanted.length - found.length)
       })
       .catch((error) => setError(errorMessage(error)))
-  }, [])
+  }
+
+  useEffect(() => void load(), [])
 
   // The first cell to fix, or the row's status when what's wrong isn't in a column
   useEffect(() => {
@@ -703,6 +712,14 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
   }, [failures])
 
   const edited = (rows ?? []).filter((row) => Object.keys(changes(type.fields, row.values, row.entry.values)).length)
+
+  // Once a proposal for one of its entries is applied, the grid loads them again, after the person has saved its edits,
+  // since a save would send back what the grid showed before
+  useBeside({
+    shows: (proposal) => proposal.kind === 'entry' && !!rows?.some((row) => row.entry.id === proposal.targetId),
+    touched: () => edited.length > 0,
+    reload: load,
+  })
 
   const save = async (publish: boolean) => {
     if (busy || !rows) return
@@ -741,6 +758,8 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
 
       const saved = results.filter((result) => result.data).length
       if (saved) toast(`${publish ? 'Published' : 'Saved'} ${count(saved, 'entry', 'entries')}`)
+      // The assistant's proposals for these entries show their status as it is now
+      if (saved) void assistant?.refresh()
       const left = edited.length - saved
       if (left) {
         const rows = left === 1 ? 'A row needs fixing before it' : `${left} rows need fixing before they`

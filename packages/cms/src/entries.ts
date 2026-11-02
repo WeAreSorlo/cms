@@ -25,7 +25,7 @@ const isObject = (value: unknown): value is Record<string, any> =>
 
 // Changed fields merged into an entry's values. A group's fields merge one by one, at any depth, and any other field's
 // value replaces what's stored, so a list or a link is sent whole. Keys that aren't the type's fields are left out.
-function merge(fields: Array<FieldSchema>, values: Record<string, any>, changed: Record<string, any>) {
+export function merge(fields: Array<FieldSchema>, values: Record<string, any>, changed: Record<string, any>) {
   const merged = { ...values }
   for (const field of fields) {
     if (!Object.hasOwn(changed, field.name)) continue
@@ -153,17 +153,24 @@ export async function findEntry(db: Kysely<Database>, types: Map<string, Content
 
 // An entry's versions, newest first, or the one with the given number: its name, who saved it and when, and when it
 // last went live and who published it then. Only saves and publishes record a user, so a version with none was saved
-// or published by a user deleted since.
+// or published by a user deleted since. via is the assistant's chat or the MCP token it was saved through, with the
+// chat's title or the token's name, or no name once the chat is deleted.
 export async function listVersions(db: Kysely<Database>, id: string, number?: number) {
   const rows = await db
     .selectFrom('entry_versions')
     .leftJoin('users as saver', 'saver.id', 'entry_versions.created_by')
     .leftJoin('users as publisher', 'publisher.id', 'entry_versions.published_by')
+    .leftJoin('chats', 'chats.id', 'entry_versions.chat_id')
+    .leftJoin('personal_tokens as token', 'token.id', 'entry_versions.token_id')
     .select([
       'number',
       'entry_versions.name',
       'entry_versions.created_at',
       'entry_versions.published_at',
+      'entry_versions.chat_id',
+      'entry_versions.token_id',
+      'chats.title as chat_title',
+      'token.name as token_name',
       'saver.id as saver_id',
       'saver.name as saver_name',
       'publisher.id as publisher_id',
@@ -180,6 +187,11 @@ export async function listVersions(db: Kysely<Database>, id: string, number?: nu
     createdAt: version.created_at,
     publishedAt: version.published_at,
     publishedBy: version.publisher_id ? { id: version.publisher_id, name: version.publisher_name } : null,
+    via: version.chat_id
+      ? { kind: 'chat' as const, id: version.chat_id, name: version.chat_title }
+      : version.token_id
+        ? { kind: 'token' as const, id: version.token_id, name: version.token_name }
+        : null,
   }))
 }
 
@@ -221,34 +233,39 @@ export async function readVersion(
   }
 }
 
-// The admin API for entries. Every route needs a session, which createApp checks
-export function entryRoutes(
+// Where a save came from besides who made it, which the version it writes records (PLAN.md section 21)
+export interface Via {
+  chat?: string
+  token?: string
+}
+
+export interface SaveOptions {
+  via?: Via
+  // The id a new entry is made with, which its proposal gave it in advance
+  newId?: string
+  // Forms proposed in the same chat, which a form field can name before they're made
+  pendingForms?: Array<string>
+  // Runs every check and write, then takes them all back, for checking a proposal
+  dryRun?: boolean
+  // Runs in the save's transaction once it's written, with the version it wrote, or the current one when nothing
+  // changed, such as to claim the proposal it applies
+  during?: (trx: Kysely<Database>, version: number) => Promise<void>
+}
+
+// What a dry run would have saved, thrown so its transaction takes every write back
+class DryRun extends Error {
+  constructor(readonly saved: { id: string; version: number }) {
+    super('Dry run')
+  }
+}
+
+// Checking and saving entries, as the editor, bulk editing, the assistant's Apply and MCP tokens all do
+export function entrySaver(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
   { keep }: Partial<VersionOptions> = {},
 ) {
-  if (keep !== undefined && (!Number.isInteger(keep) || keep < 1)) {
-    throw new Error('versions.keep in iight.config.ts needs a whole number from 1.')
-  }
-
-  const app = new Hono<AdminEnv>()
-
-  // The last content migration to run, which values saved now have been through (PLAN.md section 6)
-  const lastMigration = async (trx: Kysely<Database>) =>
-    (await appliedMigrations(trx, await migrations())).at(-1) ?? null
-
-  const typeNamed = (name: string) => {
-    const type = types.get(name)
-    if (!type) throw new HTTPException(404)
-    return type
-  }
-
-  const find = (id: string) => findEntry(db, types, id)
-
-  const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200) =>
-    c.json({ data: toAdminEntry((await find(id)).row) }, status)
-
   // The inputs' server checks, with the type's slug field also checking that no sibling has the slug, archived ones
   // included, and for a publish, no live sibling. Built per save, since the check needs the entry and its parent, and
   // querying through the save's transaction.
@@ -258,8 +275,9 @@ export function entryRoutes(
     id: string | null,
     parentId: string | null,
     publish: boolean,
+    pendingForms: Array<string> = [],
   ) => {
-    const inputs = serverInputs(trx, types)
+    const inputs = serverInputs(trx, types, pendingForms)
     const slugField = type.fields.find((field) => field.name === type.slugField)
     if (!slugField) return inputs
 
@@ -357,7 +375,8 @@ export function entryRoutes(
   // entry can land between the two: what's sent replaces its values, or for bulk editing, merges into them. With
   // publish, it runs the checks a publish needs too and makes what it saves the live copy, or does neither. A failed
   // check comes back as core's report, and whatever else stops the save throws. The checks query through the
-  // transaction, so a save never waits for a second connection while it holds one.
+  // transaction, so a save never waits for a second connection while it holds one. It replies the version it wrote, or
+  // the current one when nothing changed.
   const saveEntry = async (
     type: ContentType,
     user: string,
@@ -365,8 +384,18 @@ export function entryRoutes(
     publish: boolean,
     sent: (saved?: EntryRow) => { values: unknown; parentId: string | null },
     id?: string,
-  ): Promise<{ id: string; report?: undefined } | { id?: undefined; report: ValidationReport }> => {
+    { via, newId, pendingForms, dryRun, during }: SaveOptions = {},
+  ): Promise<
+    | { id: string; version: number; report?: undefined }
+    | { id?: undefined; version?: undefined; report: ValidationReport }
+  > => {
     let report: ValidationReport | undefined
+    // What was saved, after the hooks that run in its transaction
+    const done = async (trx: Kysely<Database>, saved: { id: string; version: number }) => {
+      await during?.(trx, saved.version)
+      if (dryRun) throw new DryRun(saved)
+      return saved
+    }
     try {
       return await db.transaction().execute(async (trx) => {
         const existing =
@@ -381,7 +410,7 @@ export function entryRoutes(
 
         // A draft can be unfinished, with required fields left empty, but a publish runs every check
         const values = pickValues(type.fields, (posted as Record<string, any>) ?? {}, cmsInputs)
-        const inputs = checkInputs(trx, type, existing?.id ?? null, parentId, publish)
+        const inputs = checkInputs(trx, type, existing?.id ?? null, parentId, publish, pendingForms)
         report = await validateServerValues(type.fields, values, inputs, { allowIncomplete: !publish })
         if (!report.isValid) return { report }
 
@@ -403,7 +432,7 @@ export function entryRoutes(
           if (publish && (status.published_version ?? 0) < status.version) {
             await goLive(trx, type, existing, status.version, user)
           }
-          return { id: existing.id }
+          return done(trx, { id: existing.id, version: status.version })
         }
 
         const slug: string | null = (type.slugField && values[type.slugField]) || null
@@ -435,7 +464,7 @@ export function entryRoutes(
               .executeTakeFirstOrThrow()
           : await trx
               .insertInto('entries')
-              .values({ ...fields, id: uuidv7(), type: type.name, created_by: user })
+              .values({ ...fields, id: newId ?? uuidv7(), type: type.name, created_by: user })
               .returningAll()
               .executeTakeFirstOrThrow()
 
@@ -449,6 +478,8 @@ export function entryRoutes(
             parent_id: parentId,
             migration,
             created_by: user,
+            chat_id: via?.chat ?? null,
+            token_id: via?.token ?? null,
           })
           .returning('number')
           .executeTakeFirstOrThrow()
@@ -474,9 +505,10 @@ export function entryRoutes(
             )
           `.execute(trx)
         }
-        return { id: row.id }
+        return done(trx, { id: row.id, version: number })
       })
     } catch (error) {
+      if (error instanceof DryRun) return error.saved
       const constraint = (error as { constraint?: string }).constraint
       // Its live parent was unpublished while it was being published
       if (constraint === 'published_entries_parent_id_fkey')
@@ -489,6 +521,39 @@ export function entryRoutes(
       return { report: { isValid: false, fields } }
     }
   }
+
+  return { checkInputs, checkParent, migrated, saveEntry }
+}
+
+// The admin API for entries. Every route needs a session, which createApp checks
+export function entryRoutes(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  migrations: () => Promise<Record<string, ContentMigrationFile>>,
+  { keep }: Partial<VersionOptions> = {},
+) {
+  if (keep !== undefined && (!Number.isInteger(keep) || keep < 1)) {
+    throw new Error('versions.keep in iight.config.ts needs a whole number from 1.')
+  }
+
+  const app = new Hono<AdminEnv>()
+
+  // The last content migration to run, which values saved now have been through (PLAN.md section 6)
+  const lastMigration = async (trx: Kysely<Database>) =>
+    (await appliedMigrations(trx, await migrations())).at(-1) ?? null
+
+  const typeNamed = (name: string) => {
+    const type = types.get(name)
+    if (!type) throw new HTTPException(404)
+    return type
+  }
+
+  const find = (id: string) => findEntry(db, types, id)
+
+  const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200) =>
+    c.json({ data: toAdminEntry((await find(id)).row) }, status)
+
+  const { migrated, saveEntry } = entrySaver(db, types, migrations, { keep })
 
   // Create or update an entry from { values, parentId, publish }, where a type without drafts publishes every save
   const save = async (c: Context<AdminEnv>, type: ContentType, id?: string) => {

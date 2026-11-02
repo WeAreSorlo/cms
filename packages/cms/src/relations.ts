@@ -1,7 +1,7 @@
 import type { DeliveryOptions } from '.'
 import { inputs, pickValues, validationError } from './core'
 import { Database, isUuid } from './db'
-import { allows, holdsOne, idsOf, linkFields, media, relationship, shared } from './fields'
+import { allows, form, holdsOne, idsOf, linkFields, media, relationship, shared } from './fields'
 import { toMedia } from './media'
 import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
@@ -15,6 +15,7 @@ export const cmsInputs: Record<string, Input> = {
   ...inputs,
   relationship: { ...relationship, default: () => null },
   media: { ...media, default: () => null },
+  form: { ...form, default: () => null },
   shared: { ...shared, default: () => null },
 }
 
@@ -35,19 +36,28 @@ const walking = (relationshipPick: InputPickValue, mediaPick = relationshipPick)
   media: { ...cmsInputs.media, pickValue: mediaPick },
 })
 
-// cmsInputs, with server checks that each ID is an entry of a type the field takes, or a file of a type it takes.
-// Archived entries count, so archiving one doesn't stop the entries that link to it from saving.
-export function serverInputs(db: Kysely<Database>, types: Map<string, ContentType>): Record<string, Input> {
+// cmsInputs, with server checks that each ID is an entry of a type the field takes, a file of a type it takes, or a
+// form, which can be one proposed in the same chat and not made yet. Archived entries count, so archiving one doesn't
+// stop the entries that link to it from saving.
+export function serverInputs(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  pendingForms: Array<string> = [],
+): Record<string, Input> {
   const check =
-    (find: (ids: Array<string>) => Promise<Array<{ id: string }>>, fits: (row: any, schema: InputSchema) => boolean) =>
+    (
+      find: (ids: Array<string>) => Promise<Array<{ id: string }>>,
+      fits: (row: any, schema: InputSchema) => boolean = () => true,
+      validate = relationship.validateValue,
+    ) =>
     async (value: unknown, schema: InputSchema) => {
-      // Both fields check their shape the same way
-      const validation = relationship.validateValue(value, schema)
+      const validation = validate(value, schema)
       const ids = idsOf(value)
       if (!validation.isValid || !ids.length) return validation
 
       const rows = ids.every(isUuid) ? await find(ids) : []
       if (ids.every((id) => rows.some((row) => row.id === id && fits(row, schema)))) return validation
+      if (validate === form.validateValue) return validationError(value, "There's no form with this ID.")
       return validationError(
         value,
         holdsOne(schema)
@@ -72,6 +82,17 @@ export function serverInputs(db: Kysely<Database>, types: Map<string, ContentTyp
         (row, schema) => fitsMedia(schema, row.mime),
       ),
     },
+    form: {
+      ...cmsInputs.form,
+      validateServerValue: check(
+        async (ids) => [
+          ...(await db.selectFrom('forms').select('id').where('id', 'in', ids).execute()),
+          ...pendingForms.map((id) => ({ id })),
+        ],
+        undefined,
+        form.validateValue,
+      ),
+    },
   }
 }
 
@@ -88,6 +109,17 @@ function relationsOf(type: ContentType, entryId: string, values: Record<string, 
   }
   pickValues(type.fields, values, walking(collect))
   return [...rows.values()]
+}
+
+// The forms an entry's form fields name, at any depth
+export function formsOf(type: ContentType, values: Record<string, any>) {
+  const ids = new Set<string>()
+  const collect: InputPickValue = (value) => {
+    for (const id of idsOf(value)) ids.add(id)
+    return value
+  }
+  pickValues(type.fields, values, { ...cmsInputs, form: { ...cmsInputs.form, pickValue: collect } })
+  return [...ids]
 }
 
 const insertRelations = (trx: Kysely<Database>, rows: Array<Relation>) =>

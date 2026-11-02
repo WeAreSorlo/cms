@@ -131,7 +131,7 @@ test('the admin routes need a session', async () => {
 
 test("anyone can get a form's fields, by its ID or its name, from any site", async () => {
   const { id } = await createForm()
-  const form = { id, name: 'contact', label: 'Contact us', version: 1, fields: contactFields }
+  const form = { id, name: 'contact', label: 'Contact us', version: 1, fields: contactFields, open: true }
 
   const byId = await visit(`/v1/forms/${id}`, { headers: { origin: 'https://example.org' } })
   expect(await byId.json()).toEqual({ data: form })

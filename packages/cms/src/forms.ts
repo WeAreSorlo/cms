@@ -20,18 +20,19 @@ import { Kysely, RawBuilder, Selectable, sql } from 'kysely'
 import { BlockList, isIP } from 'node:net'
 import { isDeepStrictEqual } from 'node:util'
 
-type FormRow = Selectable<Database['forms']>
+export type FormRow = Selectable<Database['forms']>
 
 // Forms live in the database, made in the admin with core's schema builder, and take submissions from anyone through
 // the public routes (PLAN.md section 10)
 
-// A form as the public routes return it
+// A form as the public routes return it. A closed one serves its fields and takes no submissions.
 export const toForm = (row: FormRow) => ({
   id: row.id,
   name: row.name,
   label: row.label,
   version: row.version,
   fields: row.fields,
+  open: row.open,
 })
 
 // A form as the admin API returns it, with HTML for pasting it into a page, which posts to it by its ID
@@ -59,6 +60,118 @@ const toAdminSubmission = (row: SubmissionRow) => ({
 
 const nameTaken = 'Another form has this name.'
 
+export interface FormValues {
+  name: string
+  label: string
+  fields: Array<FieldSchema>
+}
+
+// A form's label, name and fields from what was sent, or core's report: the settings as formSchema checks them, the
+// fields as checkFormFields does, and a name no other form has
+export async function checkForm(db: Kysely<Database>, body: unknown, existing?: { id: string }) {
+  const sent = (body && typeof body === 'object' ? body : {}) as Record<string, any>
+  const settings = pickValues(formSchema, sent, inputs)
+  const report = await validateServerValues(formSchema, settings, inputs)
+  const problems = checkFormFields(sent.fields)
+  const taken =
+    report.isValid &&
+    (await db
+      .selectFrom('forms')
+      .select('id')
+      .where('name', '=', settings.name)
+      .$if(!!existing, (qb) => qb.where('id', '!=', existing!.id))
+      .executeTakeFirst())
+  if (!report.isValid || problems.length || taken) {
+    const fields = {
+      ...report.fields,
+      ...(taken && { name: { isValid: false, messages: [nameTaken] } }),
+      ...(problems.length && { fields: { isValid: false, messages: problems } }),
+    }
+    return { report: { isValid: false, fields } }
+  }
+  return {
+    form: { name: settings.name as string, label: settings.label as string, fields: sent.fields as Array<FieldSchema> },
+  }
+}
+
+// What opening a form sets: open, and when it was first opened, the first time. Over MCP, a change to a form that has
+// been open could show at once on a page that shows it, so MCP changes only forms that have never been open.
+export const opening = { open: true, first_opened_at: sql<Date>`coalesce(first_opened_at, now())` }
+const setOpen = (open: boolean) => (open ? opening : { open: false })
+
+export interface FormSaveOptions {
+  // The id a new form is made with, which its proposal gave it in advance
+  id?: string
+  // Whether it takes submissions from now on: a new form does unless it's false, as forms made through AI start
+  // closed, and a form saved again stays as it was unless it's given
+  open?: boolean
+  // Runs on the form as it is, locked, before it's changed, and can throw to stop the save
+  guard?: (current: FormRow) => void
+  // Runs in the save's transaction once it's written, such as to claim the proposal it applies
+  during?: (trx: Kysely<Database>, row: FormRow) => Promise<void>
+}
+
+// Saves a checked form as a new form, or as the form with the given ID, as a person. New fields make a new version,
+// which the submissions from then on are checked against.
+export async function saveForm(
+  db: Kysely<Database>,
+  user: string,
+  form: FormValues,
+  id?: string,
+  { id: newId, open, guard, during }: FormSaveOptions = {},
+) {
+  const saved = { name: form.name, label: form.label, fields: JSON.stringify(form.fields), updated_by: user }
+  try {
+    const row = await db.transaction().execute(async (trx) => {
+      const current = id
+        ? await trx.selectFrom('forms').selectAll().where('id', '=', id).forUpdate().executeTakeFirst()
+        : undefined
+      if (id && !current) throw new HTTPException(404)
+      if (current) guard?.(current)
+
+      // The lock means concurrent saves number their versions in turn
+      const changed = !current || !isDeepStrictEqual(current.fields, form.fields)
+      const row = current
+        ? await trx
+            .updateTable('forms')
+            .set({
+              ...saved,
+              ...(changed && { version: sql<number>`version + 1` }),
+              ...(open !== undefined && setOpen(open)),
+              updated_at: sql`now()`,
+            })
+            .where('id', '=', current.id)
+            .returningAll()
+            .executeTakeFirstOrThrow()
+        : await trx
+            .insertInto('forms')
+            .values({
+              ...saved,
+              id: newId ?? uuidv7(),
+              version: 1,
+              open: open ?? true,
+              first_opened_at: open === false ? null : sql<Date>`now()`,
+              created_by: user,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow()
+      if (changed) {
+        await trx
+          .insertInto('form_versions')
+          .values({ form_id: row.id, number: row.version, fields: saved.fields, created_by: user })
+          .execute()
+      }
+      await during?.(trx, row)
+      return row
+    })
+    return { row }
+  } catch (error) {
+    // Two saves can pass the name check at the same moment, and then the index stops the second
+    if ((error as { constraint?: string }).constraint !== 'forms_name_key') throw error
+    return { report: { isValid: false, fields: { name: { isValid: false, messages: [nameTaken] } } } }
+  }
+}
+
 // The admin API for forms and their submissions. Every route needs a session, which createApp checks.
 export function formRoutes(db: Kysely<Database>) {
   const app = new Hono<AdminEnv>()
@@ -71,67 +184,23 @@ export function formRoutes(db: Kysely<Database>) {
     return row
   }
 
-  // Create or change a form from its settings and fields. New fields make a new version, which the submissions from
-  // then on are checked against.
+  // Create or change a form from its settings and fields
   const save = async (c: Context<AdminEnv>, existing?: FormRow) => {
-    const body = await c.req.json().catch(() => ({}))
-    const settings = pickValues(formSchema, body ?? {}, inputs)
-    const report = await validateServerValues(formSchema, settings, inputs)
-    const problems = checkFormFields(body?.fields)
-    const taken =
-      report.isValid &&
-      (await db
-        .selectFrom('forms')
-        .select('id')
-        .where('name', '=', settings.name)
-        .$if(!!existing, (qb) => qb.where('id', '!=', existing!.id))
-        .executeTakeFirst())
-    if (!report.isValid || problems.length || taken) {
-      const fields = {
-        ...report.fields,
-        ...(taken && { name: { isValid: false, messages: [nameTaken] } }),
-        ...(problems.length && { fields: { isValid: false, messages: problems } }),
-      }
-      return c.json({ isValid: false, fields }, 422)
-    }
+    const checked = await checkForm(db, await c.req.json().catch(() => ({})), existing)
+    if (checked.report) return c.json(checked.report, 422)
+    const saved = await saveForm(db, c.var.user.id, checked.form, existing?.id)
+    if (saved.report) return c.json(saved.report, 422)
+    return c.json({ data: toAdminForm(saved.row, origin(c)) }, existing ? 200 : 201)
+  }
 
-    const fields: Array<FieldSchema> = body.fields
-    const changed = !existing || !isDeepStrictEqual(existing.fields, fields)
-    const user = c.var.user.id
-    const saved = { name: settings.name, label: settings.label, fields: JSON.stringify(fields), updated_by: user }
-
-    try {
-      const row = await db.transaction().execute(async (trx) => {
-        // The update locks the form, so concurrent saves number their versions in turn
-        const row = existing
-          ? await trx
-              .updateTable('forms')
-              .set({ ...saved, ...(changed && { version: sql<number>`version + 1` }), updated_at: sql`now()` })
-              .where('id', '=', existing.id)
-              .returningAll()
-              .executeTakeFirstOrThrow()
-          : await trx
-              .insertInto('forms')
-              .values({ ...saved, id: uuidv7(), version: 1, created_by: user })
-              .returningAll()
-              .executeTakeFirstOrThrow()
-        if (changed) {
-          await trx
-            .insertInto('form_versions')
-            .values({ form_id: row.id, number: row.version, fields: saved.fields, created_by: user })
-            .execute()
-        }
-        return row
-      })
-      return c.json({ data: toAdminForm(row, origin(c)) }, existing ? 200 : 201)
-    } catch (error) {
-      // Two saves can pass the name check at the same moment, and then the index stops the second
-      if ((error as { constraint?: string }).constraint !== 'forms_name_key') throw error
-      return c.json(
-        { isValid: false, fields: { ...report.fields, name: { isValid: false, messages: [nameTaken] } } },
-        422,
-      )
-    }
+  // Open a form to submissions, or close it, such as once its event is over
+  const opens = (open: boolean) => async (c: Context<AdminEnv>) => {
+    const id = c.req.param('id')!
+    const row = isUuid(id)
+      ? await db.updateTable('forms').set(setOpen(open)).where('id', '=', id).returningAll().executeTakeFirst()
+      : undefined
+    if (!row) throw new HTTPException(404)
+    return c.json({ data: toAdminForm(row, origin(c)) })
   }
 
   // shortcut: every form, unpaged, page them when sites have hundreds
@@ -145,6 +214,9 @@ export function formRoutes(db: Kysely<Database>) {
   app.get('/forms/:id', async (c) => c.json({ data: toAdminForm(await find(c.req.param('id')), origin(c)) }))
 
   app.put('/forms/:id', async (c) => save(c, await find(c.req.param('id'))))
+
+  app.post('/forms/:id/open', opens(true))
+  app.post('/forms/:id/close', opens(false))
 
   // The fields a version had, for showing the submissions that were checked against it
   app.get('/forms/:id/versions/:number', async (c) => {
@@ -327,6 +399,10 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
 
       const form = await findForm(db, c.req.param('form'))
       if (!form) return reply(c, 404, { message: 'Not Found' }, 'Form not found', "<p>This form doesn't exist.</p>")
+      if (!form.open) {
+        const message = "This form isn't taking submissions."
+        return reply(c, 403, { message }, 'Not taking submissions', `<p>${message}</p>`)
+      }
 
       // The values themselves, from JSON or from a plain HTML form
       let posted: Record<string, any> = {}

@@ -1,3 +1,4 @@
+import type { Storage, VersionOptions } from '.'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
@@ -5,7 +6,7 @@ import { bearerOf, markUsed } from './delivery'
 import type { AdminEnv } from './entries'
 import { origin } from './media'
 import { hashToken } from './passwords'
-import { tokenSchema } from './schemas'
+import { tokenSchema, tokenScopes } from './schemas'
 import { callTool, instructions, tools } from './tools'
 import type { ContentType } from './types'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -17,22 +18,31 @@ import { randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
 
 // The MCP server at /mcp, where AI clients such as Claude Code, Cursor and VS Code read the site's content through the
-// CMS's tools, with the personal tokens people make on the admin's MCP tokens page (PLAN.md section 21)
+// CMS's tools, and with Save drafts change it, with the personal tokens people make on the admin's MCP tokens page
+// (PLAN.md section 21)
 
 const { version } = createRequire(import.meta.url)('../package.json')
 
 // A token as the admin API returns it. Only the reply that makes it holds the token itself, since only its hash is kept.
-const toToken = (row: { id: string; name: string; created_at: Date; last_used_at: Date | null }) => ({
+const toToken = (row: {
+  id: string
+  name: string
+  scopes: Array<string>
+  created_at: Date
+  last_used_at: Date | null
+}) => ({
   id: row.id,
   name: row.name,
+  scopes: row.scopes,
   createdAt: row.created_at,
   lastUsedAt: row.last_used_at,
 })
 
-const columns = ['id', 'name', 'created_at', 'last_used_at'] as const
+const columns = ['id', 'name', 'scopes', 'created_at', 'last_used_at'] as const
 
 // The admin's MCP tokens page, where each person manages their own tokens. Someone else's token replies as one that
-// doesn't exist does. Revoking a token deletes it, so it's refused from then on.
+// doesn't exist does. Revoking a token marks it revoked, so it's refused from then on, and the versions saved through
+// it keep its name.
 export function tokenRoutes(db: Kysely<Database>) {
   const app = new Hono<AdminEnv>()
 
@@ -41,6 +51,7 @@ export function tokenRoutes(db: Kysely<Database>) {
       .selectFrom('personal_tokens')
       .select(columns)
       .where('user_id', '=', c.var.user.id)
+      .where('revoked_at', 'is', null)
       .orderBy('name')
       .orderBy('id')
       .execute()
@@ -54,9 +65,10 @@ export function tokenRoutes(db: Kysely<Database>) {
 
     // A prefix of its own, so neither people nor secret scanners take it for an API key's iight_
     const token = `iightpat_${randomBytes(32).toString('base64url')}`
+    const scopes = tokenScopes.map(({ value }) => value).filter((scope) => values.scopes?.includes(scope))
     const row = await db
       .insertInto('personal_tokens')
-      .values({ id: uuidv7(), user_id: c.var.user.id, name: values.name, token_hash: hashToken(token) })
+      .values({ id: uuidv7(), user_id: c.var.user.id, name: values.name, token_hash: hashToken(token), scopes })
       .returning(columns)
       .executeTakeFirstOrThrow()
     return c.json({ data: { ...toToken(row), token } }, 201)
@@ -64,14 +76,16 @@ export function tokenRoutes(db: Kysely<Database>) {
 
   app.delete('/tokens/:id', async (c) => {
     const id = c.req.param('id')
-    const deleted =
+    const revoked =
       isUuid(id) &&
       (await db
-        .deleteFrom('personal_tokens')
+        .updateTable('personal_tokens')
+        .set({ revoked_at: new Date() })
         .where('id', '=', id)
         .where('user_id', '=', c.var.user.id)
+        .where('revoked_at', 'is', null)
         .executeTakeFirst())
-    if (!deleted || !deleted.numDeletedRows) throw new HTTPException(404)
+    if (!revoked || !revoked.numUpdatedRows) throw new HTTPException(404)
     return c.body(null, 204)
   })
 
@@ -80,13 +94,16 @@ export function tokenRoutes(db: Kysely<Database>) {
 
 // The MCP server, over Streamable HTTP. It's stateless: each request gets a server and a transport of its own, which
 // reply with JSON, so nothing is kept between requests and any process can answer. The tools never send anything
-// unprompted, so there's no stream to open, and only POST is taken.
+// unprompted, so there's no stream to open, and only POST is taken. A token with Save drafts also gets the write
+// tools, which save as soon as they're called, since the client's own approval prompt is the check.
 // No Origin check, which the spec asks of servers against DNS rebinding: every request needs a token, which a page on
 // another site has no way to send.
 export function mcpRoutes(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
+  versions?: VersionOptions,
+  storage?: Storage,
 ) {
   const app = new Hono()
 
@@ -97,8 +114,9 @@ export function mcpRoutes(
       (await db
         .selectFrom('personal_tokens')
         .innerJoin('users', 'users.id', 'personal_tokens.user_id')
-        .select(['personal_tokens.id as token', 'users.id', 'users.email', 'users.name'])
+        .select(['personal_tokens.id as token', 'personal_tokens.scopes', 'users.id', 'users.email', 'users.name'])
         .where('token_hash', '=', hashToken(sent))
+        .where('revoked_at', 'is', null)
         .executeTakeFirst())
 
     // As the MCP spec's authorization section asks, naming where OAuth's protected resource metadata goes. It's served
@@ -115,14 +133,32 @@ export function mcpRoutes(
       return c.json({ message: 'Method Not Allowed' }, 405)
     }
 
-    const { token, ...user } = found
-    const context = { db, types, migrations, user, origin: origin(c) }
-    const server = new McpServer({ name: 'iight', version }, { instructions })
-    for (const tool of tools) {
+    const { token, scopes, ...user } = found
+    const writes = scopes.includes('drafts')
+    const context = {
+      db,
+      types,
+      migrations,
+      user,
+      origin: origin(c),
+      versions,
+      storage,
+      ...(writes && { writes: { token } }),
+    }
+    const server = new McpServer({ name: 'iight', version }, { instructions: instructions(writes) })
+    // A file's details change on the site once applied, which over MCP has no one to apply them
+    for (const tool of tools.filter((tool) => !tool.assistantOnly && (writes || !tool.changes))) {
       const config = {
         description: tool.description,
         inputSchema: tool.input,
-        annotations: { readOnlyHint: true, openWorldHint: false },
+        annotations: tool.changes
+          ? {
+              readOnlyHint: false,
+              destructiveHint: tool.changes.destructive,
+              idempotentHint: tool.changes.idempotent,
+              openWorldHint: false,
+            }
+          : { readOnlyHint: true, openWorldHint: false },
       }
       server.registerTool(tool.name, config, (input: unknown) => callTool(tool, context, input))
     }

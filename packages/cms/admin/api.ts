@@ -1,7 +1,8 @@
-import { media, relationship } from '../src/fields'
+import { form, media, relationship } from '../src/fields'
+import { maxNamed } from '../src/schemas'
 import type { ContentType, SharedGroup } from '../src/types'
 import { FieldSchema, Input, inputs } from 'iight'
-import { createContext } from 'react'
+import { createContext, useContext, useEffect } from 'react'
 
 export type { ContentType, SharedGroup }
 
@@ -24,16 +25,59 @@ export function sectionOf(hash: string) {
     : undefined
 }
 
-// Where the assistant is told the person is, from the URL's hash: an entry's editor or one of its versions, a type's
-// list or singleton, or a form and its inbox. The server checks it before the model sees it.
-export function pageOf(hash: string) {
-  const [section, name, action, number] = pathOf(hash).replace(/^#\/?/, '').split('/')
-  if (section === 'entries' && name) {
-    return action === 'versions' && number ? { entry: name, version: Number(number) } : { entry: name }
+// What the assistant beside a page takes "this" and "these" to mean: the page its next message sends, which the server
+// checks before the model sees any of it, as ids and type names, and the line above its box, which names the same
+// thing with what the page shows (PLAN.md section 21)
+export interface PageView {
+  page: Record<string, unknown>
+  label: string
+}
+
+// Each page tells the shell what it shows, for the shell's assistant to send with each message
+export const PageViewContext = createContext((view: PageView | null) => {})
+
+// Tells the assistant what the page shows, from when it mounts or changes until it goes
+export function usePageView(view: PageView | null | undefined) {
+  const show = useContext(PageViewContext)
+  const key = JSON.stringify(view)
+  useEffect(() => {
+    // Undefined leaves the page's view be, for a part of a page, such as a picker
+    if (view === undefined) return
+    show(view)
+    return () => show(null)
+  }, [key, show])
+}
+
+// A list's view: its ticked entries, in the order they were ticked, or else those its search and filter match, in its
+// order, which the server finds with the list's own query, or else the type alone
+export function listView(
+  type: ContentType,
+  list: {
+    ticked: Array<string>
+    where: Array<unknown>
+    order: unknown
+    // How many the search and filter match, once the list knows
+    total?: number
+    searched: boolean
+    filtered: boolean
+    archived: boolean
+  },
+): PageView {
+  const { ticked, where, order, total, searched, filtered, archived } = list
+  const name = archived ? `${type.label} archive` : type.label
+  if (ticked.length) {
+    const many = ticked.length > maxNamed ? `, too many to send, so tick ${maxNamed} or fewer` : ''
+    return { page: { type: type.name, ticked }, label: `${name}: ${ticked.length} ticked${many}` }
   }
-  if (section === 'types' && name) return { type: name }
-  if (section === 'forms' && name && name !== 'new') return { form: name }
-  return {}
+  if (where.length && total !== undefined) {
+    const by = searched && filtered ? 'your search and filter' : searched ? 'your search' : 'your filter'
+    const many = total > maxNamed ? `, too many to send, so narrow it to ${maxNamed} or fewer` : ''
+    return {
+      page: { type: type.name, where, order, ...(archived && { archived }) },
+      label: `${name}: ${total} matching ${by}${many}`,
+    }
+  }
+  return { page: { type: type.name, ...(archived && { archived }) }, label: name }
 }
 
 export const SectionContext = createContext((section: string) => {})
@@ -92,7 +136,7 @@ export async function allEntries(type: ContentType) {
 // A value as text, formatted by its field's input
 export function formatValue(field: FieldSchema | undefined, value: any) {
   const format =
-    field && ({ ...inputs, relationship, media } as Record<string, Partial<Input>>)[field.type]?.formatValue
+    field && ({ ...inputs, relationship, media, form } as Record<string, Partial<Input>>)[field.type]?.formatValue
   // Core formats an invalid value as null, which shows here as it is, so a cell can show what its message is about
   const text = (format && format(value, field)) ?? (typeof value === 'object' ? null : value?.toString())
   // Core formats a choice field as the values it holds, which show here as their choices' labels

@@ -34,7 +34,10 @@ export const apiKeySchema: Array<FieldSchema> = [
   },
 ]
 
-// A personal token's name, asked for on the admin's MCP tokens page, whose routes check it
+// What a personal token can do besides reading (PLAN.md section 21)
+export const tokenScopes = [{ value: 'drafts', label: 'Save drafts' }]
+
+// A personal token's name and permissions, asked for on the admin's MCP tokens page, whose routes check them
 export const tokenSchema: Array<FieldSchema> = [
   {
     name: 'name',
@@ -44,6 +47,15 @@ export const tokenSchema: Array<FieldSchema> = [
     instructions: 'Such as the client and the computer it runs on, so you know which token to revoke.',
     options: { maxLength: 100, placeholder: 'Claude Code on my laptop' },
   },
+  {
+    name: 'scopes',
+    label: 'Permissions',
+    type: 'checkbox',
+    instructions:
+      "Every token reads the site's content as you. Save drafts also saves changes to entries as drafts, and makes " +
+      'new forms that take no submissions until someone opens them. It never publishes, archives or deletes anything.',
+    options: { choices: tokenScopes },
+  },
 ]
 
 // A chat's name, edited on the admin's Chat page and checked by PUT /api/chats/:id
@@ -52,6 +64,9 @@ export const chatTitleSchema: Array<FieldSchema> = [
 ]
 
 // A message to the admin's assistant, written in the box under its chat and checked by POST /api/chats/:id/messages
+// The most entries a message to the assistant names as "these", past which its model gets only how many
+export const maxNamed = 100
+
 export const chatMessageSchema: Array<FieldSchema> = [
   {
     name: 'text',

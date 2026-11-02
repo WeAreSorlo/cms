@@ -1,8 +1,8 @@
 import type { ContentType, SharedGroup } from './types'
 import type { FieldSchema, InputSchema, InputValidateValue } from 'iight'
 
-// The CMS's own inputs, which store IDs: relationship links to entries, and media to files in the media library
-// (PLAN.md section 12), and the Shared group field. Nothing here loads core or server code, so the admin imports them
+// The CMS's own inputs, which store IDs: relationship links to entries, media to files in the media library
+// (PLAN.md section 12) and form to one of the forms, and the Shared group field. Nothing here loads core or server code, so the admin imports them
 // too and adds the pickers.
 
 // Whether types such as image/png or image/* allow a mime, leaving out its parameters, as in audio/ogg; codecs=opus
@@ -215,4 +215,17 @@ export const media = {
   validateValue,
   typeValue,
   formatValue: count('file', 'files'),
+}
+
+// A form made in the admin, by its ID, such as for a page that shows it, so renaming the form breaks nothing. Delivery
+// returns the ID, which GET /v1/forms/:form serves.
+export const form = {
+  name: () => 'Form',
+  description: () => 'One of the forms made in the admin, such as for a page to show.',
+  category: () => 'Relational',
+  optionFields: (): Array<FieldSchema> => [],
+  validateValue: ((value, schema) =>
+    validateValue(value, { ...schema, options: { ...schema.options, maximum: 1 } })) as InputValidateValue,
+  typeValue: () => 'string',
+  formatValue: count('form', 'forms'),
 }

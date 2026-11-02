@@ -1,4 +1,4 @@
-import { ContentType, SectionContext, pathOf, sectionOf } from './api'
+import { ContentType, PageView, PageViewContext, SectionContext, pathOf, sectionOf } from './api'
 import { AssistantContext, useAssistantState } from './chat'
 import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
 import {
@@ -36,7 +36,7 @@ export function Shell({
 }: {
   hash: string
   types: Map<string, ContentType>
-  user: { name: string }
+  user: { id: string; name: string }
   // Whether /mcp is on, so the user's row links to their MCP tokens
   mcp: boolean
   // Whether the assistant is on, with Chat at the top of the nav
@@ -46,7 +46,9 @@ export function Shell({
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
-  const assistant = useAssistantState(ai)
+  const assistant = useAssistantState(ai, user.id)
+  // What the page shows, which the assistant beside it takes "this" and "these" to mean
+  const [view, setView] = useState<PageView | null>(null)
   const main = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
 
@@ -194,11 +196,13 @@ export function Shell({
         <AssistantContext.Provider value={assistant}>
           <main id='main' ref={main} tabIndex={-1}>
             <SectionContext.Provider value={showSection}>
-              <PanelSlot.Provider value={panelSlot}>
-                <Toaster>
-                  <Confirmer>{children}</Confirmer>
-                </Toaster>
-              </PanelSlot.Provider>
+              <PageViewContext.Provider value={setView}>
+                <PanelSlot.Provider value={panelSlot}>
+                  <Toaster>
+                    <Confirmer>{children}</Confirmer>
+                  </Toaster>
+                </PanelSlot.Provider>
+              </PageViewContext.Provider>
             </SectionContext.Provider>
           </main>
           {/* The panel on every page: the page's own at the top, then the assistant, which the shell keeps across
@@ -208,7 +212,7 @@ export function Shell({
             {ai && section !== 'chat' && (
               <aside className='cms-side__assistant' aria-label='Assistant'>
                 <Suspense>
-                  <PanelAssistant />
+                  <PanelAssistant view={view} />
                 </Suspense>
               </aside>
             )}

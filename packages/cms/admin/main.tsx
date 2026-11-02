@@ -219,10 +219,11 @@ function App() {
   if (user === null) return <SignIn onSignIn={setUser} />
   if (!types) return null
 
+  // Around the shell too, since the assistant in its column shows proposed changes by the types' fields
   return (
-    <Shell hash={hash} types={types} user={user} mcp={mcp} ai={ai} onSignOut={signOut}>
-      <TypesContext.Provider value={types}>
-        <GroupsContext.Provider value={groups}>
+    <TypesContext.Provider value={types}>
+      <GroupsContext.Provider value={groups}>
+        <Shell hash={hash} types={types} user={user} mcp={mcp} ai={ai} onSignOut={signOut}>
           <Page
             hash={hash}
             types={types}
@@ -232,9 +233,9 @@ function App() {
             ai={ai}
             reloadTypes={reloadTypes}
           />
-        </GroupsContext.Provider>
-      </TypesContext.Provider>
-    </Shell>
+        </Shell>
+      </GroupsContext.Provider>
+    </TypesContext.Provider>
   )
 }
 

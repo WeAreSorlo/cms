@@ -203,17 +203,20 @@ test("matches a matrix's cells by row and column", () => {
   ])
 })
 
-test('lists the entries and files that changed links name, inside lists too, once each', () => {
+test('lists the entries, files and forms that changed links name, inside lists too, once each', () => {
   const before = { author: 'ada', credits: [{ person: 'grace' }], seo: { social: { image: 'logo' } } }
   const after = {
     author: 'alan',
     credits: [{ person: 'ada' }],
     seo: { social: { image: 'photo' } },
     blocks: [{ _layout: 'gallery', images: ['photo', 'map'] }],
+    form: 'contact',
   }
-  expect(linksOf(compare(fields, before, after))).toEqual({
+  const withForm: Array<FieldSchema> = [...fields, { type: 'form', name: 'form', label: 'Form' }]
+  expect(linksOf(compare(withForm, before, after))).toEqual({
     entries: ['grace', 'ada', 'alan'],
     files: ['logo', 'photo', 'map'],
+    forms: ['contact'],
   })
 })
 
@@ -280,5 +283,5 @@ test("a page's move shows as a change of its Parent, where a null parent is the 
   expect(compareParent('guide', null)).toEqual([
     { labels: ['Parent'], field: parentField, kind: 'changed', before: 'guide', after: null },
   ])
-  expect(linksOf(compareParent('guide', 'help'))).toEqual({ entries: ['guide', 'help'], files: [] })
+  expect(linksOf(compareParent('guide', 'help'))).toEqual({ entries: ['guide', 'help'], files: [], forms: [] })
 })

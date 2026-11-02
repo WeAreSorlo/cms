@@ -1,9 +1,9 @@
-import { holdsOne, idsOf, media, relationship, relationshipOptions, shared, sharedOptions } from '../src/fields'
+import { form, holdsOne, idsOf, media, relationship, relationshipOptions, shared, sharedOptions } from '../src/fields'
 import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
 import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
 import Form, { FieldSchema, Input, inputs, useFieldContext } from 'iight'
-import { Search, X } from 'lucide-react'
+import { CircleAlert, Search, X } from 'lucide-react'
 import { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 // After a pick or a removal, focus goes back to the picker's Choose button, or once the field is full and Choose has
@@ -62,18 +62,18 @@ function useLinks<T>(load: (ids: Array<string>) => Promise<Record<string, T | nu
   }
 }
 
-// The titles of linked entries and the names of linked files, loaded as they're asked for, with null for any that have
-// gone
-export function useLinkNames(entries: Array<string>, files: Array<string>) {
+// The titles of linked entries, the names of linked files and the labels of linked forms, loaded as they're asked for,
+// with null for any that have gone
+export function useLinkNames(entries: Array<string>, files: Array<string>, forms: Array<string> = []) {
   const types = useContext(TypesContext)
   const [names, setNames] = useState<Record<string, string | null>>({})
   const requested = useRef(new Set<string>())
   const fresh = (ids: Array<string>) => [...new Set(ids)].filter((id) => !requested.current.has(id))
-  const [newEntries, newFiles] = [fresh(entries), fresh(files)]
+  const [newEntries, newFiles, newForms] = [fresh(entries), fresh(files), fresh(forms)]
 
   useEffect(() => {
-    if (!newEntries.length && !newFiles.length) return
-    for (const id of [...newEntries, ...newFiles]) requested.current.add(id)
+    if (!newEntries.length && !newFiles.length && !newForms.length) return
+    for (const id of [...newEntries, ...newFiles, ...newForms]) requested.current.add(id)
     const name = (found: Array<[string, string | null]>) =>
       setNames((all) => ({ ...all, ...Object.fromEntries(found) }))
 
@@ -97,7 +97,15 @@ export function useLinkNames(entries: Array<string>, files: Array<string>) {
         .then(({ body }) => name(ids.map((id) => [id, body.data.find((file: Media) => file.id === id)?.name ?? null])))
         .catch(() => name(ids.map((id) => [id, null])))
     }
-  }, [newEntries.join(), newFiles.join()])
+
+    if (newForms.length) {
+      api('GET', '/forms')
+        .then(({ body }) =>
+          name(newForms.map((id) => [id, body.data.find((form: { id: string }) => form.id === id)?.label ?? null])),
+        )
+        .catch(() => name(newForms.map((id) => [id, null])))
+    }
+  }, [newEntries.join(), newFiles.join(), newForms.join()])
 
   return names
 }
@@ -352,6 +360,51 @@ function IconPicker() {
   )
 }
 
+// A form field: one of the forms made in the admin, by its label, with those taking no submissions marked closed
+function FormPicker() {
+  const { id, aria, schema, required, value, readonly, disabled, handleValidation } = useFieldContext()
+  const [forms, setForms] = useState<Array<{ id: string; label: string; open: boolean }>>()
+  const [problem, setProblem] = useState('')
+  useEffect(() => {
+    api('GET', '/forms').then(
+      ({ body }) => setForms(body.data),
+      (error) => setProblem(errorMessage(error)),
+    )
+  }, [])
+  const known = !value || forms?.some((each) => each.id === value)
+  // Until the forms load, or when they can't, the one it holds is named as that
+  const unknown = forms ? 'A form that no longer exists' : problem ? "A form that couldn't be loaded" : 'Loading…'
+
+  return (
+    <>
+      <div className='iight-input__select'>
+        <select
+          className='iight-input'
+          id={id}
+          {...aria}
+          value={value ?? ''}
+          required={required}
+          disabled={disabled || readonly}
+          onChange={(event) => handleValidation(form.validateValue(event.target.value || null, schema))}
+        >
+          <option value=''>None</option>
+          {!known && <option value={value}>{unknown}</option>}
+          {forms?.map((each) => (
+            <option key={each.id} value={each.id}>
+              {each.open ? each.label : `${each.label} (closed)`}
+            </option>
+          ))}
+        </select>
+      </div>
+      {problem && (
+        <p className='cms-problem' role='alert'>
+          <CircleAlert /> Couldn't load the forms. {problem}
+        </p>
+      )}
+    </>
+  )
+}
+
 // The type editor's Icon setting, whose value is text: the name of one of Lucide's icons
 export const iconInput: Input = { ...inputs.text, default: IconPicker }
 
@@ -369,6 +422,7 @@ export function useInputs(building?: string) {
         default: RelationshipPicker,
       },
       media: { ...media, default: MediaPicker },
+      form: { ...form, default: FormPicker },
       // Types expand their uses into groups, so no form ever renders one
       ...(usable.length
         ? { shared: { ...shared, optionFields: () => sharedOptions(usable), default: () => null } }

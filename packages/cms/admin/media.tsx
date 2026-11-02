@@ -1,5 +1,6 @@
 import { mediaSchema } from '../src/schemas'
-import { ContentType, Entry, TypesContext, api, date, errorMessage, titleOf } from './api'
+import { ContentType, Entry, TypesContext, api, date, errorMessage, titleOf, usePageView } from './api'
+import { useBeside } from './chat'
 import { fieldChoicesOf, filterOf, whereOf } from './lists'
 import {
   Badge,
@@ -165,6 +166,12 @@ export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
   const [list, setList] = useState<{ data: Array<Media>; pagination: Pagination }>()
   const [reloads, setReloads] = useState(0)
   const [editing, setEditing] = useState<Media>()
+  // The file whose details were opened last. Its dialog is modal, so the assistant beside the page takes "this" to be
+  // it after it closes too, until another file opens.
+  const [opened, setOpened] = useState<string>()
+  const last = list?.data.find((file) => file.id === opened)
+  // A picker is part of the page it picks for, whose view stays
+  usePageView(pick ? undefined : last ? { page: { media: last.id }, label: last.name } : null)
   const [error, setError] = useState('')
   // The files an upload turned away
   const [problems, setProblems] = useState<Array<string>>([])
@@ -245,6 +252,17 @@ export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
     setEditing(undefined)
     setReloads((count) => count + 1)
   }
+
+  // Once a proposal for a file it lists is applied, it loads them again, so their details open as they are now. The
+  // details' dialog is modal, so nothing is applied while they're being edited.
+  useBeside(
+    {
+      shows: (proposal) => proposal.kind === 'media' && !!list?.data.some((file) => file.id === proposal.targetId),
+      touched: () => false,
+      reload,
+    },
+    !pick,
+  )
 
   // Its button goes, so focus moves to a picker's search, or to the page's heading
   const clearFilters = (event: MouseEvent<HTMLButtonElement>) => {
@@ -364,7 +382,11 @@ export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
                 <MediaCard
                   media={media}
                   chosen={pick?.chosen.includes(media.id)}
-                  onClick={() => (pick ? pick.onPick(media) : setEditing(media))}
+                  onClick={() => {
+                    if (pick) return pick.onPick(media)
+                    setEditing(media)
+                    setOpened(media.id)
+                  }}
                 />
               </li>
             ))}

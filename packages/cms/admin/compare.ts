@@ -129,19 +129,24 @@ export function compare(
   })
 }
 
-// The entries and files that changed links name, inside lists too, for loading their titles and names
-export function linksOf(changes: Array<Change>): { entries: Array<string>; files: Array<string> } {
+// The entries, files and forms that changed links name, inside lists too, for loading their titles, names and labels
+export function linksOf(changes: Array<Change>): {
+  entries: Array<string>
+  files: Array<string>
+  forms: Array<string>
+} {
   const entries = new Set<string>()
   const files = new Set<string>()
+  const forms = new Set<string>()
   const walk = (changes: Array<Change>) => {
     for (const change of changes) {
-      const into = { relationship: entries, media: files }[change.field.type]
+      const into = { relationship: entries, media: files, form: forms }[change.field.type]
       for (const id of [...idsOf(change.before), ...idsOf(change.after)]) into?.add(id)
       for (const item of change.items ?? []) walk(item.changes)
     }
   }
   walk(changes)
-  return { entries: [...entries], files: [...files] }
+  return { entries: [...entries], files: [...files], forms: [...forms] }
 }
 
 export interface Part {

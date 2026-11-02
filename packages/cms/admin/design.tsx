@@ -1,8 +1,8 @@
 import { versionSchema } from '../src/schemas'
-import { ContentType, Entry, GroupsContext, SharedGroup, Status } from './api'
+import { ContentType, Entry, GroupsContext, SharedGroup, Status, TypesContext } from './api'
 import { AssistantChat } from './assistant'
 import { Grid, columnsOf, useRows } from './bulk'
-import { Assistant, AssistantContext, Chat, ChatMessage } from './chat'
+import { Assistant, AssistantContext, Chat, ChatMessage, Proposal } from './chat'
 import { compare, compareParent } from './compare'
 import { contrast, pairs } from './contrast'
 import './design.scss'
@@ -76,7 +76,7 @@ const sampleFiles: Array<Media> = [
 
 // Seven versions, newest first, a day apart, one of them saved by a user deleted since. Version 5, the live one in the
 // changed entry's panels, is named and went live an hour after it was saved, and so did version 3, by someone since
-// deleted.
+// deleted. Version 7 was saved through an MCP token, and version 6 with the assistant.
 const sampleVersions: Array<Version> = [7, 6, 5, 4, 3, 2, 1].map((number) => ({
   number,
   name: { 5: 'Launch copy', 3: 'Before the rebrand' }[number] ?? null,
@@ -84,6 +84,12 @@ const sampleVersions: Array<Version> = [7, 6, 5, 4, 3, 2, 1].map((number) => ({
   createdAt: `2026-10-${22 + number}T14:0${number}:00Z`,
   publishedAt: number === 5 || number === 3 ? `2026-10-${22 + number}T15:00:00Z` : null,
   publishedBy: number === 5 ? { id: 'usr_sample', name: 'Levi' } : null,
+  via:
+    number === 7
+      ? { kind: 'token' as const, id: 'tok_sample', name: 'Claude Desktop' }
+      : number === 6
+        ? { kind: 'chat' as const, id: 'chat-1', name: 'Fix the typos in the launch post' }
+        : null,
 }))
 
 // Two versions of a post for the comparison: a text and a box changed, a long text reworded, a field in a group, a
@@ -543,8 +549,197 @@ const sampleMessages: Array<ChatMessage> = [
     notice: { tone: 'warning', text: 'The reply reached its length limit, so it was cut off.' },
   },
 ]
+// Changes the assistant proposed: one waiting on an entry with other changes that aren't live, a find and replace with
+// one applied and published, one stale and one waiting, a new form with the event that shows it, which applying makes
+// first, and new alt text for two files, one applied
+const proposalTypes = new Map<string, ContentType>([
+  [
+    'post',
+    {
+      id: 'typ_post',
+      name: 'post',
+      label: 'Posts',
+      singular: 'Post',
+      structure: 'collection',
+      titleField: 'title',
+      fields: [
+        { type: 'text', name: 'title', label: 'Title' },
+        { type: 'textarea', name: 'intro', label: 'Intro' },
+      ],
+    },
+  ],
+  [
+    'event',
+    {
+      id: 'typ_event',
+      name: 'event',
+      label: 'Events',
+      singular: 'Event',
+      structure: 'collection',
+      titleField: 'title',
+      fields: [
+        { type: 'text', name: 'title', label: 'Title' },
+        { type: 'datetime', name: 'starts_at', label: 'Starts' },
+        { type: 'form', name: 'form', label: 'Form' },
+      ],
+    },
+  ],
+])
+const proposalOf = (proposal: Partial<Proposal>): Proposal => ({
+  id: 'prp_sample',
+  kind: 'entry',
+  targetId: 'design',
+  isNew: false,
+  type: 'post',
+  before: null,
+  after: { values: {} },
+  status: 'pending',
+  version: null,
+  published: false,
+  needs: [],
+  title: 'Launch day',
+  ...proposal,
+})
+const previewed = (title: string, intro: string) => ({
+  before: { values: { intro } },
+  after: { values: { intro: intro.replace('private preview', 'public beta') } },
+  title,
+})
+const proposalMessages: Array<ChatMessage> = [
+  { role: 'user', text: 'Fix the typos in the launch post' },
+  {
+    role: 'assistant',
+    parts: [
+      { type: 'step', text: 'Read “Lanch day”', failed: false },
+      {
+        type: 'step',
+        text: 'Proposed changes to “Launch day”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'typos',
+            before: { values: { title: 'Lanch day', intro: 'Teh preview opens today, for everyone on the list.' } },
+            after: { values: { title: 'Launch day', intro: 'The preview opens today, for everyone on the list.' } },
+            title: 'Lanch day',
+            entryStatus: 'changed',
+          }),
+        ],
+      },
+      { type: 'text', text: 'Two typos, in the title and the intro.' },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: "Update all references to 'private preview' to 'public beta'" },
+  {
+    role: 'assistant',
+    parts: [
+      {
+        type: 'step',
+        text: 'Proposed replacing “private preview” with “public beta” in 3 entries',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'one',
+            status: 'applied',
+            version: 4,
+            published: true,
+            ...previewed('Launch day', 'Join the private preview.'),
+          }),
+          proposalOf({ id: 'two', status: 'stale', ...previewed('Pricing', 'The private preview is free.') }),
+          proposalOf({ id: 'three', ...previewed('Roadmap', 'Then the private preview, then launch.') }),
+        ],
+      },
+      { type: 'text', text: 'Three posts mention it. Pricing changed after I proposed it, so ask me again for it.' },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: 'Create a new event page with a form for our Kubecon stall' },
+  {
+    role: 'assistant',
+    parts: [
+      {
+        type: 'step',
+        text: 'Proposed a new form, “Kubecon sign-ups”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'form',
+            kind: 'form',
+            isNew: true,
+            type: null,
+            after: {
+              label: 'Kubecon sign-ups',
+              name: 'kubecon_sign_ups',
+              fields: [
+                { name: 'name', type: 'text', label: 'Name', required: true },
+                { name: 'email', type: 'email', label: 'Email', required: true },
+                { name: 'company', type: 'text', label: 'Company' },
+              ],
+            },
+            title: 'Kubecon sign-ups',
+          }),
+        ],
+      },
+      {
+        type: 'step',
+        text: 'Proposed a new event, “Kubecon stall”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'event',
+            isNew: true,
+            type: 'event',
+            after: { values: { title: 'Kubecon stall', starts_at: '2026-11-10T09:00', form: 'form' }, parentId: null },
+            needs: ['form'],
+            title: 'Kubecon stall',
+          }),
+        ],
+      },
+      { type: 'text', text: 'Apply the event, and its form is made first, closed until you open it.' },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: 'Add meaningful alt text to these logos' },
+  {
+    role: 'assistant',
+    parts: [
+      { type: 'step', text: 'Viewed 2 files', failed: false },
+      {
+        type: 'step',
+        text: 'Proposed new details for 2 files',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'logo',
+            kind: 'media',
+            type: null,
+            before: { alt: null },
+            after: { alt: 'A black circle on a clear background' },
+            title: 'a-transparent-shape.svg',
+            image: shape,
+            status: 'applied',
+            published: true,
+          }),
+          proposalOf({
+            id: 'mark',
+            kind: 'media',
+            type: null,
+            before: { alt: 'Circle' },
+            after: { alt: 'Our mark, a black circle' },
+            title: 'chosen-in-a-picker.svg',
+            image: shape,
+          }),
+        ],
+      },
+      { type: 'text', text: 'Both are simple marks, so the alt text says what they show.' },
+    ],
+    notice: null,
+  },
+]
+
 const assistants: Array<{ label: string; assistant: Partial<Assistant> }> = [
   { label: 'A chat', assistant: {} },
+  { label: 'Proposed changes', assistant: { messages: proposalMessages } },
   {
     label: 'Replying',
     assistant: {
@@ -603,6 +798,14 @@ const sampleAssistant = (assistant: Partial<Assistant>, toast: (message: string)
   stop: () => toast('Stopped'),
   rename: async () => undefined,
   remove: async () => undefined,
+  me: 'usr_sample',
+  decided: {},
+  problems: { three: "Not applied, since it doesn't pass its checks now:\nintro: Use at most 200 characters." },
+  decide: async (action, ids) => {
+    toast(`${action === 'apply' ? 'Applied' : 'Skipped'} ${ids.length === 1 ? 'the change' : `${ids.length} changes`}`)
+    return 0
+  },
+  refresh: async () => undefined,
   ...assistant,
 })
 
@@ -979,16 +1182,21 @@ export default function Design() {
       <p>
         The assistant under each page's panel, and on the Chat page at full width. Each of its tools is a step, a reply
         renders its Markdown as React elements, with no HTML, images or script links, and a reply that ends early says
-        why. While it replies, Send is Stop. Below 64rem it opens from the end of the bottom bar, full screen.
+        why. While it replies, Send is Stop. Below 64rem it opens from the end of the bottom bar, full screen. Beside a
+        page, a line above the box says what “this” means there, which is what each message sends: the entry or version
+        open, a list's ticked entries or those its search and filter match, a form, or the file last opened in the media
+        library.
       </p>
       <ul className='cms-design__panels'>
         {assistants.map(({ label, assistant }) => (
           <li key={label}>
             <h3>{label}</h3>
             <div className='cms-design__assistant'>
-              <AssistantContext.Provider value={sampleAssistant(assistant, toast)}>
-                <AssistantChat />
-              </AssistantContext.Provider>
+              <TypesContext.Provider value={proposalTypes}>
+                <AssistantContext.Provider value={sampleAssistant(assistant, toast)}>
+                  <AssistantChat view={{ page: {}, label: 'Kubecon 2026, version 4' }} />
+                </AssistantContext.Provider>
+              </TypesContext.Provider>
             </div>
           </li>
         ))}

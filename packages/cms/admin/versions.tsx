@@ -1,8 +1,19 @@
 import { idsOf } from '../src/fields'
 import { versionSchema } from '../src/schemas'
-import { ContentType, Entry, SectionContext, api, date, errorMessage, formatValue, shortDate, titleOf } from './api'
+import {
+  ContentType,
+  Entry,
+  SectionContext,
+  api,
+  date,
+  errorMessage,
+  formatValue,
+  shortDate,
+  titleOf,
+  usePageView,
+} from './api'
 import { Change, compare, compareParent, diffLines, diffWords, linksOf, parentField, toJson } from './compare'
-import { Version, restoreOnOpen } from './entries'
+import { Version, restoreOnOpen, viaText } from './entries'
 import { useLinkNames } from './fields'
 import { Badge, Loading, Notice, PageHeader, Panel, StatusBadge, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FieldSchema, FormHandle } from 'iight'
@@ -20,11 +31,15 @@ export const nameOf = (version: Version) => version.name ?? `Version ${version.n
 // Who saved a version or published it, and when
 const byAt = (user: Version['createdBy'], at: string) => `${user?.name ?? 'Deleted user'} · ${shortDate(at)}`
 
+// Who saved a version, and through which MCP token or with the assistant, and when
+const savedBy = (version: Version) =>
+  `${version.createdBy?.name ?? 'Deleted user'}${viaText(version.via)} · ${shortDate(version.createdAt)}`
+
 // A value as text: entries' titles and files' names, Yes or No for a box, and otherwise what the lists show
 function valueText(field: FieldSchema, value: unknown, links: Record<string, string | null>) {
   if (field === parentField && value === null) return 'None, at the top'
-  if (field.type === 'relationship' || field.type === 'media') {
-    const gone = field.type === 'media' ? 'A deleted file' : 'A deleted entry'
+  if (field.type === 'relationship' || field.type === 'media' || field.type === 'form') {
+    const gone = { media: 'A deleted file', relationship: 'A deleted entry', form: 'A form not made yet' }[field.type]
     return idsOf(value)
       .map((id) => (links[id] === undefined ? 'Loading…' : (links[id] ?? gone)))
       .join(', ')
@@ -195,6 +210,12 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
   }, [version, wanted.join()])
 
   const type = entry && types.get(entry.type)
+  // The assistant beside the page takes "this" to be the version
+  usePageView(
+    entry && type
+      ? { page: { entry: entry.id, version: number }, label: `${titleOf(type, entry)}, version ${number}` }
+      : null,
+  )
   const [older, newer] =
     typeof against !== 'number' ? [undefined, number] : against < number ? [against, number] : [number, against]
   const ready = !!type && newer in values && (older === undefined || older in values)
@@ -206,7 +227,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
     return [...moved, ...compare(type!.fields, was?.values, is.values)]
   }, [ready, older, newer])
   const linked = linksOf(changes ?? [])
-  const links = useLinkNames(linked.entries, linked.files)
+  const links = useLinkNames(linked.entries, linked.files, linked.forms)
 
   const drafts = type?.drafts !== false
   const current = versions?.[0]
@@ -261,7 +282,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
   const editor = type.structure === 'singleton' ? `#/types/${type.name}` : `#/entries/${entry.id}`
   const sideOf = (side: number | undefined) => {
     const shown = versions.find((other) => other.number === side)
-    return shown ? `${describe(shown)} · ${byAt(shown.createdBy, shown.createdAt)}` : 'Nothing'
+    return shown ? `${describe(shown)} · ${savedBy(shown)}` : 'Nothing'
   }
 
   // Run an action, showing what went wrong if it fails. A second click while one runs is ignored.
@@ -395,7 +416,15 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
       >
         <section>
           <h2>Saved</h2>
-          <p>{byAt(version.createdBy, version.createdAt)}</p>
+          <p>{savedBy(version)}</p>
+          {version.via?.kind === 'chat' &&
+            (version.via.name === null ? (
+              <p className='cms-muted'>The chat it came from has been deleted.</p>
+            ) : (
+              <p>
+                <a href={`#/chat?id=${version.via.id}`}>Read the chat it came from</a>
+              </p>
+            ))}
         </section>
         {drafts && version.publishedAt && (
           <section>

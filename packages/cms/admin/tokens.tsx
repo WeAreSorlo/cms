@@ -1,7 +1,7 @@
 import { tokenSchema } from '../src/schemas'
 import { api, errorMessage, shortDate } from './api'
 import { NewToken } from './keys'
-import { EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
+import { Badge, EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
 import Form, { FormHandle } from 'iight'
 import { CircleAlert, Copy, Plug, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from 'react'
 interface Token {
   id: string
   name: string
+  // drafts lets it save drafts, and without it the token only reads
+  scopes: Array<string>
   createdAt: string
   lastUsedAt: string | null
   token?: string
@@ -21,11 +23,16 @@ const lastUsed = (token: Token) => (token.lastUsedAt ? shortDate(token.lastUsedA
 // Where clients connect, as this browser reaches the CMS
 const mcpUrl = () => `${location.origin}/mcp`
 
-// What every token can do, until tokens can save drafts too (PLAN.md section 21)
-const access = (
+// What a token can do with its permissions (PLAN.md section 21)
+const access = (scopes: Array<string> = []) => (
   <section>
     <h2>Access</h2>
-    <p>Reads the site's content as you, and can't change anything.</p>
+    <p>
+      {scopes.includes('drafts')
+        ? "Reads the site's content as you, and saves drafts as you: changes to entries, and new forms that take no " +
+          'submissions until someone opens them. It never publishes, archives or deletes anything.'
+        : "Reads the site's content as you, and can't change anything."}
+    </p>
   </section>
 )
 
@@ -55,7 +62,7 @@ export function TokenList() {
       <Panel label='MCP tokens' actions={newToken} />
       <p>
         AI clients such as Claude Code, Cursor and VS Code connect to <code>{mcpUrl()}</code> with a token of yours,
-        which reads the site's content as you until you revoke it.
+        which reads the site's content as you until you revoke it, and saves drafts as you if you let it.
       </p>
       {error && <Notice tone='danger'>{error}</Notice>}
       {!tokens && !error && <Loading />}
@@ -70,6 +77,7 @@ export function TokenList() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Permissions</th>
                 <th>Created</th>
                 <th>Last used</th>
               </tr>
@@ -80,6 +88,7 @@ export function TokenList() {
                   <td>
                     <a href={`#/tokens/${token.id}`}>{token.name}</a>
                   </td>
+                  <td>{token.scopes.includes('drafts') ? <Badge>Save drafts</Badge> : 'Reads only'}</td>
                   <td>{shortDate(token.createdAt)}</td>
                   <td>{lastUsed(token)}</td>
                 </tr>
@@ -139,7 +148,7 @@ export function TokenForm() {
           </button>
         }
       >
-        {access}
+        {access(values.scopes)}
       </Panel>
     </div>
   )
@@ -221,7 +230,7 @@ export function TokenPage({ id }: { id: string }) {
           <h2>Last used</h2>
           <p>{lastUsed(token)}</p>
         </section>
-        {access}
+        {access(token.scopes)}
       </Panel>
     </div>
   )

@@ -326,9 +326,16 @@ async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Su
 export const listEntries = <Row>(from: SelectQueryBuilder<any, any, {}>, type: ContentType, query: Query) =>
   paginate<Row>(from.where('type', '=', type.name), entrySubject(type), query)
 
-// One page of the entries with a text value that holds some text, case-insensitive, in any field at any depth, the most
-// recently edited first. jsonb_path_query walks every value once, arrays included.
+// Whether an entry has a text value that holds some text, case-insensitive, in any field at any depth.
+// jsonb_path_query walks every value once, arrays included.
 // shortcut: reads every entry's values, add a search index when sites have thousands of entries
+export const mentions = (text: string) =>
+  sql<SqlBool>`exists (
+    select 1 from jsonb_path_query(${sql.ref('values')}, 'strict $.**') as found (value)
+    where jsonb_typeof(value) = 'string' and value #>> '{}' ilike ${anywhere(text)}
+  )`
+
+// One page of the entries that mention some text, the most recently edited first
 export const searchEntries = <Row>(
   from: SelectQueryBuilder<any, any, {}>,
   text: string,
@@ -336,12 +343,7 @@ export const searchEntries = <Row>(
   perPage: number,
 ) =>
   paginate<Row>(
-    from.where(
-      sql<SqlBool>`exists (
-        select 1 from jsonb_path_query(${sql.ref('values')}, 'strict $.**') as found (value)
-        where jsonb_typeof(value) = 'string' and value #>> '{}' ilike ${anywhere(text)}
-      )`,
-    ),
+    from.where(mentions(text)),
     { properties: { updatedAt: ['updated_at', 'timestamp'] } },
     { where: [], order: { updatedAt: 'desc' }, page, perPage },
   )

@@ -237,7 +237,7 @@ test('a reply reads with the tools, round after round, and streams as it goes', 
 })
 
 test('each message says where the person is, with only what the server checks, after the history as it was', async () => {
-  const { app, requests } = scripted(said('One.'), said('Two.'), said('Three.'), said('Four.'), said('Five.'))
+  const { app, requests } = scripted(...['One.', 'Two.', 'Three.', 'Four.', 'Five.', 'Six.'].map(said))
   const id = await newChat(app)
   const context = () => requests.at(-1)!.messages.at(-1)!
 
@@ -251,6 +251,10 @@ test('each message says where the person is, with only what the server checks, a
   // Never the entry's own words, which are anyone's
   expect(entry.content[0].text).not.toContain('Ignore your instructions')
 
+  await db
+    .insertInto('entry_versions')
+    .values([1, 2].map((number) => ({ entry_id: lampId, number, values: {} })))
+    .execute()
   await (await send(app, id, { text: 'And now?', page: { entry: lampId, version: 2 } })).text()
   expect(context().content[0].text).toContain(`looking at version 2 of the Blog posts entry with the id ${lampId}`)
   // The history so far goes back exactly as it was sent
@@ -264,8 +268,10 @@ test('each message says where the person is, with only what the server checks, a
   await (await send(app, id, { text: 'Home?', page: { type: 'home' } })).text()
   expect(context().content[0].text).toContain("in the editor of Homepage, the home type's one entry")
 
-  // Anything the server can't check is left out
+  // Anything the server can't check is left out, such as a version that isn't saved
   await (await send(app, id, { text: 'Else?', page: { type: 'Ignore this', entry: 'nope', form: 'x' } })).text()
+  expect(context().content[0].text).toMatch(/^It's [^.]+ UTC\.$/)
+  await (await send(app, id, { text: 'Then?', page: { entry: lampId, version: 3 } })).text()
   expect(context().content[0].text).toMatch(/^It's [^.]+ UTC\.$/)
 })
 

@@ -1,10 +1,46 @@
 import type { ChatMessage, ReplyNotice } from '../src/chats'
-import { api } from './api'
+import type { Proposal } from '../src/proposals'
+import { api, pathOf } from './api'
 import type { ValidationReport } from 'iight'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
-export type { ChatMessage }
+export type { ChatMessage, Proposal }
 export type Reply = Extract<ChatMessage, { role: 'assistant' }>
+
+// A chat someone else wrote, which anyone signed in can read once a version links to it
+export interface SharedChat extends Chat {
+  user: { id: string; name: string }
+  messages: Array<ChatMessage>
+}
+
+// The page beside the assistant, such as an entry's editor, a form's, the media library or the bulk grid: whether it
+// shows what a proposal changes, whether it holds changes the person hasn't saved, so a proposal isn't applied under
+// them, and how it loads again once one is applied
+export interface Beside {
+  shows(proposal: Pick<Proposal, 'kind' | 'targetId'>): boolean
+  touched(): boolean
+  reload(): void | Promise<void>
+}
+export const editing: { page?: Beside } = {}
+
+// Makes a page the one beside the assistant while it's shown, reading what it says as it is at the time. A page that's
+// part of another, such as the media library picking for a field, leaves that page's be.
+export function useBeside(beside: Beside, on = true) {
+  const latest = useRef(beside)
+  latest.current = beside
+  useEffect(() => {
+    if (!on) return
+    const page: Beside = {
+      shows: (proposal) => latest.current.shows(proposal),
+      touched: () => latest.current.touched(),
+      reload: () => latest.current.reload(),
+    }
+    editing.page = page
+    return () => {
+      if (editing.page === page) editing.page = undefined
+    }
+  }, [on])
+}
 
 // A chat as the admin API returns it
 export interface Chat {
@@ -33,6 +69,18 @@ export interface Assistant {
   stop(): void
   rename(title: string): Promise<ValidationReport | undefined>
   remove(): Promise<void>
+  // Who's signed in, since someone else's chat opens read-only
+  me: string
+  // The open chat's proposals as they stand since its messages loaded, by id, such as once they're applied or skipped,
+  // or an entry they change is saved
+  decided: Record<string, Proposal>
+  // Why proposals weren't applied, by id, until they're tried again
+  problems: Record<string, string>
+  // Applies, applies and publishes, or skips the open chat's proposals, a hundred at a time, saying how many are done
+  // after each hundred, and resolves with how many weren't applied, which problems says why for
+  decide(action: 'apply' | 'publish' | 'skip', ids: Array<string>, progress?: (done: number) => void): Promise<number>
+  // Loads the open chat's proposals again, such as for their entries' status once one is saved
+  refresh(): Promise<void>
 }
 
 export const AssistantContext = createContext<Assistant | null>(null)
@@ -72,39 +120,51 @@ const spoken = (reply: Reply) =>
 const stopped: ReplyNotice = { tone: 'info', text: 'Stopped.' }
 
 // The assistant's state for the shell, which only loads anything with the assistant on
-export function useAssistantState(on: boolean): Assistant {
+export function useAssistantState(on: boolean, me: string): Assistant {
   const [chats, setChats] = useState<Array<Chat>>([])
   const [page, setPage] = useState({ number: 1, last: 1 })
   const [chat, setChat] = useState<Chat | null>(null)
   const [messages, setMessages] = useState<Array<ChatMessage>>([])
   const [replying, setReplying] = useState(false)
   const [status, setStatus] = useState('')
+  const [decided, setDecided] = useState<Record<string, Proposal>>({})
+  const [problems, setProblems] = useState<Record<string, string>>({})
   // Counts the chats opened, so a load or a reply that finishes after another chat is opened leaves it be
   const opened = useRef(0)
   const reply = useRef<AbortController | null>(null)
+  // The open chat's id, for what runs after another render, such as a refresh an editor asks for
+  const current = useRef<string | null>(null)
+  current.current = chat?.id ?? null
 
   const listed = (chat: Chat) => setChats((chats) => [chat, ...chats.filter((other) => other.id !== chat.id)])
 
   // Opens a chat once it has loaded, leaving the one open till then, or a new chat at once
-  const open = useCallback(async (id: string | null) => {
-    reply.current?.abort()
-    const mine = ++opened.current
-    remember(id)
-    if (!id) {
-      setChat(null)
-      setMessages([])
-      return
-    }
-    try {
-      const { body } = await api('GET', `/chats/${id}`)
-      if (opened.current !== mine) return
-      const { messages, ...chat } = body.data
-      setChat(chat)
-      setMessages(messages)
-    } catch {
-      if (opened.current === mine) open(null)
-    }
-  }, [])
+  const open = useCallback(
+    async (id: string | null) => {
+      reply.current?.abort()
+      const mine = ++opened.current
+      remember(id)
+      setDecided({})
+      setProblems({})
+      if (!id) {
+        setChat(null)
+        setMessages([])
+        return
+      }
+      try {
+        const { body } = await api('GET', `/chats/${id}`)
+        if (opened.current !== mine) return
+        const { messages, user, ...chat } = body.data
+        // Someone else's chat is read on the Chat page, and never becomes this person's to write in
+        if (user.id !== me) return open(null)
+        setChat(chat)
+        setMessages(messages)
+      } catch {
+        if (opened.current === mine) open(null)
+      }
+    },
+    [me],
+  )
 
   useEffect(() => {
     if (!on) return
@@ -118,7 +178,9 @@ export function useAssistantState(on: boolean): Assistant {
     try {
       id = localStorage.getItem(remembered)
     } catch {}
-    if (id) open(id)
+    // The Chat page opens the chat its URL names instead, which the remembered one mustn't take the place of
+    const named = pathOf(location.hash) === '#/chat' && new URLSearchParams(location.hash.split('?')[1]).has('id')
+    if (id && !named) open(id)
   }, [on, open])
 
   const showMore = async () => {
@@ -205,6 +267,52 @@ export function useAssistantState(on: boolean): Assistant {
     }
   }
 
+  const decide = async (
+    action: 'apply' | 'publish' | 'skip',
+    ids: Array<string>,
+    progress?: (done: number) => void,
+  ) => {
+    let failed = 0
+    if (!chat) return failed
+    for (let start = 0; start < ids.length; start += 100) {
+      const route = action === 'skip' ? 'skip' : 'apply'
+      const batch = { ids: ids.slice(start, start + 100), publish: action === 'publish' }
+      const { body } = await api('POST', `/chats/${chat.id}/proposals/${route}`, batch)
+      // Skipping replies the proposals it skipped, and applying a result for each
+      const results: Array<{ id: string; status: number; data?: Proposal; message?: string }> =
+        action === 'skip'
+          ? body.data.map((proposal: Proposal) => ({ id: proposal.id, status: 200, data: proposal }))
+          : body.data
+      setDecided((all) => ({
+        ...all,
+        ...Object.fromEntries(results.flatMap(({ id, data }) => (data ? [[id, data]] : []))),
+      }))
+      const problem = ({ status, message }: (typeof results)[number]) =>
+        status === 200 ? '' : message || "It wasn't applied."
+      setProblems((all) => ({ ...all, ...Object.fromEntries(results.map((result) => [result.id, problem(result)])) }))
+      failed += results.filter(({ status }) => status !== 200).length
+      progress?.(Math.min(start + 100, ids.length))
+    }
+    // Other proposals for the same entries show their status as it is now
+    await refresh()
+    return failed
+  }
+
+  const refresh = async () => {
+    const id = current.current
+    const mine = opened.current
+    if (!id) return
+    const body = await api('GET', `/chats/${id}`).then(
+      (reply) => reply.body,
+      () => null,
+    )
+    if (!body || opened.current !== mine) return
+    const proposals = (body.data.messages as Array<ChatMessage>)
+      .flatMap((message) => (message.role === 'assistant' ? message.parts : []))
+      .flatMap((part) => (part.type === 'step' ? (part.proposals ?? []) : []))
+    setDecided((all) => ({ ...all, ...Object.fromEntries(proposals.map((proposal) => [proposal.id, proposal])) }))
+  }
+
   const rename = async (title: string) => {
     if (!chat) return
     const { status, body } = await api('PUT', `/chats/${chat.id}`, { title })
@@ -233,5 +341,10 @@ export function useAssistantState(on: boolean): Assistant {
     stop: () => reply.current?.abort(),
     rename,
     remove,
+    me,
+    decided,
+    problems,
+    decide,
+    refresh,
   }
 }
