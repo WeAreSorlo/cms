@@ -63,11 +63,13 @@ export function typeRoutes(
   types: Map<string, ContentType>,
   groups = new Map<string, SharedGroup>(),
   dirs?: EditorDirs,
+  // Whether /mcp is on, which the admin reads here with editable, since the shell waits for this reply
+  mcp = false,
 ) {
   const app = new Hono<AdminEnv>()
   const groupsDir = dirs && join(dirname(dirs.types), 'groups')
 
-  app.get('/types', (c) => c.json({ data: [...types.values()], groups: [...groups.values()], editable: !!dirs }))
+  app.get('/types', (c) => c.json({ data: [...types.values()], groups: [...groups.values()], editable: !!dirs, mcp }))
 
   const editable =
     (what: string): MiddlewareHandler<AdminEnv> =>

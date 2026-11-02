@@ -34,6 +34,18 @@ export const apiKeySchema: Array<FieldSchema> = [
   },
 ]
 
+// A personal token's name, asked for on the admin's MCP tokens page, whose routes check it
+export const tokenSchema: Array<FieldSchema> = [
+  {
+    name: 'name',
+    label: 'Name',
+    type: 'text',
+    required: true,
+    instructions: 'Such as the client and the computer it runs on, so you know which token to revoke.',
+    options: { maxLength: 100, placeholder: 'Claude Code on my laptop' },
+  },
+]
+
 // A media file's details, edited in the admin's media library and checked by PUT /api/media/:id
 export const mediaSchema: Array<FieldSchema> = [
   { name: 'name', label: 'Name', type: 'text', required: true, options: { maxLength: 200 } },

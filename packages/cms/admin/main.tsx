@@ -10,6 +10,7 @@ import { KeyEditor, KeyList, KeyPage } from './keys'
 import { MediaLibrary } from './media'
 import { Shell } from './shell'
 import './theme.scss'
+import { TokenForm, TokenList, TokenPage } from './tokens'
 import { TypeEditor, TypeList } from './types'
 import { Notice, focusInvalid } from './ui'
 import { VersionPage } from './versions'
@@ -88,19 +89,22 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 }
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
-// #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, or #/schema/blog
-// and #/groups/seo in the type editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
+// #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, #/tokens/<id>
+// with MCP on, or #/schema/blog and #/groups/seo in the type editor. A list's search and filters follow its path, as in
+// #/types/blog?search=lamp.
 function Page({
   hash,
   types,
   groups,
   editable,
+  mcp,
   reloadTypes,
 }: {
   hash: string
   types: Map<string, ContentType>
   groups: Map<string, SharedGroup>
   editable: boolean
+  mcp: boolean
   reloadTypes: () => Promise<void>
 }) {
   const path = pathOf(hash)
@@ -139,6 +143,9 @@ function Page({
   if (section === 'keys' && name === 'new') return <KeyEditor key='new' />
   if (section === 'keys' && name) return <KeyPage key={name} id={name} />
   if (section === 'keys') return <KeyList />
+  if (mcp && section === 'tokens' && name === 'new') return <TokenForm key='new' />
+  if (mcp && section === 'tokens' && name) return <TokenPage key={name} id={name} />
+  if (mcp && section === 'tokens') return <TokenList />
   if (section === 'entries' && name && action === 'versions' && ids) {
     return <VersionPage key={hash} id={name} number={Number(ids)} types={types} />
   }
@@ -158,6 +165,8 @@ function App() {
   const [types, setTypes] = useState<Map<string, ContentType>>()
   const [groups, setGroups] = useState(new Map<string, SharedGroup>())
   const [editable, setEditable] = useState(false)
+  // Whether /mcp is on, and with it the MCP tokens page
+  const [mcp, setMcp] = useState(false)
 
   // The one copy of the URL's hash, so the shell and the page see each change in the same render
   const [hash, setHash] = useState(location.hash)
@@ -179,6 +188,7 @@ function App() {
     setTypes(new Map(body.data.map((type: ContentType) => [type.name, type])))
     setGroups(new Map(body.groups.map((group: SharedGroup) => [group.name, group])))
     setEditable(body.editable)
+    setMcp(body.mcp)
   }, [])
 
   useEffect(() => {
@@ -195,10 +205,10 @@ function App() {
   if (!types) return null
 
   return (
-    <Shell hash={hash} types={types} user={user} onSignOut={signOut}>
+    <Shell hash={hash} types={types} user={user} mcp={mcp} onSignOut={signOut}>
       <TypesContext.Provider value={types}>
         <GroupsContext.Provider value={groups}>
-          <Page hash={hash} types={types} groups={groups} editable={editable} reloadTypes={reloadTypes} />
+          <Page hash={hash} types={types} groups={groups} editable={editable} mcp={mcp} reloadTypes={reloadTypes} />
         </GroupsContext.Provider>
       </TypesContext.Provider>
     </Shell>

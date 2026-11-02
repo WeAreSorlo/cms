@@ -90,6 +90,16 @@ export interface Database {
     last_used_at: Date | null
     created_at: Generated<Date>
   }
+  // Each person's tokens for MCP clients, which act as the person (PLAN.md section 21)
+  personal_tokens: {
+    id: string
+    user_id: string
+    name: string
+    token_hash: string
+    // Written at most once a minute
+    last_used_at: Date | null
+    created_at: Generated<Date>
+  }
   media: {
     id: string
     // The FlyDrive service that stores the file, and the file's key there

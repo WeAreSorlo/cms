@@ -19,7 +19,7 @@ export const pathOf = (hash: string) => hash.split('?')[0]
 export function sectionOf(hash: string) {
   const [section, name] = pathOf(hash).replace(/^#\/?/, '').split('/')
   if (section === 'types' && name) return `types/${name}`
-  return ['media', 'forms', 'automations', 'schema', 'groups', 'keys'].includes(section) ? section : undefined
+  return ['media', 'forms', 'automations', 'schema', 'groups', 'keys', 'tokens'].includes(section) ? section : undefined
 }
 
 export const SectionContext = createContext((section: string) => {})

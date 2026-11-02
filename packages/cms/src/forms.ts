@@ -26,7 +26,7 @@ type FormRow = Selectable<Database['forms']>
 // the public routes (PLAN.md section 10)
 
 // A form as the public routes return it
-const toForm = (row: FormRow) => ({
+export const toForm = (row: FormRow) => ({
   id: row.id,
   name: row.name,
   label: row.label,

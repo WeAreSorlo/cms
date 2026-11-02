@@ -143,6 +143,84 @@ async function goLive(trx: Kysely<Database>, type: ContentType, row: EntryRow, v
   await addEntryEvents(trx, 'entry.published', [row, ...moved])
 }
 
+// An entry, archived or not, with its content type, or a 404
+export async function findEntry(db: Kysely<Database>, types: Map<string, ContentType>, id: string) {
+  const row = isUuid(id) ? await withStatus(db).selectAll().where('id', '=', id).executeTakeFirst() : undefined
+  const type = row && types.get(row.type)
+  if (!row || !type) throw new HTTPException(404)
+  return { row, type }
+}
+
+// An entry's versions, newest first, or the one with the given number: its name, who saved it and when, and when it
+// last went live and who published it then. Only saves and publishes record a user, so a version with none was saved
+// or published by a user deleted since.
+export async function listVersions(db: Kysely<Database>, id: string, number?: number) {
+  const rows = await db
+    .selectFrom('entry_versions')
+    .leftJoin('users as saver', 'saver.id', 'entry_versions.created_by')
+    .leftJoin('users as publisher', 'publisher.id', 'entry_versions.published_by')
+    .select([
+      'number',
+      'entry_versions.name',
+      'entry_versions.created_at',
+      'entry_versions.published_at',
+      'saver.id as saver_id',
+      'saver.name as saver_name',
+      'publisher.id as publisher_id',
+      'publisher.name as publisher_name',
+    ])
+    .where('entry_id', '=', id)
+    .$if(number !== undefined, (qb) => qb.where('number', '=', number!))
+    .orderBy('number', 'desc')
+    .execute()
+  return rows.map((version) => ({
+    number: version.number,
+    name: version.name,
+    createdBy: version.saver_id ? { id: version.saver_id, name: version.saver_name } : null,
+    createdAt: version.created_at,
+    publishedAt: version.published_at,
+    publishedBy: version.publisher_id ? { id: version.publisher_id, name: version.publisher_name } : null,
+  }))
+}
+
+// One of an entry's versions with its values brought up to date, by running the ups of the content migrations that
+// ran after it was saved, so they fit the type's fields, or a 404
+export async function readVersion(
+  db: Kysely<Database>,
+  migrations: () => Promise<Record<string, ContentMigrationFile>>,
+  entry: { id: string; type: string },
+  number: number,
+) {
+  const version = await db
+    .selectFrom('entry_versions')
+    .selectAll()
+    .where('entry_id', '=', entry.id)
+    .where('number', '=', number)
+    .executeTakeFirst()
+  if (!version) throw new HTTPException(404)
+
+  const files = await migrations()
+  const applied = await appliedMigrations(db, files)
+  const since = version.migration === null ? 0 : applied.indexOf(version.migration) + 1
+  if (since === 0 && version.migration !== null) {
+    const message = `Version ${number} was saved after the content migration ${version.migration}, which has been rolled back. Migrate again to restore it.`
+    throw new HTTPException(409, { message })
+  }
+  const values = await catchUp(
+    entry.type,
+    version.values,
+    applied.slice(since).map((name) => files[name].up),
+  )
+
+  return {
+    number: version.number,
+    values,
+    parentId: version.parent_id,
+    createdBy: version.created_by,
+    createdAt: version.created_at,
+  }
+}
+
 // The admin API for entries. Every route needs a session, which createApp checks
 export function entryRoutes(
   db: Kysely<Database>,
@@ -166,13 +244,7 @@ export function entryRoutes(
     return type
   }
 
-  // An entry, archived or not, with its content type
-  const find = async (id: string) => {
-    const row = isUuid(id) ? await withStatus(db).selectAll().where('id', '=', id).executeTakeFirst() : undefined
-    const type = row && types.get(row.type)
-    if (!row || !type) throw new HTTPException(404)
-    return { row, type }
-  }
+  const find = (id: string) => findEntry(db, types, id)
 
   const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200) =>
     c.json({ data: toAdminEntry((await find(id)).row) }, status)
@@ -666,38 +738,6 @@ export function entryRoutes(
     return c.body(null, 204)
   })
 
-  // An entry's versions, newest first, or the one with the given number: its name, who saved it and when, and when it
-  // last went live and who published it then. Only saves and publishes record a user, so a version with none was saved
-  // or published by a user deleted since.
-  const listVersions = async (id: string, number?: number) => {
-    const rows = await db
-      .selectFrom('entry_versions')
-      .leftJoin('users as saver', 'saver.id', 'entry_versions.created_by')
-      .leftJoin('users as publisher', 'publisher.id', 'entry_versions.published_by')
-      .select([
-        'number',
-        'entry_versions.name',
-        'entry_versions.created_at',
-        'entry_versions.published_at',
-        'saver.id as saver_id',
-        'saver.name as saver_name',
-        'publisher.id as publisher_id',
-        'publisher.name as publisher_name',
-      ])
-      .where('entry_id', '=', id)
-      .$if(number !== undefined, (qb) => qb.where('number', '=', number!))
-      .orderBy('number', 'desc')
-      .execute()
-    return rows.map((version) => ({
-      number: version.number,
-      name: version.name,
-      createdBy: version.saver_id ? { id: version.saver_id, name: version.saver_name } : null,
-      createdAt: version.created_at,
-      publishedAt: version.published_at,
-      publishedBy: version.publisher_id ? { id: version.publisher_id, name: version.publisher_name } : null,
-    }))
-  }
-
   // A version's number in the URL, short enough to be a Postgres integer, or a 404
   const numberOf = (param: string) => {
     if (!/^\d{1,9}$/.test(param)) throw new HTTPException(404)
@@ -706,7 +746,7 @@ export function entryRoutes(
 
   // One of an entry's versions, as the list gives it, or a 404
   const versionOf = async (id: string, number: number) => {
-    const [version] = await listVersions(id, number)
+    const [version] = await listVersions(db, id, number)
     if (!version) throw new HTTPException(404)
     return version
   }
@@ -715,7 +755,7 @@ export function entryRoutes(
   // the values brought up to date
   app.get('/entries/:id/versions', async (c) => {
     const { row } = await find(c.req.param('id'))
-    return c.json({ data: await listVersions(row.id) })
+    return c.json({ data: await listVersions(db, row.id) })
   })
 
   // Name a version, or clear its name with an empty one. An archived entry's versions stay as they are.
@@ -759,38 +799,7 @@ export function entryRoutes(
 
   app.get('/entries/:id/versions/:number', async (c) => {
     const { row } = await find(c.req.param('id'))
-    const number = numberOf(c.req.param('number'))
-    const version = await db
-      .selectFrom('entry_versions')
-      .selectAll()
-      .where('entry_id', '=', row.id)
-      .where('number', '=', number)
-      .executeTakeFirst()
-    if (!version) throw new HTTPException(404)
-
-    // Run the ups of the content migrations that ran after the version was saved, so its values fit the type's fields
-    const files = await migrations()
-    const applied = await appliedMigrations(db, files)
-    const since = version.migration === null ? 0 : applied.indexOf(version.migration) + 1
-    if (since === 0 && version.migration !== null) {
-      const message = `Version ${number} was saved after the content migration ${version.migration}, which has been rolled back. Migrate again to restore it.`
-      throw new HTTPException(409, { message })
-    }
-    const values = await catchUp(
-      row.type,
-      version.values,
-      applied.slice(since).map((name) => files[name].up),
-    )
-
-    return c.json({
-      data: {
-        number: version.number,
-        values,
-        parentId: version.parent_id,
-        createdBy: version.created_by,
-        createdAt: version.created_at,
-      },
-    })
+    return c.json({ data: await readVersion(db, migrations, row, numberOf(c.req.param('number'))) })
   })
 
   return app

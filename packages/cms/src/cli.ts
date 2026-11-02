@@ -150,6 +150,7 @@ async function dev(db: Kysely<Database>) {
     delivery: config.delivery,
     forms: config.forms,
     versions: config.versions,
+    mcp: config.mcp,
   })
   const api = getRequestListener(app.fetch)
 
@@ -181,6 +182,7 @@ async function start(db: Kysely<Database>) {
     delivery: config.delivery,
     forms: config.forms,
     versions: config.versions,
+    mcp: config.mcp,
   })
 
   // Hands events on to automations, in this process

@@ -6,6 +6,7 @@ import { Database, uuidv7 } from './db'
 import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
 import { formRoutes, publicFormRoutes } from './forms'
+import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
 import { hashToken, verifyPassword } from './passwords'
 import { signInSchema } from './schemas'
@@ -45,6 +46,8 @@ export interface AppOptions {
   versions?: VersionOptions
   // The built admin's folder, which iight start serves at /admin/. iight dev serves the admin with Vite instead.
   admin?: string
+  // Whether /mcp and the admin's MCP tokens page are on
+  mcp?: boolean
 }
 
 export function createApp(
@@ -60,6 +63,7 @@ export function createApp(
     forms,
     versions,
     admin,
+    mcp = false,
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
@@ -177,12 +181,19 @@ export function createApp(
   app.use('/api/submissions/*', signedIn)
   app.use('/api/automations/*', signedIn)
   app.use('/api/keys/*', signedIn)
-  app.route('/api', typeRoutes(types, groups, editor))
+  if (mcp) app.use('/api/tokens/*', signedIn)
+  app.route('/api', typeRoutes(types, groups, editor, mcp))
   app.route('/api', entryRoutes(db, types, migrations, versions))
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
   app.route('/api', keyRoutes(db))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
+
+  // AI clients read the site's content as a person, with a token that person made (PLAN.md section 21)
+  if (mcp) {
+    app.route('/api', tokenRoutes(db))
+    app.route('/', mcpRoutes(db, types, migrations))
+  }
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
   app.route('/v1', publicFormRoutes(db, forms))

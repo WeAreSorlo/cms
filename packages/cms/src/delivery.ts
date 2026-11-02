@@ -28,13 +28,30 @@ async function makeKey(db: Kysely<Database>, name: string, scopes: Array<string>
 export const createApiKey = async (db: Kysely<Database>, name: string, scopes: Array<string> = []) =>
   (await makeKey(db, name, scopes, null)).token
 
-// When this process last wrote each key's last_used_at, so reads don't each write it
+// When this process last wrote each key's and personal token's last_used_at, so reads don't each write it
 const writtenAt = new Map<string, number>()
 
-// The key a request sends for the delivery API, as Authorization: Bearer <key>, marked as used once a minute. Other
-// processes mark it too, so the database only takes a time a minute after the last.
+// What a request sends as Authorization: Bearer <token>
+export const bearerOf = (c: Context) => c.req.header('authorization')?.match(/^Bearer (\S+)$/)?.[1]
+
+// Marks a key or a personal token as used, once a minute. Other processes mark it too, so the database only takes a
+// time a minute after the last.
+export async function markUsed(db: Kysely<Database>, table: 'api_keys' | 'personal_tokens', id: string) {
+  if (Date.now() - (writtenAt.get(id) ?? 0) < 60_000) return
+  writtenAt.set(id, Date.now())
+  await db
+    .updateTable(table)
+    .set({ last_used_at: sql`now()` })
+    .where('id', '=', id)
+    .where((eb) =>
+      eb.or([eb('last_used_at', 'is', null), eb('last_used_at', '<=', sql<Date>`now() - interval '1 minute'`)]),
+    )
+    .execute()
+}
+
+// The key a request sends for the delivery API, marked as used
 export async function keyOf(db: Kysely<Database>, c: Context) {
-  const key = c.req.header('authorization')?.match(/^Bearer (\S+)$/)?.[1]
+  const key = bearerOf(c)
   const found = key
     ? await db
         .selectFrom('api_keys')
@@ -42,17 +59,7 @@ export async function keyOf(db: Kysely<Database>, c: Context) {
         .where('token_hash', '=', hashToken(key))
         .executeTakeFirst()
     : undefined
-  if (found && Date.now() - (writtenAt.get(found.id) ?? 0) >= 60_000) {
-    writtenAt.set(found.id, Date.now())
-    await db
-      .updateTable('api_keys')
-      .set({ last_used_at: sql`now()` })
-      .where('id', '=', found.id)
-      .where((eb) =>
-        eb.or([eb('last_used_at', 'is', null), eb('last_used_at', '<=', sql<Date>`now() - interval '1 minute'`)]),
-      )
-      .execute()
-  }
+  if (found) await markUsed(db, 'api_keys', found.id)
   return found
 }
 

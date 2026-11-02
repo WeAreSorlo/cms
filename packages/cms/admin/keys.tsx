@@ -237,8 +237,8 @@ export function KeyPage({ id }: { id: string }) {
   return apiKey ? <KeyEditor apiKey={apiKey} token={token} /> : <Loading />
 }
 
-// A new key, which the server keeps only the hash of, so it's shown just this once
-function NewToken({ name, token }: { name: string; token: string }) {
+// A new key, or a personal token, which the server keeps only the hash of, so it's shown just this once
+export function NewToken({ name, token, noun = 'key' }: { name: string; token: string; noun?: 'key' | 'token' }) {
   const field = useRef<HTMLInputElement>(null)
   const note = useId()
   const [problem, setProblem] = useState('')
@@ -253,27 +253,29 @@ function NewToken({ name, token }: { name: string; token: string }) {
   const copy = () => {
     setProblem('')
     navigator.clipboard.writeText(token).then(
-      () => toast('Copied the key'),
-      () => setProblem("Couldn't copy the key. Select it and copy it instead."),
+      () => toast(`Copied the ${noun}`),
+      () => setProblem(`Couldn't copy the ${noun}. Select it and copy it instead.`),
     )
   }
 
   return (
     <div>
       <Notice tone='warning'>
-        <span id={note}>Copy the key for {name} now, since it can't be shown again.</span>
+        <span id={note}>
+          Copy the {noun} for {name} now, since it can't be shown again.
+        </span>
       </Notice>
       <input
         ref={field}
         className='embed'
-        aria-label={`Key for ${name}`}
+        aria-label={`${noun === 'key' ? 'Key' : 'Token'} for ${name}`}
         aria-describedby={note}
         readOnly
         value={token}
         onFocus={(event) => event.currentTarget.select()}
       />
       <div className='actions'>
-        <button type='button' className='iight-button' onClick={copy}>
+        <button type='button' className='iight-button' aria-label={`Copy the ${noun}`} onClick={copy}>
           <Copy /> Copy
         </button>
         {problem && (

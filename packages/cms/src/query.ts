@@ -125,7 +125,7 @@ const runSubject: Subject = {
   },
 }
 
-const operators = [
+export const operators = [
   ...['=', '!=', '>', '>=', '<', '<=', 'like', 'not like'],
   ...['in', 'not in', 'between', 'not between', 'exists', 'not exists'],
 ]
@@ -249,6 +249,9 @@ function read(subject: Subject, field: string) {
   return 'name' in found ? sql`${sql.ref('values')} -> ${found.name}` : sql.ref(found.column)
 }
 
+// An ilike pattern for some text anywhere, case-insensitive, as legacy's MySQL matched like
+const anywhere = (text: string) => `%${text.replace(/[\\%_]/g, '\\$&')}%`
+
 function conditionSql(eb: ExpressionBuilder<any, any>, subject: Subject, { field, op, value }: Condition) {
   const found = target(subject, field)
   const lhs = read(subject, field)
@@ -260,10 +263,8 @@ function conditionSql(eb: ExpressionBuilder<any, any>, subject: Subject, { field
   switch (op) {
     case 'like':
     case 'not like': {
-      // Case-insensitive, as legacy's MySQL was, matching anywhere in the text
       const text = 'name' in found ? sql`${sql.ref('values')} ->> ${found.name}` : lhs
-      const pattern = `%${String(value).replace(/[\\%_]/g, '\\$&')}%`
-      return eb(text, op === 'like' ? 'ilike' : 'not ilike', pattern)
+      return eb(text, op === 'like' ? 'ilike' : 'not ilike', anywhere(String(value)))
     }
     case 'in':
     case 'not in':
@@ -324,6 +325,26 @@ async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Su
 // One page of a type's entries, from where they're read, such as their live copies
 export const listEntries = <Row>(from: SelectQueryBuilder<any, any, {}>, type: ContentType, query: Query) =>
   paginate<Row>(from.where('type', '=', type.name), entrySubject(type), query)
+
+// One page of the entries with a text value that holds some text, case-insensitive, in any field at any depth, the most
+// recently edited first. jsonb_path_query walks every value once, arrays included.
+// shortcut: reads every entry's values, add a search index when sites have thousands of entries
+export const searchEntries = <Row>(
+  from: SelectQueryBuilder<any, any, {}>,
+  text: string,
+  page: number,
+  perPage: number,
+) =>
+  paginate<Row>(
+    from.where(
+      sql<SqlBool>`exists (
+        select 1 from jsonb_path_query(${sql.ref('values')}, 'strict $.**') as found (value)
+        where jsonb_typeof(value) = 'string' and value #>> '{}' ilike ${anywhere(text)}
+      )`,
+    ),
+    { properties: { updatedAt: ['updated_at', 'timestamp'] } },
+    { where: [], order: { updatedAt: 'desc' }, page, perPage },
+  )
 
 export const listMedia = (db: Kysely<Database>, query: Query) =>
   paginate<MediaRow>(db.selectFrom('media'), mediaSubject, query)

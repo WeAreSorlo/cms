@@ -9,6 +9,7 @@ import {
   LogOut,
   LucideProvider,
   Menu,
+  Plug,
   SunMoon,
   Workflow,
   X,
@@ -22,12 +23,15 @@ export function Shell({
   hash,
   types,
   user,
+  mcp,
   onSignOut,
   children,
 }: {
   hash: string
   types: Map<string, ContentType>
   user: { name: string }
+  // Whether /mcp is on, so the user's row links to their MCP tokens
+  mcp: boolean
   onSignOut: () => void
   children: ReactNode
 }) {
@@ -146,6 +150,17 @@ export function Shell({
           </div>
           <div className='cms-nav__user'>
             <p>Signed in as {user.name}</p>
+            {mcp && (
+              <a
+                className='cms-icon-button'
+                href='#/tokens'
+                aria-label='MCP tokens'
+                title='MCP tokens'
+                aria-current={section === 'tokens' ? 'page' : undefined}
+              >
+                <Plug />
+              </a>
+            )}
             <button
               type='button'
               className='cms-icon-button cms-nav__theme'

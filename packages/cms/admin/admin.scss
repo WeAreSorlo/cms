@@ -220,6 +220,12 @@ pre {
   anchor-name: --cms-theme;
 }
 
+// The user's own pages, such as their MCP tokens, marked as the nav marks its current item
+.cms-nav__user .cms-icon-button[aria-current='page'] {
+  color: var(--cms-on-accent);
+  background: var(--cms-accent);
+}
+
 // The theme switch, over the page
 .cms-popover {
   padding: var(--iight-size-3);
@@ -1359,6 +1365,11 @@ a.iight-button {
   background: var(--cms-surface);
   border: var(--iight-size-px) solid var(--cms-border);
   border-radius: var(--iight-size-1);
+}
+
+// Short code shown whole, such as a client's setup, as tall as its lines wrap to where browsers can size it so
+.embed--whole {
+  field-sizing: content;
 }
 
 // A part of a page below its form, such as a form's embed code

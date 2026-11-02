@@ -19,6 +19,7 @@
   "dependencies": {
     "@hono/node-server": "^2.1.5",
     "@iight/sdk": "*",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@vitejs/plugin-react": "^6.1.2",
     "file-type": "^22.2.0",
     "flydrive": "^2.2.0",
@@ -34,7 +35,8 @@
     "sass": "^1.106.1",
     "sharp": "^0.35.5",
     "tsx": "^4.23.15",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",

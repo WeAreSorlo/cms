@@ -16,6 +16,9 @@ export interface Config {
   webhooks?: WebhookOptions
   // How many versions each entry keeps. Every version is kept if not given.
   versions?: VersionOptions
+  // Turns on /mcp, where AI clients such as Claude Code read the site's content as a person, with a token from the
+  // admin's MCP tokens page. Off if not given.
+  mcp?: boolean
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>

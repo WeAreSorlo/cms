@@ -112,6 +112,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_30_000014_add_api_key_permissions',
     '2026_10_30_000015_add_version_names_and_publishes',
     '2026_10_31_000016_add_version_parents',
+    '2026_11_02_000017_create_personal_tokens_table',
   ])
 
   await migrate(db, migrations)
@@ -127,6 +128,7 @@ test("the CMS's own migrations run forward and back", async () => {
     'forms',
     'media',
     'migrations',
+    'personal_tokens',
     'published_entries',
     'sessions',
     'submissions',
@@ -287,7 +289,7 @@ test("the migration that records versions' parents gives each version the parent
     .values([version(guide, 1), version(install, 1), version(install, 2)])
     .execute()
 
-  await migrate(db, migrations)
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name <= parents)))
   const parentsOf = async (entry: { id: string }) =>
     (
       await db

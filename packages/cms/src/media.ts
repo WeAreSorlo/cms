@@ -93,7 +93,7 @@ export const toMedia = (row: MediaRow, origin: string) => ({
   updatedAt: row.updated_at,
 })
 
-const toAdminMedia = (row: MediaRow, origin: string) => ({ ...toMedia(row, origin), createdBy: row.created_by })
+export const toAdminMedia = (row: MediaRow, origin: string) => ({ ...toMedia(row, origin), createdBy: row.created_by })
 
 export async function findMedia(db: Kysely<Database>, id: string) {
   const row = isUuid(id) ? await db.selectFrom('media').selectAll().where('id', '=', id).executeTakeFirst() : undefined

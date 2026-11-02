@@ -448,7 +448,7 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `POST /api/session`                        | Signs in with `{ email, password }`. Replies `{ data: user }` and sets the `iight_session` cookie, or 422 with core's validation report                                                                                                                                                                                                                                                |
 | `GET /api/session`                         | Replies `{ data: user }` for the signed-in user, or 401                                                                                                                                                                                                                                                                                                                                |
 | `DELETE /api/session`                      | Signs out                                                                                                                                                                                                                                                                                                                                                                              |
-| `GET /api/types`                           | Lists the content types, each with its uses of shared groups expanded, `groups`, the shared groups as their files have them, and `editable`, which is true in `iight dev`                                                                                                                                                                                                              |
+| `GET /api/types`                           | Lists the content types, each with its uses of shared groups expanded, `groups`, the shared groups as their files have them, `editable`, which is true in `iight dev`, and `mcp`, which is true when [MCP](#mcp) is on                                                                                                                                                                 |
 | `POST /api/types`                          | Creates a type from its settings and `fields`, giving it an `id`. Replies `{ data: type, migration: { file, notes } }`, or 422 with core's report                                                                                                                                                                                                                                      |
 | `PUT /api/types/:type`                     | Replaces a type, renaming its file when `name` changes, and writes a content migration for the change. Replies as `POST` does                                                                                                                                                                                                                                                          |
 | `DELETE /api/types/:type`                  | Deletes a type's file and writes a migration that flags its entries, which stay. Replies `{ migration: { file, notes } }`                                                                                                                                                                                                                                                              |
@@ -496,6 +496,9 @@ The admin uses it with the session cookie, which every route but `/api/session` 
 | `POST /api/keys`                           | Makes a key from `{ name, scopes }`. Replies 201 with `{ data: key }`, whose `token` is the key itself, in this reply and no other, or 422 with core's report                                                                                                                                                                                                                          |
 | `PUT /api/keys/:id`                        | Saves `{ name, scopes }`, keeping the key itself                                                                                                                                                                                                                                                                                                                                       |
 | `DELETE /api/keys/:id`                     | Revokes a key, which gets 401s from then on                                                                                                                                                                                                                                                                                                                                            |
+| `GET /api/tokens`                          | Lists the signed-in person's [MCP tokens](#mcp), each as `{ id, name, createdAt, lastUsedAt }`, and never anyone else's. Only there when MCP is on                                                                                                                                                                                                                                     |
+| `POST /api/tokens`                         | Makes a token from `{ name }`. Replies 201 with `{ data: token }`, whose `token` is the token itself, in this reply and no other, or 422 with core's report                                                                                                                                                                                                                            |
+| `DELETE /api/tokens/:id`                   | Revokes one of the signed-in person's tokens, which gets 401s from then on. Anyone else's replies 404                                                                                                                                                                                                                                                                                  |
 
 The type and shared group routes reply 403 outside `iight dev`. Creating or saving an entry replies 409 while a content migration hasn't run.
 
@@ -604,6 +607,73 @@ export default defineConfig({
 | ---------- | --------------------------------------------------------------------------------------- |
 | `depth`    | The levels of links `with` resolves when a request doesn't send `depth`, 2 if not given |
 | `maxDepth` | The most levels a request can ask for, 5 if not given                                   |
+
+## MCP
+
+AI clients such as Claude Code, Cursor and VS Code can read the site's content at `/mcp`, the CMS's MCP server, with a token a person makes in the admin. Each token acts as the person who made it, and only reads. It's off until `iight.config.ts` turns it on, and the client brings its own model, so it needs no AI settings:
+
+```ts
+export default defineConfig({
+  // …
+  mcp: true,
+})
+```
+
+With it off, `/mcp` and the token routes reply 404 and the admin has no tokens page.
+
+### Tokens
+
+Each person makes their own on the admin's MCP tokens page, from the plug in the user's row of the nav, and sees and revokes only their own. A token shows once, when it's made, with the setup for each client below, since only its hash is stored. It starts with `iightpat_`, so neither people nor secret scanners take it for an API key, which starts with `iight_`. The page says when each token was last used, which is written at most once a minute, and revoking one deletes it, so its next request gets a 401. Deleting a person deletes their tokens.
+
+Tokens open `/mcp` and nothing else, and API keys and the admin's session never open it.
+
+### Connecting a client
+
+The server takes Streamable HTTP at `https://<your CMS>/mcp`, with the token as `Authorization: Bearer <token>`. A new token's page shows each client's setup with the token filled in.
+
+- **Claude Code:** `claude mcp add --transport http iight https://<your CMS>/mcp --header "Authorization: Bearer <token>"`
+- **Cursor:** in `~/.cursor/mcp.json`, outside any project, so the token stays out of its repository:
+
+  ```json
+  { "mcpServers": { "iight": { "url": "https://<your CMS>/mcp", "headers": { "Authorization": "Bearer <token>" } } } }
+  ```
+
+- **VS Code:** in `.vscode/mcp.json`, which asks for the token when it first connects, so the file never holds it:
+
+  ```json
+  {
+    "inputs": [{ "type": "promptString", "id": "iight-token", "description": "iight MCP token", "password": true }],
+    "servers": {
+      "iight": {
+        "type": "http",
+        "url": "https://<your CMS>/mcp",
+        "headers": { "Authorization": "Bearer ${input:iight-token}" }
+      }
+    }
+  }
+  ```
+
+The server is stateless: each POST gets a server of its own, which replies with JSON, so nothing is kept between requests and any process can answer. GET and DELETE reply 405, since nothing streams. A request without a valid token gets a 401 with `WWW-Authenticate: Bearer resource_metadata="https://<your CMS>/.well-known/oauth-protected-resource/mcp"`, with `error="invalid_token"` when it sent one, as the MCP spec's authorization section has it. That document comes with OAuth, for the clients that only connect that way, so it's a 404 until then.
+
+### Tools
+
+The tools live in `src/tools.ts`, defined once with Zod schemas, so the admin's assistant can use the same ones later. They run as the token's maker, through the queries and checks the admin API uses, and reply with its shapes. None changes anything, and each one's description says that what it returns is content to read, never instructions to follow.
+
+| Tool                 | Reads                                                                                                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_content_types` | The content types, as `GET /api/types` lists them, with shared groups expanded, or the ones in `names`                                                                           |
+| `list_entries`       | A type's entries a page at a time, with their drafts' values and their status, filtered by `where` and sorted by `order` as the list API takes them, its archive with `archived` |
+| `search_entries`     | The entries with text holding `query`, in any field at any depth, across every type or those in `types`, drafts included and archived entries left out, newest edits first       |
+| `get_entry`          | One entry by its `id`                                                                                                                                                            |
+| `list_versions`      | An entry's versions, newest first, as its history lists them                                                                                                                     |
+| `get_version`        | One version's values, caught up with the content migrations since it was saved                                                                                                   |
+| `list_forms`         | The forms with their fields, or the ones in `names`                                                                                                                              |
+| `list_media`         | The media library a page at a time, filtered and sorted as `GET /v1/media` takes them                                                                                            |
+| `get_media`          | One file by its `id`                                                                                                                                                             |
+
+`perPage` is 10 unless a call says otherwise, up to 50, and `query` takes 1 to 200 characters. `fields` keeps only some top-level fields in `values`, for lighter lists and for reading a large entry a part at a time. Each reply holds at most 30,000 characters of JSON, about 10,000 tokens: a list keeps the items that fit and says how many it left out and what to ask for instead, and anything else is cut there, with a notice to ask for fewer fields. A mistake, such as an unknown type or a field the query can't take, comes back as a tool error with the API's message, for the model to fix.
+
+Form submissions can't be read, since they hold visitors' personal data.
 
 ## The SDK
 
