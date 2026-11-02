@@ -128,6 +128,16 @@ function literal(value: unknown): string {
 // break in one would end the comment and run the rest
 const comment = (text: string) => `// ${text.replace(/\s+/g, ' ')}`
 
+// The flags and TODOs in a migration's text, as comment lines of their own like those make:migration writes, with
+// their line numbers. A developer deletes a TODO's line once its conversion is written.
+export const notesOf = (text: string) =>
+  text.split(/\r?\n/).flatMap((line, index) => {
+    const found = /^\s*\/\/ (Flagged|TODO): (.*)$/.exec(line)
+    return found
+      ? [{ kind: found[1] === 'TODO' ? ('todo' as const) : ('flag' as const), line: index + 1, text: found[2] }]
+      : []
+  })
+
 // A call to one of the entries helpers, broken over lines as Prettier breaks one longer than 120 columns inside up
 function call(method: string, ...args: Array<string>) {
   const line = `entries.${method}(${args.join(', ')})`

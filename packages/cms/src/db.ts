@@ -80,6 +80,11 @@ export interface Database {
     field_id: string
     target_id: string
   }
+  // What's due a rebuild, such as entry_relations once content migrations have run, with how many changes made it due
+  rebuilds: {
+    name: string
+    due: number
+  }
   api_keys: {
     id: string
     name: string

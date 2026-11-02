@@ -1,6 +1,6 @@
 import { flattenValidationReport, validateServerValues } from './core'
 import type { Database } from './db'
-import { type Migrations, loadMigrations } from './migrator'
+import { type MigrationFile, type Migrations, readMigrations } from './migrator'
 import { type EntryRow, type PublishedRow, isSaved } from './query'
 import { serverInputs } from './relations'
 import type { ContentType } from './types'
@@ -145,6 +145,30 @@ async function stepsOf(migration: ContentMigration) {
   return steps
 }
 
+// The helper calls a migration makes, each by the helper's name with its arguments by name and functions left out, for
+// saying what a waiting migration does on the admin's Migrations page. Like stepsOf, it only runs what the migration
+// declares, never a change to an entry.
+export async function callsOf(migration: ContentMigration) {
+  const calls: Array<Record<string, unknown>> = []
+  const named =
+    (helper: string, ...keys: Array<string>) =>
+    (...args: Array<unknown>) =>
+      void calls.push({ helper, ...Object.fromEntries(keys.map((key, index) => [key, args[index]])) })
+  await migration({
+    entries: {
+      renameField: named('renameField', 'type', 'from', 'to'),
+      removeField: named('removeField', 'type', 'path'),
+      addField: named('addField', 'type', 'path', 'value'),
+      mapField: named('mapField', 'type', 'path'),
+      renameLayout: named('renameLayout', 'type', 'from', 'to'),
+      removeLayout: named('removeLayout', 'type', 'path'),
+      renameType: named('renameType', 'from', 'to'),
+      update: named('update', 'type'),
+    },
+  })
+  return calls
+}
+
 const batchSize = 500
 
 // Both hold entries' values: the drafts, and the live copies of those that are published (PLAN.md section 17)
@@ -164,12 +188,45 @@ async function eachBatch<Row extends { id: string }>(
   }
 }
 
+// How many rows a migration's steps go through: each changing step goes through its type's drafts and live copies,
+// counted by the name the type's entries have before the migration's renames run
+async function rowsOf(db: Kysely<Database>, steps: Array<Step>) {
+  const before = new Map<string, string>()
+  const counted = new Map<string, number>()
+  let total = 0
+  for (const step of steps) {
+    const type = before.get(step.type) ?? step.type
+    if (step.rename !== undefined) {
+      before.set(step.rename, type)
+      continue
+    }
+    if (!counted.has(type)) {
+      let count = 0
+      for (const table of tables) {
+        const { rows } = await db
+          .selectFrom(table)
+          .select((eb) => eb.fn.countAll<string>().as('rows'))
+          .where('type', '=', type)
+          .executeTakeFirstOrThrow()
+        count += Number(rows)
+      }
+      counted.set(type, count)
+    }
+    total += counted.get(type)!
+  }
+  return total
+}
+
 // Run a content migration's up or down on every entry, drafts and live copies alike, a batch at a time, inside the
-// migrator's transaction.
+// migrator's transaction, saying how many rows it has been through of how many with each batch when asked.
 // shortcut: the slug and uri columns aren't recomputed, so a hand-written change to slug values leaves them stale;
 // recompute them when a migration needs that.
-async function run(db: Kysely<Database>, migration: ContentMigration) {
-  for (const step of await stepsOf(migration)) {
+async function run(db: Kysely<Database>, migration: ContentMigration, rows?: (done: number, total: number) => void) {
+  const steps = await stepsOf(migration)
+  const total = rows ? await rowsOf(db, steps) : 0
+  let done = 0
+  rows?.(done, total)
+  for (const step of steps) {
     if (step.rename !== undefined) {
       const taken = await db.selectFrom('entries').select('id').where('type', '=', step.rename).executeTakeFirst()
       if (taken) throw new Error(`Can't rename the type ${step.type} to ${step.rename}, which already has entries.`)
@@ -190,13 +247,14 @@ async function run(db: Kysely<Database>, migration: ContentMigration) {
             .orderBy('id')
             .limit(batchSize)
             .execute(),
-        async (rows) => {
-          const changed = rows.map((row) => ({ id: row.id, values: step.change!(row.values) }))
+        async (batch) => {
+          const changed = batch.map((row) => ({ id: row.id, values: step.change!(row.values) }))
           await sql`
             update ${sql.table(table)} target set "values" = data."values"
             from jsonb_to_recordset(${JSON.stringify(changed)}::jsonb) as data (id uuid, "values" jsonb)
             where target.id = data.id and target."values" <> data."values"
           `.execute(db)
+          rows?.((done += batch.length), total)
         },
       )
     }
@@ -211,9 +269,13 @@ export async function appliedMigrations(db: Kysely<Database>, files: Record<stri
   return rows.map((row) => row.name)
 }
 
-// The site project's content migrations, each of which must export an up and a down
-export async function loadContentMigrations(dir: string) {
-  const files = await loadMigrations<ContentMigrationFile>(dir)
+// The site project's content migrations, from its folder or from files read from it, each of which must export an up
+// and a down
+export async function loadContentMigrations(from: string | Array<MigrationFile<ContentMigrationFile>>) {
+  const files: Record<string, ContentMigrationFile> = {}
+  for (const file of typeof from === 'string' ? await readMigrations<ContentMigrationFile>(from) : from) {
+    files[file.name] = await file.load()
+  }
   for (const [name, file] of Object.entries(files)) {
     if (typeof file.up !== 'function' || typeof file.down !== 'function') {
       throw new Error(`The content migration ${name} must export an up and a down function.`)
@@ -222,22 +284,36 @@ export async function loadContentMigrations(dir: string) {
   return files
 }
 
+// Records, in a migration's transaction, that the links in entry_relations are due a rebuild from the entries' changed
+// values, until one finishes
+const linksDue = (trx: Kysely<Database>) =>
+  trx
+    .insertInto('rebuilds')
+    .values({ name: 'entry_relations', due: 1 })
+    .onConflict((oc) => oc.column('name').doUpdateSet({ due: sql`rebuilds.due + 1` }))
+    .execute()
+
 // Content migrations as the migrator runs them. Each also records on every entry the last migration its values have
-// been through.
-export function contentMigrations(files: Record<string, ContentMigrationFile>): Migrations {
+// been through, and that the links are due a rebuild. Given rows, each up says how far it has got, as run does.
+export function contentMigrations(
+  files: Record<string, ContentMigrationFile>,
+  rows?: (done: number, total: number) => void,
+): Migrations {
   return Object.fromEntries(
     Object.entries(files).map(([name, file]) => [
       name,
       {
         up: async (trx) => {
-          await run(trx, file.up)
+          await run(trx, file.up, rows)
           for (const table of tables) await trx.updateTable(table).set({ migration: name }).execute()
+          await linksDue(trx)
         },
         down: async (trx) => {
           await run(trx, file.down)
           const applied = await appliedMigrations(trx, files)
           const before = applied[applied.indexOf(name) - 1] ?? null
           for (const table of tables) await trx.updateTable(table).set({ migration: before }).execute()
+          await linksDue(trx)
         },
       },
     ]),

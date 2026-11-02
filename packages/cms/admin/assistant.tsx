@@ -333,8 +333,8 @@ function typeWarning(proposal: Proposal) {
   return [
     `Applying it writes ${file}${before.name !== after.name ? `, in place of ${before.name}.json` : ''}`,
     proposal.migration
-      ? `, and a content migration for its ${entries}, archived ones included, which a developer checks and runs ` +
-        'with iight migrate. Until it runs, no entry can be saved.'
+      ? `, and a content migration for its ${entries}, archived ones included, which a person checks and runs on ` +
+        'the Migrations page. Until it runs, no entry can be saved.'
       : '. It needs no content migration.',
     changes.some((change) => change.api) &&
       " It changes what the site's API returns, so the site's code that reads what it renames or removes needs " +
@@ -400,7 +400,8 @@ function Outcome({ proposal, focus }: { proposal: Proposal; focus: React.RefObje
         <a href={`#/schema/${proposal.after.name}`}>the content type</a>
         {proposal.migration?.file ? (
           <>
-            , with the migration <code>migrations/{proposal.migration.file}</code>, which iight migrate runs
+            , with the migration <code>migrations/{proposal.migration.file}</code>, which waits to be run on{' '}
+            <a href='#/migrations'>Migrations</a>
           </>
         ) : (
           ', which needed no content migration'

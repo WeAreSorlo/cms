@@ -12,6 +12,19 @@ import { TypeGroups } from './groups'
 import { entryFields, fieldChoicesOf, filterOf, whereOf } from './lists'
 import { Media, MediaCard } from './media'
 import {
+  Check,
+  CheckList,
+  Migration,
+  MigrationActions,
+  MigrationsNotice,
+  RanList,
+  Run,
+  RunOutcome,
+  WaitingList,
+  deletionsOf,
+  deletionsQuestion,
+} from './migrations'
+import {
   Badge,
   EmptyState,
   IconButton,
@@ -908,6 +921,38 @@ const proposalMessages: Array<ChatMessage> = [
     ],
     notice: null,
   },
+  { role: 'user', text: 'Call the intro the summary' },
+  {
+    role: 'assistant',
+    parts: [
+      {
+        type: 'step',
+        text: 'Proposed changes to the content type “Articles”',
+        failed: false,
+        proposals: [
+          proposalOf({
+            id: 'summary',
+            kind: 'type',
+            targetId: 'typ_post',
+            type: 'post',
+            before: postFile,
+            after: {
+              ...postFile,
+              fields: postFile.fields.map((field) =>
+                field.name === 'intro' ? { ...field, name: 'summary', label: 'Summary' } : field,
+              ),
+            },
+            title: 'Articles',
+            entries: 12,
+            status: 'applied',
+            migration: { file: '2026_11_02_181947_post.ts', notes: [] },
+          }),
+        ],
+      },
+      { type: 'text', text: "Its migration renames every post's intro once it runs." },
+    ],
+    notice: null,
+  },
 ]
 
 const assistants: Array<{ label: string; assistant: Partial<Assistant> }> = [
@@ -981,6 +1026,117 @@ const sampleAssistant = (assistant: Partial<Assistant>, toast: (message: string)
   refresh: async () => undefined,
   ...assistant,
 })
+
+// The Migrations page's samples, whose steps name these types by label
+const migrationTypes = new Map<string, ContentType>([
+  ['blog', { id: 'typ_blog', name: 'blog', label: 'Blog posts', structure: 'collection', fields: [] }],
+  ['pages', { id: 'typ_pages', name: 'pages', label: 'Pages', structure: 'hierarchical', fields: [] }],
+])
+const waitingMigration = (name: string, more: Partial<Migration> = {}): Migration => ({
+  name,
+  kind: 'content',
+  status: 'waiting',
+  batch: null,
+  ranAt: null,
+  steps: [],
+  notes: [],
+  problem: null,
+  ...more,
+})
+const cmsWaiting: Migration = {
+  name: '2026_11_03_000023_add_example',
+  kind: 'cms',
+  status: 'waiting',
+  batch: null,
+  ranAt: null,
+}
+const blogWaiting = waitingMigration('2026_11_02_181947_blog', {
+  steps: [
+    { helper: 'renameType', from: 'news', to: 'blog' },
+    { helper: 'renameField', type: 'blog', from: 'title', to: 'headline' },
+    { helper: 'renameField', type: 'blog', from: 'seo_title', to: 'seo.title' },
+    { helper: 'removeField', type: 'blog', path: 'summary' },
+    { helper: 'addField', type: 'blog', path: 'featured', value: false },
+    { helper: 'mapField', type: 'blog', path: 'price' },
+  ],
+  notes: [
+    {
+      kind: 'flag',
+      line: 7,
+      text: "deletes the values of summary, which down can't bring back. Old versions keep them",
+    },
+    {
+      kind: 'flag',
+      line: 10,
+      text: 'headline is now required, so some entries may not pass. Run iight migrate --check',
+    },
+    { kind: 'todo', line: 12, text: 'price changed from text to number. Convert its values here, and back in down' },
+  ],
+})
+const pagesWaiting = waitingMigration('2026_11_02_182123_pages', {
+  steps: [
+    { helper: 'renameLayout', type: 'pages', from: 'blocks.quote', to: 'blocks.citation' },
+    { helper: 'removeLayout', type: 'pages', path: 'blocks.gallery' },
+    { helper: 'update', type: 'pages' },
+  ],
+})
+const brokenWaiting = waitingMigration('2026_11_02_182500_pages', {
+  problem: 'Transform failed with 1 error: Unexpected ")" at line 4',
+})
+const sampleWaiting = [cmsWaiting, blogWaiting, pagesWaiting, brokenWaiting]
+const sampleRan: Array<Migration> = [
+  ['2026_10_29_170107_blog', 'content', 4, '2026-10-29T17:02:00Z'],
+  ['2026_10_30_091500_pages', 'content', 5, '2026-10-30T09:16:00Z'],
+  ['2026_10_28_000000_create_users_table', 'cms', 1, '2026-10-28T09:00:00Z'],
+  ['2026_10_28_000001_create_sessions_table', 'cms', 1, '2026-10-28T09:00:00Z'],
+].map(([name, kind, batch, ranAt]) => ({ name, kind, status: 'ran', batch, ranAt }) as Migration)
+const sampleRun = (run: Partial<Run>): Run => ({
+  status: 'running',
+  migrations: [cmsWaiting.name, blogWaiting.name, pagesWaiting.name],
+  ran: [],
+  step: null,
+  failed: null,
+  startedBy: { id: 'usr_levi', name: 'Levi' },
+  startedAt: '2026-11-02T19:00:00Z',
+  finishedAt: null,
+  ...run,
+})
+const runs = {
+  running: sampleRun({
+    ran: [cmsWaiting.name],
+    step: { kind: 'migration', name: blogWaiting.name, done: 1500, total: 12000 },
+  }),
+  linking: sampleRun({
+    ran: [cmsWaiting.name, blogWaiting.name, pagesWaiting.name],
+    step: { kind: 'links', name: null, done: 3000, total: 12000 },
+  }),
+  done: sampleRun({
+    status: 'done',
+    ran: [cmsWaiting.name, blogWaiting.name, pagesWaiting.name],
+    finishedAt: '2026-11-02T19:01:00Z',
+  }),
+  failed: sampleRun({
+    status: 'failed',
+    ran: [cmsWaiting.name],
+    failed: { name: blogWaiting.name, message: "Can't rename the type news to blog, which already has entries." },
+    finishedAt: '2026-11-02T19:00:20Z',
+  }),
+}
+const sampleCheck: Check = {
+  entries: 2,
+  failures: [
+    {
+      entry: { id: 'ent_launch', type: 'blog', title: 'Launch day', archived: false },
+      copy: 'live',
+      messages: { headline: ['This field is required.'] },
+    },
+    {
+      entry: { id: 'ent_old', type: 'news', title: null, archived: true },
+      copy: 'draft',
+      messages: { type: ["There's no content type named news any more."] },
+    },
+  ],
+}
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
@@ -1350,6 +1506,94 @@ export default function Design() {
           </ul>
         </PanelSlot.Provider>
       </GroupsContext.Provider>
+
+      <h2>Migrations</h2>
+      <p>
+        While migrations wait, a notice above every page but Migrations says what that stops: saving entries for the
+        site's content migrations, and pages whose tables are behind for the CMS's own. The Migrations page lists what
+        waits in the order Run runs it, each content migration with what it does in words, its flags, its TODOs and why
+        it doesn't load, then the ones that ran. In iight dev its panel has Run, which asks first when what waits
+        deletes values, then Check entries once nothing waits. During a run, each migration says where it has got, and a
+        line under Run says how far.
+      </p>
+      <TypesContext.Provider value={migrationTypes}>
+        <h3>The notice</h3>
+        <MigrationsNotice waiting={[blogWaiting]} editable />
+        <MigrationsNotice waiting={[cmsWaiting]} editable />
+        <MigrationsNotice waiting={sampleWaiting} editable />
+        <MigrationsNotice waiting={[blogWaiting, pagesWaiting]} editable={false} />
+        <MigrationsNotice waiting={sampleWaiting} run={runs.running} editable />
+
+        <h3>Waiting</h3>
+        <WaitingList waiting={sampleWaiting} />
+        <h3>During a run</h3>
+        <WaitingList waiting={sampleWaiting.slice(0, 3)} run={runs.running} />
+        <h3>Nothing waiting</h3>
+        <WaitingList waiting={[]} />
+
+        <h3>How a run ended</h3>
+        <RunOutcome run={runs.done} />
+        <RunOutcome run={runs.failed} />
+        <RunOutcome
+          run={{
+            ...runs.done,
+            status: 'failed',
+            failed: { name: null, message: 'Rebuilding the links between entries failed: Connection lost.' },
+          }}
+        />
+        <RunOutcome run={{ ...runs.failed, failed: { name: null, message: 'Connection terminated unexpectedly' } }} />
+        <RunOutcome run={runs.done} waiting={1} />
+
+        <PanelSlot.Provider value={null}>
+          <ul className='cms-design__panels'>
+            {(
+              [
+                ['Waiting', sampleWaiting.length, undefined],
+                ['Running', 3, runs.running],
+                ['Rebuilding links', 3, runs.linking],
+                ['Nothing waiting', 0, runs.done],
+              ] as const
+            ).map(([label, waiting, run]) => (
+              <li key={label}>
+                <h3>{label}</h3>
+                <Panel
+                  label='Migrations'
+                  actions={
+                    <MigrationActions
+                      waiting={waiting}
+                      run={run}
+                      onRun={() => toast('Runs the migrations')}
+                      onCheck={() => toast('Checks every entry')}
+                    />
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        </PanelSlot.Provider>
+        <div className='actions'>
+          <button
+            type='button'
+            className='iight-button'
+            onClick={async () => {
+              const sure = await confirm({
+                title: 'Run 4 migrations, deleting values?',
+                body: deletionsQuestion(deletionsOf(sampleWaiting, migrationTypes)),
+                action: 'Run and delete',
+                danger: true,
+              })
+              toast(sure ? 'Ran them' : 'Cancelled')
+            }}
+          >
+            Ask before running
+          </button>
+        </div>
+
+        <h3>Ran</h3>
+        <RanList ran={sampleRan} />
+        <h3>Entries that don't pass</h3>
+        <CheckList check={sampleCheck} />
+      </TypesContext.Provider>
 
       <h2>Assistant</h2>
       <p>

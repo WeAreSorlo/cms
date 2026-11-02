@@ -2,14 +2,14 @@ import type { Config } from '.'
 import { anthropic } from './ai'
 import { createApp } from './app'
 import { createWorker } from './automations'
-import { checkEntries, contentMigrations, loadContentMigrations } from './content'
+import { type ContentMigrationFile, checkEntries, contentMigrations, loadContentMigrations } from './content'
 import { flattenValidationReport, inputs, validateServerValues } from './core'
 import { Database, createDb, uuidv7 } from './db'
 import { createApiKey } from './delivery'
-import { makeMigration } from './makeMigration'
-import { loadMigrations, migrate, migrationsDir, rollback, status } from './migrator'
+import { makeMigration, notesOf } from './makeMigration'
+import { loadMigrations, migrationsDir, ranMigrations, readMigrations, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
-import { rebuildRelations } from './relations'
+import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
 import { apiKeySchema, apiKeyScopes, userSchema } from './schemas'
 import { loadSchema } from './types'
 import type { FieldSchema } from 'iight'
@@ -30,10 +30,33 @@ const commands: Record<string, Command> = {
     description: "Run pending migrations, or with --check, list entries that don't pass",
     run: async (db, args) => {
       if (args.includes('--check')) return check(db)
-      const { cms, content } = await loadAllMigrations()
-      const names = await migrate(db, cms, contentMigrations(content))
-      console.log(names.length ? names.map((name) => `Migrated ${name}`).join('\n') : 'Nothing to migrate.')
-      await afterContentMigrations(db, names, content)
+      const { cms, content, files } = await loadAllMigrations()
+
+      // A TODO left in a waiting migration means its stub, which changes nothing, would run. Its text is the one its
+      // module was loaded from, so what's checked is what runs.
+      const ran = new Set((await ranMigrations(db)).map((row) => row.name))
+      const todos = files
+        .filter((file) => !ran.has(file.name))
+        .flatMap((file) => todosIn(file.name, notesOf(file.text)))
+      if (todos.length) {
+        console.error([...todos, 'Finish each TODO, then delete its TODO comment, and migrate again.'].join('\n'))
+        process.exitCode = 1
+        return
+      }
+
+      const { ran: names, failed, links } = await runMigrations(db, { cms, content, links: projectLinks })
+      if (names.length) console.log(names.map((name) => `Migrated ${name}`).join('\n'))
+      if (links === 'rebuilt') console.log('Rebuilt the links between entries.')
+      if (failed) {
+        const what = failed.name
+          ? `${failed.name} failed and changed nothing, and the migrations after it didn't run.`
+          : failed.during === 'links'
+            ? 'Rebuilding the links between entries failed. The next migrate, or start of the server, rebuilds them.'
+            : 'The migrations stopped before the next one started, so it and those after it still wait.'
+        console.error(what, failed.error)
+        process.exitCode = 1
+      } else if (!names.length && !links) console.log('Nothing to migrate.')
+      if (links === 'waiting') console.log(linksWait)
     },
   },
   'migrate:rollback': {
@@ -42,8 +65,11 @@ const commands: Record<string, Command> = {
       const { cms, content } = await loadAllMigrations()
       const names = await rollback(db, { ...cms, ...contentMigrations(content) })
       console.log(names.length ? names.map((name) => `Rolled back ${name}`).join('\n') : 'Nothing to roll back.')
-      // Rolling back the CMS's own migrations can drop entry_relations
-      if (!names.some((name) => Object.hasOwn(cms, name))) await afterContentMigrations(db, names, content)
+      // Rolling back the CMS's own migrations can drop entry_relations and rebuilds
+      if (names.some((name) => Object.hasOwn(cms, name))) return
+      const links = await rebuildLinks(db, projectLinks)
+      if (links === 'rebuilt') console.log('Rebuilt the links between entries.')
+      if (links === 'waiting') console.log(linksWait)
     },
   },
   'migrate:status': {
@@ -95,19 +121,21 @@ const loadProjectSchema = () =>
 
 const loadProjectTypes = async () => (await loadProjectSchema()).types
 
-// The CMS's migrations and the site project's content migrations, which share the migrations table
+// The CMS's migrations and the site project's content migrations, which share the migrations table, with the files the
+// content migrations were loaded from
 async function loadAllMigrations() {
   const cms = await loadMigrations(migrationsDir)
-  const content = await loadContentMigrations(resolve('migrations'))
+  const files = await readMigrations<ContentMigrationFile>(resolve('migrations'))
+  const content = await loadContentMigrations(files)
   const clash = Object.keys(content).find((name) => Object.hasOwn(cms, name))
   if (clash) throw new Error(`The content migration ${clash} has the name of one of the CMS's migrations. Rename it.`)
-  return { cms, content }
+  return { cms, content, files }
 }
 
-// Content migrations change entries' values, so their links in entry_relations are rebuilt from the types
-async function afterContentMigrations(db: Kysely<Database>, names: Array<string>, content: object) {
-  if (names.some((name) => Object.hasOwn(content, name))) await rebuildRelations(db, await loadProjectTypes())
-}
+// Where a rebuild of the links between entries finds the types and what waits, which content migrations make due
+const projectLinks = { dir: resolve('migrations'), types: loadProjectTypes }
+
+const linksWait = 'The links between entries are rebuilt once every content migration has run.'
 
 // List every entry whose values no longer pass, in its draft or its live copy, such as after a field's choices
 // narrowed, failing if there are any
@@ -143,7 +171,8 @@ async function dev(db: Kysely<Database>) {
     server: { middlewareMode: true, hmr: { server } },
   })
   const app = createApp(db, types, {
-    migrations: () => loadContentMigrations(dirs.migrations),
+    siteMigrations: dirs.migrations,
+    finishLinks: true,
     groups,
     editor: dirs,
     storage: config.storage,
@@ -174,9 +203,10 @@ async function start(db: Kysely<Database>) {
   }
 
   const { types, groups } = await loadProjectSchema()
-  // No editor, so the type editor is read-only
+  // No editor, so the type editor is read-only, and the Migrations page lists migrations without running them
   const app = createApp(db, types, {
-    migrations: () => loadContentMigrations(resolve('migrations')),
+    siteMigrations: resolve('migrations'),
+    finishLinks: true,
     groups,
     admin,
     storage: config.storage,

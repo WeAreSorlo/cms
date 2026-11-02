@@ -1,3 +1,4 @@
+import { url } from './database'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -26,6 +27,37 @@ test(".env sets what the environment doesn't, before iight.config.ts loads", asy
     const env = { ...process.env, IIGHT_TEST_B: 'from the environment' }
     const { stdout } = await promisify(execFile)(process.execPath, [bin, 'make:migration'], { cwd: dir, env })
     expect(stdout.split('\n')[0]).toBe('{"a":"from the file","b":"from the environment"}')
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 30_000)
+
+test('migrate refuses a waiting migration with a TODO left, running nothing', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await mkdir(join(dir, 'migrations'), { recursive: true })
+  await writeFile(
+    join(dir, 'migrations/2099_12_31_000000_todo.ts'),
+    [
+      'export const up = ({ entries }) => {',
+      '  // TODO: views changed from text to number. Convert its values here, and back in down',
+      "  entries.mapField('blog', 'views', (value) => value)",
+      '}',
+      'export const down = () => {}',
+      '',
+    ].join('\n'),
+  )
+
+  try {
+    const run = promisify(execFile)(process.execPath, [bin, 'migrate'], { cwd: dir })
+    await expect(run).rejects.toMatchObject({
+      code: 1,
+      stdout: '',
+      stderr:
+        '2099_12_31_000000_todo still has a TODO, at line 2: views changed from text to number. Convert its values ' +
+        'here, and back in down.\nFinish each TODO, then delete its TODO comment, and migrate again.\n',
+    })
   } finally {
     await rm(dir, { recursive: true })
   }

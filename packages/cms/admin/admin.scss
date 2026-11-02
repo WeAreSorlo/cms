@@ -1754,6 +1754,8 @@ a.iight-button {
   gap: var(--iight-size-1);
   margin: 0;
   color: var(--cms-danger);
+  // A server's message can name a file, whose path has no spaces to break at
+  overflow-wrap: anywhere;
 }
 
 .cms-muted {
@@ -2181,6 +2183,58 @@ a.iight-button {
 .cms-run-error {
   margin: 0 0 var(--iight-size-1);
   color: var(--cms-danger);
+}
+
+// The Migrations page's lists, ruled off a migration or an entry at a time: what waits, each with what it does in
+// words, and the entries that don't pass. Names, paths and a loader's messages have long words to break.
+.cms-migrations,
+.cms-migrations__checks {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+
+  > li {
+    padding: var(--iight-size-3) 0;
+  }
+
+  > li + li {
+    border-top: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  ul {
+    margin: var(--iight-size-1) 0 0;
+    padding-left: var(--cms-size-6);
+  }
+
+  .cms-notice {
+    margin: var(--iight-size-2) 0 0;
+  }
+}
+
+.cms-migrations__name {
+  font-weight: var(--iight-font-weight-bold);
+}
+
+.cms-migrations__steps .cms-badge {
+  margin-left: var(--iight-size-2);
+}
+
+.cms-migrations__fold {
+  margin-top: var(--iight-size-3);
+
+  > summary {
+    width: fit-content;
+    margin-bottom: var(--iight-size-2);
+    cursor: pointer;
+  }
+}
+
+// The last run's outcome, which takes focus when a run ends
+.cms-migrations__outcome {
+  overflow-wrap: anywhere;
 }
 
 // A content type's icon beside its label, as the menu shows it

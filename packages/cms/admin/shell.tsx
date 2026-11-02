@@ -1,10 +1,12 @@
 import { ContentType, PageView, PageViewContext, SectionContext, navigation, pathOf, sectionOf } from './api'
 import { AssistantContext, useAssistantState } from './chat'
+import { MigrationsContext, ShellMigrationsNotice, useMigrations } from './migrations'
 import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
 import {
   Blocks,
   ClipboardList,
   Component,
+  DatabaseZap,
   Images,
   KeyRound,
   LogOut,
@@ -157,6 +159,7 @@ export function Shell({
   hash,
   types,
   user,
+  editable,
   mcp,
   ai,
   onSignOut,
@@ -166,6 +169,8 @@ export function Shell({
   hash: string
   types: Map<string, ContentType>
   user: { id: string; name: string }
+  // Whether the type editor is on, as in iight dev, where migrations run from the admin
+  editable: boolean
   // Whether /mcp is on, so the user's row links to their MCP tokens
   mcp: boolean
   // Whether the assistant is on, with Assistant at the top of the nav
@@ -178,6 +183,8 @@ export function Shell({
   const [menuOpen, setMenuOpen] = useState(false)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const assistant = useAssistantState(ai, user.id, onTypes)
+  // What migrations wait, for the notice above every page and the Migrations page, loaded again with the types
+  const migrations = useMigrations(types)
   // What the page shows, which the assistant beside it takes "this" and "these" to mean
   const [view, setView] = useState<PageView | null>(null)
   // Whether the person has hidden the assistant's chat beside pages, which this browser remembers
@@ -258,6 +265,7 @@ export function Shell({
     [
       { section: 'schema', label: 'Content types', icon: <Blocks /> },
       { section: 'groups', label: 'Shared groups', icon: <Component /> },
+      { section: 'migrations', label: 'Migrations', icon: <DatabaseZap /> },
       { section: 'keys', label: 'API keys', icon: <KeyRound /> },
     ],
   ]
@@ -342,52 +350,56 @@ export function Shell({
         </nav>
 
         <AssistantContext.Provider value={assistant}>
-          {/* Around the panel as well as the page, for the assistant in it */}
-          <Toaster>
-            <Confirmer>
-              <main id='main' ref={main} tabIndex={-1}>
-                <SectionContext.Provider value={showSection}>
-                  <PageViewContext.Provider value={setView}>
-                    <PanelSlot.Provider value={panelSlot}>{children}</PanelSlot.Provider>
-                  </PageViewContext.Provider>
-                </SectionContext.Provider>
-              </main>
-              {/* The panel on every page: the page's own card at the top, then the assistant's, which the shell keeps
-                  across pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section
-                  21). Handles on its left edge and between the cards resize the panel and the assistant, whose title
-                  hides its chat. */}
-              <div id='cms-side' className='cms-side'>
-                <Splitter
-                  name='panel-width'
-                  label='Resize the panel'
-                  controls='cms-side'
-                  vertical
-                  measure={panelWidth}
-                />
-                <div ref={setPanelSlot} className='cms-panel-slot' />
-                {ai && section !== 'chat' && (
-                  <>
-                    <Splitter
-                      name='assistant-height'
-                      label='Resize the assistant'
-                      controls='cms-assistant'
-                      measure={assistantHeight}
-                    />
-                    <aside
-                      id='cms-assistant'
-                      className='cms-side__assistant'
-                      aria-label='Assistant'
-                      data-collapsed={collapsed || undefined}
-                    >
-                      <Suspense>
-                        <PanelAssistant view={view} collapsed={collapsed} onCollapse={collapse} />
-                      </Suspense>
-                    </aside>
-                  </>
-                )}
-              </div>
-            </Confirmer>
-          </Toaster>
+          <MigrationsContext.Provider value={migrations}>
+            {/* Around the panel as well as the page, for the assistant in it */}
+            <Toaster>
+              <Confirmer>
+                <main id='main' ref={main} tabIndex={-1}>
+                  {/* Waiting migrations stop saves, or the pages whose tables are behind, so every page says so */}
+                  {section !== 'migrations' && <ShellMigrationsNotice editable={editable} />}
+                  <SectionContext.Provider value={showSection}>
+                    <PageViewContext.Provider value={setView}>
+                      <PanelSlot.Provider value={panelSlot}>{children}</PanelSlot.Provider>
+                    </PageViewContext.Provider>
+                  </SectionContext.Provider>
+                </main>
+                {/* The panel on every page: the page's own card at the top, then the assistant's, which the shell keeps
+                    across pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section
+                    21). Handles on its left edge and between the cards resize the panel and the assistant, whose
+                    title hides its chat. */}
+                <div id='cms-side' className='cms-side'>
+                  <Splitter
+                    name='panel-width'
+                    label='Resize the panel'
+                    controls='cms-side'
+                    vertical
+                    measure={panelWidth}
+                  />
+                  <div ref={setPanelSlot} className='cms-panel-slot' />
+                  {ai && section !== 'chat' && (
+                    <>
+                      <Splitter
+                        name='assistant-height'
+                        label='Resize the assistant'
+                        controls='cms-assistant'
+                        measure={assistantHeight}
+                      />
+                      <aside
+                        id='cms-assistant'
+                        className='cms-side__assistant'
+                        aria-label='Assistant'
+                        data-collapsed={collapsed || undefined}
+                      >
+                        <Suspense>
+                          <PanelAssistant view={view} collapsed={collapsed} onCollapse={collapse} />
+                        </Suspense>
+                      </aside>
+                    </>
+                  )}
+                </div>
+              </Confirmer>
+            </Toaster>
+          </MigrationsContext.Provider>
         </AssistantContext.Provider>
       </div>
     </LucideProvider>

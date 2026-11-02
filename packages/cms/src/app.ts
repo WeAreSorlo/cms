@@ -2,7 +2,7 @@ import type { DeliveryOptions, FormOptions, MediaOptions, Storage, VersionOption
 import type { AiProvider } from './ai'
 import { automationRoutes } from './automations'
 import { chatRoutes } from './chats'
-import type { ContentMigrationFile } from './content'
+import { type ContentMigrationFile, loadContentMigrations } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
 import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
@@ -11,6 +11,7 @@ import { formRoutes, publicFormRoutes } from './forms'
 import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
 import { hashToken, verifyPassword } from './passwords'
+import { migrationRoutes } from './runMigrations'
 import { signInSchema } from './schemas'
 import { EditorDirs, typeRoutes, typeSaver } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
@@ -30,7 +31,12 @@ const sessionLength = 30 * 24 * 60 * 60 * 1000
 
 // What the server uses from the site project, besides its types
 export interface AppOptions {
-  // Its content migrations, loaded by each request that needs them, so a new one counts as soon as it's written
+  // Its migrations folder, which the admin's Migrations page lists, and runs where the editor is
+  siteMigrations?: string
+  // Whether to finish, as it starts, a rebuild of the links between entries that a run left due, as the servers do
+  finishLinks?: boolean
+  // Its content migrations, loaded by each request that needs them, so a new one counts as soon as it's written. From
+  // siteMigrations unless given.
   migrations?: () => Promise<Record<string, ContentMigrationFile>>
   // Its shared groups, which its types come with expanded
   groups?: Map<string, SharedGroup>
@@ -58,7 +64,9 @@ export function createApp(
   db: Kysely<Database>,
   types = new Map<string, ContentType>(),
   {
-    migrations = async () => ({}),
+    siteMigrations,
+    finishLinks = false,
+    migrations = siteMigrations ? () => loadContentMigrations(siteMigrations) : async () => ({}),
     groups = new Map(),
     editor,
     storage,
@@ -188,10 +196,16 @@ export function createApp(
   app.use('/api/submissions/*', signedIn)
   app.use('/api/automations/*', signedIn)
   app.use('/api/keys/*', signedIn)
+  app.use('/api/migrations/*', signedIn)
   if (mcp) app.use('/api/tokens/*', signedIn)
   if (ai) app.use('/api/chats/*', signedIn)
   app.route('/api', typeRoutes(types, groups, saver, { mcp, ai: !!ai }))
   app.route('/api', entryRoutes(db, types, migrations, versions))
+  // Migrations run from the admin only where the type editor is, in iight dev (PLAN.md section 6)
+  app.route(
+    '/api',
+    migrationRoutes(db, types, { dir: siteMigrations, runnable: !!editor, queued: saver?.queued, finish: finishLinks }),
+  )
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
   app.route('/api', keyRoutes(db))

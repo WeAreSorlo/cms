@@ -8,6 +8,7 @@ import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { GroupEditor, GroupList } from './groups'
 import { KeyEditor, KeyList, KeyPage } from './keys'
 import { MediaLibrary } from './media'
+import { MigrationsPage } from './migrations'
 import { Shell } from './shell'
 import './theme.scss'
 import { TokenForm, TokenList, TokenPage } from './tokens'
@@ -92,9 +93,9 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 }
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
-// #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, #/tokens/<id>
-// with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog and #/groups/seo in the type editor. A list's
-// search and filters follow its path, as in #/types/blog?search=lamp.
+// #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/migrations, #/keys/<id>,
+// #/tokens/<id> with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog and #/groups/seo in the type
+// editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
 function Page({
   hash,
   types,
@@ -143,6 +144,7 @@ function Page({
     return <GroupEditor key={name} group={groups.get(name)} editable={editable} onSaved={reloadTypes} />
   }
   if (section === 'groups') return <GroupList groups={groups} editable={editable} />
+  if (section === 'migrations') return <MigrationsPage editable={editable} />
   if (section === 'media') return <MediaLibrary query={query} />
   if (section === 'forms' && name === 'new') return <FormEditor key='new' />
   if (section === 'forms' && name && isView(action)) return <Inbox key={`${name}/${action}`} id={name} view={action} />
@@ -226,7 +228,16 @@ function App() {
   return (
     <TypesContext.Provider value={types}>
       <GroupsContext.Provider value={groups}>
-        <Shell hash={hash} types={types} user={user} mcp={mcp} ai={ai} onSignOut={signOut} onTypes={reloadTypes}>
+        <Shell
+          hash={hash}
+          types={types}
+          user={user}
+          editable={editable}
+          mcp={mcp}
+          ai={ai}
+          onSignOut={signOut}
+          onTypes={reloadTypes}
+        >
           <Page
             hash={hash}
             types={types}

@@ -18,7 +18,7 @@ const settingsInputs = { icon: iconInput }
 const readOnly = 'Content types can only be changed in development, with iight dev. Their changes ship through git.'
 
 // What a save said, kept for the page it moves to when a type is created or renamed
-let flash: { message: string; notes: Array<string> } | undefined
+let flash: { message: string; migration?: boolean; notes: Array<string> } | undefined
 
 // What the settings form starts from for a type, where drafts are on unless its file says otherwise
 const settingsOf = (type?: ContentType) => {
@@ -261,7 +261,7 @@ export function TypeEditor({
       // The migration it wrote stays on the page, since it names a file to check and may have TODOs
       const { file, notes } = reply.migration
       const saved = file
-        ? { message: `Saved, with the migration migrations/${file}. Run iight migrate to update the entries.`, notes }
+        ? { message: `Saved, with the migration migrations/${file}.`, migration: true, notes }
         : { message: 'Saved. No entries need a migration.', notes }
       toast('Saved')
       setBase(reply.data)
@@ -304,6 +304,12 @@ export function TypeEditor({
         {result && (
           <Notice tone='success'>
             {result.message}
+            {result.migration && (
+              <>
+                {' '}
+                <a href='#/migrations'>Review and run it on Migrations</a>.
+              </>
+            )}
             {result.notes.length > 0 && (
               <ul>
                 {result.notes.map((note) => (

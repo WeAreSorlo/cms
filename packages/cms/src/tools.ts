@@ -619,8 +619,9 @@ async function proposeType(
     ? `Applying it writes ${file}, and it needs no content migration. Its entries can be proposed now with ` +
       `create_entry, with the type ${type.name}, and applying one applies the type first.`
     : migration
-      ? `Applying it writes ${file} and a content migration, which a developer checks and runs with iight migrate. ` +
-        'Until it runs, no entry can be saved, so propose entries of this type after that.' +
+      ? `Applying it writes ${file} and a content migration, which a person checks and runs on the admin's ` +
+        'Migrations page, or with iight migrate. Until it runs, no entry can be saved, so propose entries of this ' +
+        'type after that.' +
         (migration.notes.length
           ? ` The migration will say:\n${migration.notes.map((note) => `- ${note}`).join('\n')}`
           : '')
@@ -1373,7 +1374,7 @@ export const tools = [
       'list_content_types gives, since content migrations follow fields by id. The fields inside a use of a shared ' +
       'group come from the group, and change nowhere here. titleField, slugField and listColumns follow a renamed ' +
       'field and let a removed one go. Applying it, which only the person does, writes the type file, and a content ' +
-      'migration when its entries need one, which a developer runs with iight migrate. Renaming, removing or ' +
+      "migration when its entries need one, which a person runs on the admin's Migrations page. Renaming, removing or " +
       "retyping a field changes the entries and what the site's API returns, so say so, and remove fields only when " +
       `the person asks. A type with entries keeps its structure. ${asData}`,
     input: z.object({

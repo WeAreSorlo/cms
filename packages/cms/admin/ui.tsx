@@ -623,7 +623,8 @@ export function Confirmer({ children }: { children: ReactNode }) {
           </div>
         }
       >
-        <p>{asking?.body}</p>
+        {/* A body of its own, such as a list, comes as it is */}
+        {typeof asking?.body === 'string' ? <p>{asking.body}</p> : asking?.body}
       </Modal>
     </ConfirmContext.Provider>
   )

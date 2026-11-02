@@ -1,6 +1,6 @@
 import { loadContentMigrations } from '../src/content'
 import { uuidv7 } from '../src/db'
-import { Migration, loadMigrations, migrate, migrationsDir, rollback, status } from '../src/migrator'
+import { Migration, loadMigrations, migrate, migrationsDir, readMigrations, rollback, status } from '../src/migrator'
 import { db, resetDb } from './database'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -87,6 +87,24 @@ test("loads a folder's migrations, skipping other files, and needs an up and a d
   )
 })
 
+test('loads a migration as its file is now, after it was edited since it was first loaded', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const file = join(dir, '2026_01_01_000000_blog.ts')
+  await writeFile(file, "export const up = () => 'first'\nexport const down = () => {}\n")
+  expect(await (await loadContentMigrations(dir))['2026_01_01_000000_blog'].up({} as any)).toBe('first')
+  await writeFile(file, "export const up = () => 'second'\nexport const down = () => {}\n")
+  expect(await (await loadContentMigrations(dir))['2026_01_01_000000_blog'].up({} as any)).toBe('second')
+})
+
+test("won't load a migration whose file changed after it was read, so what was read of it is what runs", async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const file = join(dir, '2026_01_01_000000_blog.ts')
+  await writeFile(file, "// TODO: write it\nexport const up = () => 'stub'\nexport const down = () => {}\n")
+  const [read] = await readMigrations(dir)
+  await writeFile(file, "export const up = () => 'written'\nexport const down = () => {}\n")
+  await expect(read.load()).rejects.toThrow('It changed while it loaded. Load it again.')
+})
+
 test('refuses to roll back a migration whose file is gone', async () => {
   await migrate(db, { '2026_01_01_a': table('a') })
   await expect(rollback(db, {})).rejects.toThrow("Can't roll back 2026_01_01_a, its file is missing")
@@ -118,6 +136,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_11_02_000020_add_proposal_publishing',
     '2026_11_02_000021_add_form_first_opened',
     '2026_11_02_000022_add_type_proposals',
+    '2026_11_02_000023_create_rebuilds_table',
   ])
 
   await migrate(db, migrations)
@@ -138,6 +157,7 @@ test("the CMS's own migrations run forward and back", async () => {
     'personal_tokens',
     'proposals',
     'published_entries',
+    'rebuilds',
     'sessions',
     'submissions',
     'users',

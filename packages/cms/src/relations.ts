@@ -140,38 +140,65 @@ export async function saveRelations(
 }
 
 // Rebuild entry_relations for every entry of a type that still exists, 500 at a time, after content migrations have
-// changed their values
-export async function rebuildRelations(db: Kysely<Database>, types: Map<string, ContentType>) {
+// changed their values. Each batch is a transaction of its own that locks the entries it rebuilds, as a save locks the
+// entry it saves while it rewrites its links, so the two never write one entry's links at once: a batch skips an entry
+// a save holds, and leaves alone those saved since the rebuild began, whose saves rebuilt their links.
+export async function rebuildRelations(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  // Called with how many entries are done of how many, as each batch is
+  progress?: (done: number, total: number) => void,
+) {
   if (types.size === 0) return
-  await db.transaction().execute(async (trx) => {
-    let after: string | undefined
-    for (;;) {
+  const names = [...types.keys()]
+  // As text, which keeps the database's microseconds
+  const { began } = (await sql<{ began: string }>`select now()::text as began`.execute(db)).rows[0]
+  const total = progress
+    ? Number(
+        (
+          await db
+            .selectFrom('entries')
+            .select((eb) => eb.fn.countAll<string>().as('count'))
+            .where('type', 'in', names)
+            .executeTakeFirstOrThrow()
+        ).count,
+      )
+    : 0
+  let done = 0
+  progress?.(done, total)
+  for (let after: string | undefined; ;) {
+    const rows = await db.transaction().execute(async (trx) => {
       const rows = await trx
         .selectFrom('entries')
-        .select(['id', 'type', 'values'])
-        .where('type', 'in', [...types.keys()])
+        .select(['id', 'type', 'values', sql<boolean>`updated_at < ${began}::timestamptz`.as('unsaved')])
+        .where('type', 'in', names)
         .$if(after !== undefined, (qb) => qb.where('id', '>', after!))
         .orderBy('id')
         .limit(500)
+        .forUpdate()
+        .skipLocked()
         .execute()
-      if (rows.length === 0) return
-
-      await trx
-        .deleteFrom('entry_relations')
-        .where(
-          'entry_id',
-          'in',
-          rows.map((row) => row.id),
+      const rebuilt = rows.filter((row) => row.unsaved)
+      if (rebuilt.length) {
+        await trx
+          .deleteFrom('entry_relations')
+          .where(
+            'entry_id',
+            'in',
+            rebuilt.map((row) => row.id),
+          )
+          .execute()
+        await insertRelations(
+          trx,
+          rebuilt.flatMap((row) => relationsOf(types.get(row.type)!, row.id, row.values)),
         )
-        .execute()
-      await insertRelations(
-        trx,
-        rows.flatMap((row) => relationsOf(types.get(row.type)!, row.id, row.values)),
-      )
-      if (rows.length < 500) return
-      after = rows.at(-1)!.id
-    }
-  })
+      }
+      return rows
+    })
+    progress?.((done += rows.length), total)
+    if (rows.length < 500) return
+    after = rows.at(-1)!.id
+  }
 }
 
 const badRequest = (message: string) => new HTTPException(400, { message })

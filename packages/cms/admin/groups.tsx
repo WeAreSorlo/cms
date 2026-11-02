@@ -16,7 +16,7 @@ const fieldsSchema: Array<FieldSchema> = [{ name: 'fields', label: 'Fields', typ
 const readOnly = 'Shared groups can only be changed in development, with iight dev. Their changes ship through git.'
 
 // What a save said, kept for the page it moves to when a group is created or renamed
-let flash: { message: string; notes: Array<string> } | undefined
+let flash: { message: string; migration?: boolean; notes: Array<string> } | undefined
 
 const byId = (groups: Map<string, SharedGroup>) => new Map([...groups.values()].map((group) => [group.id, group]))
 
@@ -159,7 +159,7 @@ export function GroupEditor({
       // The migration it wrote stays on the page, since it names a file to check and may have TODOs
       const { file, notes } = reply.migration
       const saved = file
-        ? { message: `Saved, with the migration migrations/${file}. Run iight migrate to update the entries.`, notes }
+        ? { message: `Saved, with the migration migrations/${file}.`, migration: true, notes }
         : { message: 'Saved. No entries need a migration.', notes }
       toast('Saved')
       await onSaved()
@@ -199,6 +199,12 @@ export function GroupEditor({
         {result && (
           <Notice tone='success'>
             {result.message}
+            {result.migration && (
+              <>
+                {' '}
+                <a href='#/migrations'>Review and run it on Migrations</a>.
+              </>
+            )}
             {result.notes.length > 0 && (
               <ul>
                 {result.notes.map((note, index) => (
