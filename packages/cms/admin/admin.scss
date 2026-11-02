@@ -640,7 +640,7 @@ a.iight-button {
   gap: var(--iight-size-2);
 
   @media (width >= $aside) {
-    right: calc(var(--cms-panel) + 2 * var(--cms-inset));
+    right: calc(var(--cms-panel-width, var(--cms-panel)) + 2 * var(--cms-inset));
   }
 
   @media (width < $aside) {
@@ -769,18 +769,9 @@ a.iight-button {
   display: contents;
 }
 
-// The assistant under the page's panel, which shares the column with it, the page's panel taking at most half
-.cms-side__assistant {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  min-height: 0;
-  border-top: var(--iight-size-px) solid var(--cms-rule);
-
-  // A page with no panel leaves it the whole column
-  .cms-panel-slot:empty + & {
-    border-top: 0;
-  }
+// The handles that resize the panel and the assistant's card, only from 64rem
+.cms-splitter {
+  display: none;
 }
 
 .cms-assistant {
@@ -792,7 +783,8 @@ a.iight-button {
   min-width: 0;
 }
 
-// The chat's name, which opens the person's other chats, and New chat
+// The title and ⋮ in the panel's card, or in the dialog the chat's name, which opens the person's other chats, and New
+// chat
 .cms-assistant__header {
   display: flex;
   flex: none;
@@ -800,6 +792,40 @@ a.iight-button {
   align-items: center;
   padding: var(--iight-size-2) var(--iight-size-3);
   border-bottom: var(--iight-size-px) solid var(--cms-rule);
+}
+
+.cms-assistant__title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--cms-text-base);
+  font-weight: var(--iight-font-weight-normal);
+  line-height: var(--cms-leading-base);
+  color: var(--cms-muted);
+
+  // Hides and shows the chat, with its chevron at the end
+  > button {
+    display: flex;
+    gap: var(--iight-size-2);
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: var(--cms-control);
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    background: none;
+    border: 0;
+
+    &:hover {
+      color: var(--cms-text);
+    }
+  }
+}
+
+.cms-assistant__menu {
+  anchor-name: --cms-chats;
 }
 
 .cms-assistant__switch {
@@ -897,6 +923,8 @@ a.iight-button {
 }
 
 .cms-chat__messages {
+  // Holds its replies' visually hidden text, which otherwise hangs below it once it scrolls, and scrolls the page
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -1276,11 +1304,12 @@ a.iight-button {
 
 @media (width >= $aside) {
   .admin {
-    grid-template-columns: var(--cms-sidebar) minmax(0, 1fr) var(--cms-panel);
+    grid-template-columns: var(--cms-sidebar) minmax(0, 1fr) auto;
   }
 
-  // The panel on every page, at the window's right edge and as tall as the nav, which the page's panel fills while the
-  // assistant's place is empty
+  // The panel on every page, at the window's right edge and as tall as the nav: the page's panel in a card at the top,
+  // filling what the assistant's card under it leaves. It's 18rem wide until the person resizes it, from 16rem to
+  // 48rem, as long as the page keeps the 31rem it has at 64rem.
   .cms-side {
     position: sticky;
     top: var(--cms-inset);
@@ -1289,27 +1318,115 @@ a.iight-button {
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
+    width: var(--cms-panel-width, var(--cms-panel));
+    min-width: 16rem;
+    max-width: min(48rem, 100vw - 2 * var(--cms-inset) - var(--cms-sidebar) - 31rem);
     height: calc(100dvh - 2 * var(--cms-inset));
+  }
+
+  // Never shorter than its actions and footer, since its middle, which scrolls, adds no height of its own
+  .cms-panel-slot > .cms-panel {
+    flex: 1 1 0;
+    width: auto;
+
+    > .cms-panel__body {
+      contain: size;
+    }
+  }
+
+  // Half the column until the person resizes it, from 20rem, which leaves the box to write in room to grow, to as tall
+  // as leaves the page's panel its actions and footer. A page with no panel leaves it the whole column.
+  .cms-side__assistant {
+    display: flex;
+    flex: 0 1 var(--cms-assistant-height, 50%);
+    flex-direction: column;
+    box-sizing: border-box;
+    min-height: 20rem;
     background: var(--cms-surface);
     border: var(--iight-size-px) solid var(--cms-rule);
     border-radius: var(--iight-size-2);
     box-shadow: var(--cms-shadow-1);
+
+    .cms-panel-slot:empty ~ & {
+      flex: 1 1 0;
+    }
   }
 
-  .cms-panel-slot > .cms-panel {
-    flex: 1;
+  // Its header alone once the person hides its chat, at the foot of the column, which the page's panel fills
+  .cms-side > .cms-side__assistant[data-collapsed] {
+    flex: none;
     min-height: 0;
-    width: auto;
-    background: none;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
+    margin-top: auto;
 
-    // With the assistant under it, as tall as it needs up to half the column
-    .cms-side:has(> .cms-side__assistant) & {
-      flex: 0 1 auto;
-      max-height: 50%;
+    > .cms-assistant {
+      > .cms-chat {
+        display: none;
+      }
+
+      > .cms-assistant__header {
+        border-bottom: 0;
+      }
     }
+  }
+
+  // Along the panel's left edge and in the gap between its cards, drawing nothing but their cursors until hovered,
+  // dragged or focused, when they're a line in the accent colour
+  .cms-splitter {
+    position: relative;
+    display: block;
+    flex: none;
+    touch-action: none;
+
+    &::before {
+      position: absolute;
+      content: '';
+      transition: background-color var(--cms-duration);
+    }
+
+    &:hover::before,
+    &:focus-visible::before,
+    &[data-dragging]::before {
+      background: var(--cms-accent-strong);
+    }
+  }
+
+  // Over the page's padding, beside the panel's left edge
+  .cms-splitter[aria-orientation='vertical'] {
+    position: absolute;
+    inset: 0 auto 0 calc(-1 * var(--iight-size-4));
+    width: var(--iight-size-4);
+    cursor: col-resize;
+
+    &::before {
+      inset: 0 calc(50% - var(--iight-size-px));
+    }
+  }
+
+  .cms-splitter[aria-orientation='horizontal'] {
+    height: var(--cms-inset);
+    cursor: row-resize;
+
+    &::before {
+      inset: calc(50% - var(--iight-size-px)) var(--iight-size-2);
+    }
+
+    // Easier to catch, reaching over the cards' edges
+    &::after {
+      position: absolute;
+      inset: calc(-1 * var(--iight-size-1)) 0;
+      content: '';
+    }
+  }
+
+  // Nothing to resize: the gap's handle with no page's panel above it, and the edge's with neither card
+  .cms-panel-slot:empty + .cms-splitter,
+  .cms-side:not(:has(aside)) > .cms-splitter {
+    display: none;
+  }
+
+  // Nor with the assistant's chat hidden, when it's only the gap between the cards
+  .cms-splitter:has(+ .cms-side__assistant[data-collapsed]) {
+    visibility: hidden;
   }
 }
 
@@ -1332,12 +1449,8 @@ a.iight-button {
 
   // The assistant opens full screen from a button of its own at the end of the bar, which the page's bar leaves room
   // for, as the page does above it
-  .cms-side__assistant {
-    border: 0;
-
-    > .cms-assistant {
-      display: none;
-    }
+  .cms-side__assistant > .cms-assistant {
+    display: none;
   }
 
   .cms-side .cms-assistant__open {

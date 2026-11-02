@@ -17,7 +17,19 @@ import {
 } from './ui'
 import { ChangeList, JsonChanges } from './versions'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
-import { ArrowUp, Check, ChevronsUpDown, CircleAlert, MessagesSquare, Square, SquarePen, Target } from 'lucide-react'
+import {
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+  CircleAlert,
+  EllipsisVertical,
+  Sparkles,
+  Square,
+  SquarePen,
+  Target,
+} from 'lucide-react'
 import {
   ComponentProps,
   createContext,
@@ -538,7 +550,7 @@ function Messages({ messages }: { messages: Array<ChatMessage> }) {
           </ol>
         </ChatProposals.Provider>
       ) : (
-        <EmptyState icon={<MessagesSquare />}>
+        <EmptyState icon={<Sparkles />}>
           Ask about the site's content, or for changes to it, such as which posts mention a product, or fixing this
           page's typos. It reads as you, and proposes changes for you to apply as drafts.
         </EmptyState>
@@ -615,19 +627,44 @@ function Conversation({ view }: { view?: PageView | null }) {
   )
 }
 
-// The person's chats in a popover, for the panel's assistant
-function Switcher() {
+// The person's chats in a popover, from the chat's name in the dialog below 64rem, or from ⋮ in the panel's card, whose
+// menu has New chat too, since the card's header holds only its title beside it
+function Switcher({ menu }: { menu?: boolean }) {
   const assistant = useAssistant()
   const id = useId()
   const close = () => document.getElementById(id)?.hidePopover()
   return (
     <>
-      <button type='button' className='iight-button cms-assistant__switch' popoverTarget={id}>
-        <span>{nameOf(assistant.chat)}</span>
-        <span className='cms-visually-hidden'>, switch chats</span>
-        <ChevronsUpDown />
-      </button>
+      {menu ? (
+        <button
+          type='button'
+          className='cms-icon-button cms-assistant__menu'
+          aria-label='Chats'
+          title='Chats'
+          popoverTarget={id}
+        >
+          <EllipsisVertical />
+        </button>
+      ) : (
+        <button type='button' className='iight-button cms-assistant__switch' popoverTarget={id}>
+          <span>{nameOf(assistant.chat)}</span>
+          <span className='cms-visually-hidden'>, switch chats</span>
+          <ChevronsUpDown />
+        </button>
+      )}
       <div id={id} className='cms-popover cms-chats' popover='auto'>
+        {menu && (
+          <button
+            type='button'
+            className='iight-button'
+            onClick={(event) => {
+              close()
+              newChat(assistant, event.currentTarget)
+            }}
+          >
+            <SquarePen /> New chat
+          </button>
+        )}
         <ChatList onPick={close} />
         <a href='#/chat' onClick={close}>
           All chats
@@ -681,38 +718,72 @@ function ChatList({ onPick }: { onPick?: () => void }) {
   )
 }
 
-// A chat with its header: the chat's name, which opens the person's other chats, and New chat. The panel, its dialog
-// and the reference page show it.
-export function AssistantChat({ sheet, view }: { sheet?: boolean; view?: PageView | null }) {
+// A chat with its header. In the panel's card and on the reference page, that's the title, which hides and shows the
+// chat as an accordion's heading does, and ⋮, which opens New chat and the person's chats. In the dialog below 64rem,
+// whose own title says Assistant, it's the chat's name, which opens the person's other chats, and New chat.
+export function AssistantChat({
+  sheet,
+  view,
+  collapsed = false,
+  onCollapse,
+}: {
+  sheet?: boolean
+  view?: PageView | null
+  collapsed?: boolean
+  onCollapse?: (collapsed: boolean) => void
+}) {
   const assistant = useAssistant()
   return (
     <div className={`cms-assistant${sheet ? ' cms-assistant--sheet' : ''}`}>
       <div className='cms-assistant__header'>
-        <Switcher />
-        <button
-          type='button'
-          className='cms-icon-button'
-          aria-label='New chat'
-          title='New chat'
-          onClick={(event) => newChat(assistant, event.currentTarget)}
-        >
-          <SquarePen />
-        </button>
+        {sheet ? (
+          <>
+            <Switcher />
+            <button
+              type='button'
+              className='cms-icon-button'
+              aria-label='New chat'
+              title='New chat'
+              onClick={(event) => newChat(assistant, event.currentTarget)}
+            >
+              <SquarePen />
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className='cms-assistant__title'>
+              <button type='button' aria-expanded={!collapsed} onClick={() => onCollapse?.(!collapsed)}>
+                Assistant
+                {collapsed ? <ChevronUp /> : <ChevronDown />}
+              </button>
+            </h2>
+            {!collapsed && <Switcher menu />}
+          </>
+        )}
       </div>
       <Conversation view={view} />
     </div>
   )
 }
 
-// The assistant under the page's panel, from 64rem. Below that, a button at the end of the bottom bar opens it in a
-// dialog as big as the window, which a link into the admin closes, so the page it opens shows.
-export function PanelAssistant({ view }: { view: PageView | null }) {
+// The assistant under the page's panel, from 64rem, which the shell keeps collapsed or not. Below that, a button at the
+// end of the bottom bar opens it in a dialog as big as the window, which a link into the admin closes, so the page it
+// opens shows.
+export function PanelAssistant({
+  view,
+  collapsed,
+  onCollapse,
+}: {
+  view: PageView | null
+  collapsed: boolean
+  onCollapse: (collapsed: boolean) => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <>
-      <AssistantChat view={view} />
+      <AssistantChat view={view} collapsed={collapsed} onCollapse={onCollapse} />
       <button type='button' className='iight-button cms-assistant__open' onClick={() => setOpen(true)}>
-        <MessagesSquare />
+        <Sparkles />
         <span>Assistant</span>
       </button>
       {open && (

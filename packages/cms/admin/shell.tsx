@@ -10,16 +10,144 @@ import {
   LogOut,
   LucideProvider,
   Menu,
-  MessagesSquare,
   Plug,
+  Sparkles,
   SunMoon,
   Workflow,
   X,
 } from 'lucide-react'
-import { ReactNode, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 // The assistant under the page's panel, in a chunk of its own with its Markdown renderer
 const PanelAssistant = lazy(() => import('./assistant').then((module) => ({ default: module.PanelAssistant })))
+
+type Size = { now: number; min: number; max: number }
+
+// The panel's width, which its CSS keeps from its least to its most
+function panelWidth(side: HTMLElement): Size {
+  const style = getComputedStyle(side)
+  return { now: side.offsetWidth, min: parseFloat(style.minWidth), max: parseFloat(style.maxWidth) }
+}
+
+// The assistant's height, from its CSS's least to as tall as leaves the page's panel above it room for its actions and
+// footer, since the CSS gives the panel's middle no height of its own there, only its padding
+function assistantHeight(assistant: HTMLElement, handle: HTMLElement): Size {
+  const side = assistant.parentElement!
+  const panel = side.querySelector<HTMLElement>('.cms-panel')
+  let least = panel ? panel.offsetHeight - panel.clientHeight : 0
+  for (const part of panel?.children ?? []) {
+    const style = getComputedStyle(part)
+    least += part.classList.contains('cms-panel__body')
+      ? parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+      : (part as HTMLElement).offsetHeight
+  }
+  const min = parseFloat(getComputedStyle(assistant).minHeight)
+  // A window too short for both keeps the assistant at its least
+  return { now: assistant.offsetHeight, min, max: Math.max(min, side.clientHeight - handle.offsetHeight - least) }
+}
+
+// A handle that resizes what it controls, by pointer or by arrow keys, Home and End, as WAI-ARIA's window splitter
+// does. It sits on the left of or above what it resizes, so left and up make it bigger. The size goes in a custom
+// property on <html>, which the CSS keeps within its limits, and this browser remembers it.
+function Splitter({
+  name,
+  label,
+  controls,
+  vertical,
+  measure,
+}: {
+  // The custom property, --cms-<name>, and what this browser remembers it as, iight-<name>
+  name: string
+  label: string
+  // The id of what it resizes
+  controls: string
+  // A vertical line, which resizes widths
+  vertical?: boolean
+  measure: (pane: HTMLElement, handle: HTMLElement) => Size
+}) {
+  const handle = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState<Size>()
+  const property = `--cms-${name}`
+  const key = `iight-${name}`
+  const sized = () => measure(document.getElementById(controls)!, handle.current!)
+
+  const resize = (to: number) => {
+    const { min, max } = sized()
+    const next = Math.round(Math.max(min, Math.min(max, to)))
+    document.documentElement.style.setProperty(property, `${next}px`)
+    return next
+  }
+  const save = (value: number) => {
+    // Without storage, the size lasts until the page reloads
+    try {
+      localStorage.setItem(key, String(value))
+    } catch {}
+  }
+
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    try {
+      const saved = Number(localStorage.getItem(key))
+      if (saved > 0) root.style.setProperty(property, `${saved}px`)
+    } catch {}
+    // Below 64rem the handle is hidden, with nothing to measure
+    const observer = new ResizeObserver(() => handle.current?.offsetParent && setSize(sized()))
+    observer.observe(document.getElementById(controls)!)
+    return () => {
+      observer.disconnect()
+      root.style.removeProperty(property)
+    }
+  }, [])
+
+  const steps: Record<string, number> = vertical ? { ArrowLeft: 16, ArrowRight: -16 } : { ArrowUp: 16, ArrowDown: -16 }
+
+  return (
+    <div
+      ref={handle}
+      role='separator'
+      tabIndex={0}
+      className='cms-splitter'
+      aria-orientation={vertical ? 'vertical' : 'horizontal'}
+      aria-label={label}
+      aria-controls={controls}
+      aria-valuenow={size?.now}
+      aria-valuemin={size?.min}
+      aria-valuemax={size?.max}
+      // Its most can change with the page beside it, such as a panel with more actions
+      onFocus={() => setSize(sized())}
+      onKeyDown={(event) => {
+        const { now, min, max } = sized()
+        const step = steps[event.key]
+        const to = event.key === 'Home' ? min : event.key === 'End' ? max : step && now + step
+        if (to === undefined) return
+        event.preventDefault()
+        save(resize(to))
+      }}
+      onPointerDown={(event) => {
+        if (event.button) return
+        // Leaves focus where it was, such as in the box to write in, and selects no text on the way
+        event.preventDefault()
+        const element = event.currentTarget
+        const from = sized().now
+        const start = vertical ? event.clientX : event.clientY
+        let last: number | undefined
+        const move = (moved: PointerEvent) => (last = resize(from + start - (vertical ? moved.clientX : moved.clientY)))
+        element.setPointerCapture(event.pointerId)
+        element.dataset.dragging = ''
+        element.addEventListener('pointermove', move)
+        element.addEventListener(
+          'lostpointercapture',
+          () => {
+            element.removeEventListener('pointermove', move)
+            delete element.dataset.dragging
+            if (last !== undefined) save(last)
+          },
+          { once: true },
+        )
+      }}
+    />
+  )
+}
 
 // The page around every admin page: the nav with the user's row, a skip link, and the column for the page's panel and,
 // with the assistant on, the assistant under it, whose chat lasts from page to page.
@@ -39,7 +167,7 @@ export function Shell({
   user: { id: string; name: string }
   // Whether /mcp is on, so the user's row links to their MCP tokens
   mcp: boolean
-  // Whether the assistant is on, with Chat at the top of the nav
+  // Whether the assistant is on, with Assistant at the top of the nav
   ai: boolean
   onSignOut: () => void
   children: ReactNode
@@ -49,6 +177,22 @@ export function Shell({
   const assistant = useAssistantState(ai, user.id)
   // What the page shows, which the assistant beside it takes "this" and "these" to mean
   const [view, setView] = useState<PageView | null>(null)
+  // Whether the person has hidden the assistant's chat beside pages, which this browser remembers
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return !!localStorage.getItem('iight-assistant-collapsed')
+    } catch {
+      return false
+    }
+  })
+  const collapse = (next: boolean) => {
+    setCollapsed(next)
+    // Without storage, it lasts until the page reloads
+    try {
+      if (next) localStorage.setItem('iight-assistant-collapsed', 'true')
+      else localStorage.removeItem('iight-assistant-collapsed')
+    } catch {}
+  }
   const main = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
 
@@ -96,7 +240,7 @@ export function Shell({
   }, [path])
 
   const groups = [
-    ...(ai ? [[{ section: 'chat', label: 'Chat', icon: <MessagesSquare /> }]] : []),
+    ...(ai ? [[{ section: 'chat', label: 'Assistant', icon: <Sparkles /> }]] : []),
     [...types.values()].map((type) => ({
       section: `types/${type.name}`,
       label: type.label,
@@ -205,16 +349,32 @@ export function Shell({
               </PageViewContext.Provider>
             </SectionContext.Provider>
           </main>
-          {/* The panel on every page: the page's own at the top, then the assistant, which the shell keeps across
-              pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section 21) */}
-          <div className='cms-side'>
+          {/* The panel on every page: the page's own card at the top, then the assistant's, which the shell keeps
+              across pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section 21).
+              Handles on its left edge and between the cards resize the panel and the assistant, whose title hides
+              its chat. */}
+          <div id='cms-side' className='cms-side'>
+            <Splitter name='panel-width' label='Resize the panel' controls='cms-side' vertical measure={panelWidth} />
             <div ref={setPanelSlot} className='cms-panel-slot' />
             {ai && section !== 'chat' && (
-              <aside className='cms-side__assistant' aria-label='Assistant'>
-                <Suspense>
-                  <PanelAssistant view={view} />
-                </Suspense>
-              </aside>
+              <>
+                <Splitter
+                  name='assistant-height'
+                  label='Resize the assistant'
+                  controls='cms-assistant'
+                  measure={assistantHeight}
+                />
+                <aside
+                  id='cms-assistant'
+                  className='cms-side__assistant'
+                  aria-label='Assistant'
+                  data-collapsed={collapsed || undefined}
+                >
+                  <Suspense>
+                    <PanelAssistant view={view} collapsed={collapsed} onCollapse={collapse} />
+                  </Suspense>
+                </aside>
+              </>
             )}
           </div>
         </AssistantContext.Provider>

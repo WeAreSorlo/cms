@@ -1180,12 +1180,13 @@ export default function Design() {
 
       <h2>Assistant</h2>
       <p>
-        The assistant under each page's panel, and on the Chat page at full width. Each of its tools is a step, a reply
-        renders its Markdown as React elements, with no HTML, images or script links, and a reply that ends early says
-        why. While it replies, Send is Stop. Below 64rem it opens from the end of the bottom bar, full screen. Beside a
-        page, a line above the box says what “this” means there, which is what each message sends: the entry or version
-        open, a list's ticked entries or those its search and filter match, a form, or the file last opened in the media
-        library.
+        The assistant in a card of its own under each page's panel, headed Assistant with ⋮, which holds New chat and
+        the person's chats, and on the Chat page at full width. Each of its tools is a step, a reply renders its
+        Markdown as React elements, with no HTML, images or script links, and a reply that ends early says why. While it
+        replies, Send is Stop. Below 64rem it opens from the end of the bottom bar, full screen, headed by the chat's
+        name. Beside a page, a line above the box says what “this” means there, which is what each message sends: the
+        entry or version open, a list's ticked entries or those its search and filter match, a form, or the file last
+        opened in the media library.
       </p>
       <ul className='cms-design__panels'>
         {assistants.map(({ label, assistant }) => (
@@ -1194,7 +1195,10 @@ export default function Design() {
             <div className='cms-design__assistant'>
               <TypesContext.Provider value={proposalTypes}>
                 <AssistantContext.Provider value={sampleAssistant(assistant, toast)}>
-                  <AssistantChat view={{ page: {}, label: 'Kubecon 2026, version 4' }} />
+                  <AssistantChat
+                    view={{ page: {}, label: 'Kubecon 2026, version 4' }}
+                    onCollapse={() => toast('Collapsed the assistant')}
+                  />
                 </AssistantContext.Provider>
               </TypesContext.Provider>
             </div>

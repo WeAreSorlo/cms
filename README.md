@@ -715,7 +715,7 @@ Six write, for the assistant, which proposes what they'd save rather than saving
 
 ## The assistant
 
-With `ai` set in `iight.config.ts`, the admin has an assistant: Chat at the top of the nav, with the person's chats beside it, and the same chat under every page's panel, which knows the page it's on, so "fix the typos here" means the entry open in the editor. It reads with [the MCP server's tools](#tools), as the person who asks, and changes content with their write tools, as [proposals](#proposals) the person applies or skips.
+With `ai` set in `iight.config.ts`, the admin has an assistant: Assistant at the top of the nav, which opens the Chat page with the person's chats beside it, and the same chat in a card under every page's panel, which knows the page it's on, so "fix the typos here" means the entry open in the editor. It reads with [the MCP server's tools](#tools), as the person who asks, and changes content with their write tools, as [proposals](#proposals) the person applies or skips. The card's title hides and shows its chat, its ⋮ holds New chat and the person's chats, and from 64rem wide the card's height and the panel's width change by dragging their edges or with arrow keys. Each browser remembers all three.
 
 ```ts
 export default defineConfig({
@@ -737,7 +737,7 @@ export default defineConfig({
 - `effort` is how much the model thinks before it answers, `low`, `medium`, `high`, `xhigh` or `max`, which is most of what a reply costs and how long it takes.
 - `fallback` runs a request that Anthropic's safety classifiers decline again on the model Anthropic recommends for that kind of decline, as `fallbacks: "default"`, since the classifiers can flag harmless content. `false` turns it off, and a model without fallbacks answers alone.
 
-Without `ai`, there's no Chat page or assistant, and the chat routes reply 404.
+Without `ai`, there's no Assistant in the nav, Chat page or assistant beside pages, and the chat routes reply 404.
 
 ### What's sent to Anthropic
 
