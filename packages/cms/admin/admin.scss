@@ -431,7 +431,6 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--iight-size-3);
   margin-bottom: var(--iight-size-4);
 }
@@ -465,16 +464,12 @@ pre {
   }
 }
 
-.cms-header__meta,
-.cms-header__actions {
+// Badges and details beside the title, in the body's text
+.cms-header__meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--iight-size-2);
-}
-
-// Badges and details beside the title, in the body's text
-.cms-header__meta {
   font-size: var(--cms-text-base);
   line-height: var(--cms-leading-base);
   font-weight: var(--iight-font-weight-normal);
@@ -626,7 +621,7 @@ a.iight-button {
   }
 }
 
-// At the bottom right of the page, clear of an editor's panel and of the bar its actions make below 64rem
+// At the bottom right of the page, clear of the panel and of the bar a page's actions make below 64rem
 .cms-toasts {
   position: fixed;
   right: var(--iight-size-4);
@@ -637,9 +632,7 @@ a.iight-button {
   gap: var(--iight-size-2);
 
   @media (width >= $aside) {
-    .admin:has(.cms-panel-slot > .cms-panel) & {
-      right: calc(var(--cms-panel) + 2 * var(--cms-inset));
-    }
+    right: calc(var(--cms-panel) + 2 * var(--cms-inset));
   }
 
   @media (width < $aside) {
@@ -676,8 +669,8 @@ a.iight-button {
   margin-right: auto;
 }
 
-// An editor's panel: a card of actions, details and actions that take the page away, which the reference page shows
-// as it is
+// A page's panel: a card of actions, details and actions that take the page away, which the reference page shows as it
+// is. In the shell's column, the column is the card.
 .cms-panel {
   display: flex;
   flex-direction: column;
@@ -700,16 +693,38 @@ a.iight-button {
 
 .cms-panel__actions {
   border-bottom: var(--iight-size-px) solid var(--cms-rule);
+
+  // Empty where the button that opens a sheet is all it holds, and that's hidden
+  &:not(:has(.cms-panel__buttons > :not(.cms-panel__sheet), .cms-problem)) {
+    display: none;
+  }
 }
 
-// Save draft and Publish share the width
+// Buttons share the width a row at a time, such as Save draft and Publish, or New over Bulk edit when they don't fit
 .cms-panel__buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--iight-size-2);
 
   > * {
     flex: 1;
+    min-width: max-content;
+    text-align: center;
   }
+
+  // Only below 64rem, where it opens the panel's middle
+  > .cms-panel__sheet {
+    display: none;
+  }
+}
+
+// A line of its own under the buttons, such as how many rows the bulk grid has edited
+.cms-panel__note {
+  flex-basis: 100%;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  color: var(--cms-muted);
+  text-align: left;
 }
 
 // The only part that scrolls, padded so its focus rings aren't clipped
@@ -741,31 +756,80 @@ a.iight-button {
   border-top: var(--iight-size-px) solid var(--cms-rule);
 }
 
-// The shell's column for a panel, which holds nothing of its own
+// Where a page's panel goes in the shell's column, which holds nothing of its own
 .cms-panel-slot {
   display: contents;
 }
 
+// The assistant's place under the page's panel, which takes no room while it's empty
+.cms-side__assistant:empty {
+  display: none;
+}
+
+// A list's search, Filter and its rules, Clear filters and how many the list holds
+.cms-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-3);
+
+  > p {
+    margin: 0;
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+  }
+}
+
 @media (width >= $aside) {
   .admin {
-    grid-template-columns: var(--cms-sidebar) minmax(0, 1fr) auto;
+    grid-template-columns: var(--cms-sidebar) minmax(0, 1fr) var(--cms-panel);
   }
 
-  // At the window's right edge, as tall as the nav
-  .cms-panel-slot > .cms-panel {
+  // The panel on every page, at the window's right edge and as tall as the nav, which the page's panel fills while the
+  // assistant's place is empty
+  .cms-side {
     position: sticky;
     top: var(--cms-inset);
     grid-row: 1;
     grid-column: 3;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
     height: calc(100dvh - 2 * var(--cms-inset));
+    background: var(--cms-surface);
+    border: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: var(--iight-size-2);
+    box-shadow: var(--cms-shadow-1);
+  }
+
+  .cms-panel-slot > .cms-panel {
+    flex: 1;
+    min-height: 0;
+    width: auto;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
 // After the page, in its column, with the actions in a bar fixed to the bottom of the window, which the page leaves
-// room for
+// room for. A list's middle opens from its button in the bar, above the bar.
 @media (width < $aside) {
-  .cms-panel-slot > .cms-panel {
+  // The page's row is only as tall as the page, so what follows it, such as a list's archive link, sits under it
+  // rather than partway down the nav
+  .admin {
+    grid-template-rows: auto 1fr;
+  }
+
+  .cms-side {
     grid-column: 2;
+  }
+
+  .cms-panel-slot .cms-panel__buttons > .cms-panel__sheet {
+    display: inline-block;
+  }
+
+  .cms-panel-slot > .cms-panel {
     box-sizing: content-box;
     width: auto;
     max-width: var(--cms-column);
@@ -781,6 +845,7 @@ a.iight-button {
       bottom: var(--cms-inset);
       left: calc(2 * var(--cms-inset) + var(--cms-sidebar));
       z-index: 1;
+      display: flex;
       background: var(--cms-surface);
       border: var(--iight-size-px) solid var(--cms-rule);
       border-radius: var(--iight-size-2);
@@ -790,6 +855,25 @@ a.iight-button {
     > .cms-panel__body {
       overflow: visible;
       padding: 0;
+    }
+
+    &[data-sheet] > .cms-panel__body {
+      position: fixed;
+      right: var(--cms-inset);
+      bottom: calc(var(--cms-bar, 0px) + 2 * var(--cms-inset));
+      left: calc(2 * var(--cms-inset) + var(--cms-sidebar));
+      z-index: 1;
+      max-height: calc(100dvh - var(--cms-bar, 0px) - 6rem);
+      overflow-y: auto;
+      padding: var(--iight-size-3);
+      background: var(--cms-surface);
+      border: var(--iight-size-px) solid var(--cms-rule);
+      border-radius: var(--iight-size-2);
+      box-shadow: var(--cms-shadow-2);
+
+      &:not([data-open]) {
+        display: none;
+      }
     }
 
     > .cms-panel__footer {
@@ -968,22 +1052,6 @@ a.iight-button {
   > :first-child {
     align-self: stretch;
   }
-}
-
-// The bulk editor's actions, which need the page's full width. They stick to the bottom of the window while the grid
-// is longer than it.
-.cms-action-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--iight-size-2);
-  margin-top: var(--cms-size-6);
-  padding: var(--iight-size-3) 0;
-  background: var(--cms-page);
-  border-top: var(--iight-size-px) solid var(--cms-rule);
 }
 
 .cms-problem {
@@ -1337,13 +1405,14 @@ a.iight-button {
   gap: var(--cms-size-6);
 }
 
+// Side by side beside the panel in a 1280px window
 .cms-split__list {
-  flex: 1 1 22rem;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
 .cms-split__detail {
-  flex: 1 1 26rem;
+  flex: 1 1 22rem;
   min-width: 0;
   padding: var(--iight-size-4);
   background: var(--cms-surface);
@@ -1453,6 +1522,7 @@ a.iight-button {
 
 @media (max-width: $phone) {
   .admin {
+    grid-template-rows: none;
     grid-template-columns: minmax(0, 1fr);
     padding: 0;
 
@@ -1462,12 +1532,13 @@ a.iight-button {
     }
   }
 
-  .cms-panel-slot > .cms-panel {
+  .cms-side {
     grid-column: 1;
+  }
 
-    > .cms-panel__actions {
-      left: var(--cms-inset);
-    }
+  .cms-panel-slot > .cms-panel > .cms-panel__actions,
+  .cms-panel-slot > .cms-panel[data-sheet] > .cms-panel__body {
+    left: var(--cms-inset);
   }
 
   .cms-bar {

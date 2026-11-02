@@ -28,7 +28,8 @@ export function TypeList({ types, editable }: { types: Map<string, ContentType>;
 
   return (
     <div className='cms-page'>
-      <PageHeader title='Content types' actions={newType} />
+      <PageHeader title='Content types' />
+      <Panel label='Content types' actions={newType} />
       {!editable && <Notice>{readOnly}</Notice>}
       {types.size === 0 ? (
         <EmptyState icon={<Blocks />} action={newType}>

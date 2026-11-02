@@ -14,11 +14,13 @@ import {
   tree,
 } from './api'
 import { useInputs } from './fields'
+import { entryFields, fieldChoicesOf, filterOf, sortable, whereOf } from './lists'
 import { UsedBy } from './media'
 import {
   Badge,
   EmptyState,
   IconButton,
+  ListFilters,
   Loading,
   Notice,
   PageHeader,
@@ -27,33 +29,16 @@ import {
   Panel,
   StatusBadge,
   TypeIcon,
+  focusHeading,
   focusInvalid,
   useConfirm,
+  useListQuery,
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown, Plus, Sheet, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown, Plus, SearchX, Sheet, Trash2 } from 'lucide-react'
 import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-
-// Fields whose stored values sort the way they read
-const sortable = new Set([
-  'text',
-  'textarea',
-  'identifier',
-  'email',
-  'url',
-  'tel',
-  'number',
-  'range',
-  'date',
-  'datetime',
-  'time',
-  'boolean',
-  'select',
-  'radio',
-  'color',
-])
 
 // A cell's text, or a dash when there's nothing
 export function CellText({ text }: { text: string }) {
@@ -73,16 +58,27 @@ export const FieldValue = ({ field, value }: { field?: FieldSchema; value: unkno
   <CellText text={field?.type === 'boolean' ? (value ? 'Yes' : '') : formatValue(field, value)} />
 )
 
-// A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive
-export function EntryList({ type, archived = false }: { type: ContentType; archived?: boolean }) {
+// A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive,
+// with a search over the title field and a filter over the other fields, in the URL's query
+export function EntryList({ type, archived = false, query }: { type: ContentType; archived?: boolean; query: string }) {
   const [rows, setRows] = useState<ReturnType<typeof tree>>()
-  const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState<Pagination>()
   const [sort, setSort] = useState<{ name: string; direction: 'asc' | 'desc' }>()
   const [error, setError] = useState('')
-  // The entries ticked for bulk editing, in the order they were ticked, kept as pages and sorts change
+  // The entries ticked for bulk editing, in the order they were ticked, kept as pages, sorts and filters change
   const [ticked, setTicked] = useState<Array<string>>([])
-  const ordered = type.structure === 'hierarchical' && !archived
+  const list = useListQuery(query)
+  const { page, setPage } = list
+  const fields = useMemo(() => entryFields(type.fields), [type])
+  const titleField = type.fields.find((field) => field.name === type.titleField)
+  const search = list.params.get('search')?.trim()
+  const { where, left } = whereOf(
+    fields,
+    filterOf(list.params),
+    titleField && search ? [{ field: `values.${titleField.name}`, op: 'like', value: search }] : [],
+  )
+  // A search or filter lists the pages that match on pages of their own, rather than the whole tree
+  const ordered = type.structure === 'hierarchical' && !archived && !where.length
   // Archived entries are never live, and without drafts, saved ones always are
   const statuses = !archived && type.drafts !== false
   const singular = type.singular ?? type.label
@@ -98,20 +94,34 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
     }
   })
 
+  // A slow reply to an earlier search mustn't replace a newer one
+  const loads = useRef(0)
+  const filter = JSON.stringify(where)
   const load = useCallback(async () => {
+    const mine = ++loads.current
     try {
-      if (ordered) return setRows(tree(await allEntries(type)))
+      if (ordered) {
+        const entries = await allEntries(type)
+        if (mine !== loads.current) return
+        setRows(tree(entries))
+        return setError('')
+      }
 
-      const order = encodeURIComponent(
-        JSON.stringify(sort ? { [`values.${sort.name}`]: sort.direction } : { createdAt: 'desc' }),
-      )
-      const { body } = await api('GET', `/types/${type.name}/entries?archived=${archived}&order=${order}&page=${page}`)
+      const params = new URLSearchParams({
+        archived: String(archived),
+        order: JSON.stringify(sort ? { [`values.${sort.name}`]: sort.direction } : { createdAt: 'desc' }),
+        page: String(page),
+      })
+      if (where.length) params.set('where', filter)
+      const { body } = await api('GET', `/types/${type.name}/entries?${params}`)
+      if (mine !== loads.current) return
       setRows(body.data.map((entry: Entry) => ({ entry, depth: 0, index: 0, siblings: 1 })))
       setPagination(body.pagination)
+      setError('')
     } catch (error) {
-      setError(errorMessage(error))
+      if (mine === loads.current) setError(errorMessage(error))
     }
-  }, [type, archived, ordered, page, sort])
+  }, [type, archived, ordered, page, sort, filter])
 
   useEffect(() => {
     load()
@@ -142,35 +152,80 @@ export function EntryList({ type, archived = false }: { type: ContentType; archi
     </a>
   )
 
+  const searchSchema = useMemo<Array<FieldSchema>>(
+    () =>
+      titleField
+        ? [
+            {
+              name: 'search',
+              label: 'Search',
+              type: 'text',
+              options: { placeholder: titleField.label ?? titleField.name },
+            },
+          ]
+        : [],
+    [titleField],
+  )
+  const fieldChoices = useMemo(() => fieldChoicesOf(fields), [fields])
+  const title = archived ? `${type.label}: archive` : type.label
+
+  // Its button goes, so focus moves to the page's heading
+  const clearFilters = () => {
+    list.clear()
+    focusHeading()
+  }
+
   return (
     <div className='cms-page'>
-      <PageHeader
-        back={archived ? { href: `#/types/${type.name}`, label: type.label } : undefined}
-        title={archived ? `${type.label}: archive` : type.label}
+      <PageHeader back={archived ? { href: `#/types/${type.name}`, label: type.label } : undefined} title={title} />
+      <Panel
+        label={title}
+        sheet='Filters'
         actions={
           !archived && (
             <>
-              {ticked.length > 0 && (
-                <>
-                  <span className='cms-muted'>{ticked.length} selected</span>
-                  <a className='iight-button' href={`#/types/${type.name}/bulk/${ticked.join(',')}`}>
-                    <Sheet /> Bulk edit
-                  </a>
-                </>
-              )}
-              <a className='iight-button' href={`#/types/${type.name}/archive`}>
-                <Archive /> Archive
-              </a>
               {newEntry}
+              {ticked.length > 0 && (
+                <a className='iight-button' href={`#/types/${type.name}/bulk/${ticked.join(',')}`}>
+                  <Sheet /> Bulk edit {ticked.length === 1 ? '1 entry' : `${ticked.length} entries`}
+                </a>
+              )}
             </>
           )
         }
-      />
+        footer={
+          !archived && (
+            <a className='iight-button' href={`#/types/${type.name}/archive`}>
+              <Archive /> Archive
+            </a>
+          )
+        }
+      >
+        <ListFilters
+          list={list}
+          schema={searchSchema}
+          fieldChoices={fieldChoices}
+          count={rows && (ordered ? rows.length : pagination?.total)}
+          noun={['entry', 'entries']}
+          left={left}
+        />
+      </Panel>
 
       {error && <Notice tone='danger'>{error}</Notice>}
       {!rows && !error && <Loading />}
       {rows?.length === 0 &&
-        (archived ? (
+        (where.length ? (
+          <EmptyState
+            icon={<SearchX />}
+            action={
+              <button type='button' className='iight-button' onClick={clearFilters}>
+                Clear filters
+              </button>
+            }
+          >
+            Nothing matches.
+          </EmptyState>
+        ) : archived ? (
           <EmptyState icon={<Archive />}>Nothing is archived.</EmptyState>
         ) : (
           <EmptyState icon={<TypeIcon name={type.icon} />} action={newEntry}>

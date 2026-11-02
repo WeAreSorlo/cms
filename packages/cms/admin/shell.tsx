@@ -1,4 +1,4 @@
-import { ContentType, SectionContext, sectionOf } from './api'
+import { ContentType, SectionContext, pathOf, sectionOf } from './api'
 import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
 import {
   Blocks,
@@ -15,9 +15,9 @@ import {
 } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
-// The page around every admin page: the nav with the user's row, a skip link, and the column for an editor's panel.
+// The page around every admin page: the nav with the user's row, a skip link, and the column for the page's panel.
 // After each change of page it titles the document after the page's heading and moves focus there, so screen readers
-// announce the new page.
+// announce the new page. A list's search and filters change only the query after the page's path, which keeps the page.
 export function Shell({
   hash,
   types,
@@ -36,10 +36,12 @@ export function Shell({
   const main = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
 
-  // A page's own word on its nav item, which lasts until the hash changes
-  const [shown, setShown] = useState<{ hash: string; section: string }>()
-  const showSection = useCallback((section: string) => setShown({ hash: location.hash, section }), [])
-  const section = shown?.hash === hash ? shown.section : sectionOf(hash)
+  const path = pathOf(hash)
+
+  // A page's own word on its nav item, which lasts until the page changes
+  const [shown, setShown] = useState<{ path: string; section: string }>()
+  const showSection = useCallback((section: string) => setShown({ path: pathOf(location.hash), section }), [])
+  const section = shown?.path === path ? shown.section : sectionOf(hash)
 
   const focusHeading = () => {
     const heading = main.current?.querySelector('h1')
@@ -67,15 +69,15 @@ export function Shell({
   }, [])
 
   // This runs once the new page is in the document, so it never focuses the old page's heading
-  const shownHash = useRef(hash)
+  const shownPath = useRef(path)
   useEffect(() => {
-    if (hash !== shownHash.current) {
-      shownHash.current = hash
+    if (path !== shownPath.current) {
+      shownPath.current = path
       setMenuOpen(false)
       pending.current = true
     }
     update()
-  }, [hash])
+  }, [path])
 
   const groups = [
     [...types.values()].map((type) => ({
@@ -172,7 +174,12 @@ export function Shell({
             </PanelSlot.Provider>
           </SectionContext.Provider>
         </main>
-        <div ref={setPanelSlot} className='cms-panel-slot' />
+        {/* The panel on every page: the page's own at the top, then the assistant's region, which the shell keeps
+            across pages so a chat lasts, and which is empty until the assistant comes (PLAN.md section 21) */}
+        <div className='cms-side'>
+          <div ref={setPanelSlot} className='cms-panel-slot' />
+          <div className='cms-side__assistant' />
+        </div>
       </div>
     </LucideProvider>
   )

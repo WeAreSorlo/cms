@@ -11,10 +11,13 @@ export const TypesContext = createContext(new Map<string, ContentType>())
 // The site's shared groups by name, as their files have them, for the type editor
 export const GroupsContext = createContext(new Map<string, SharedGroup>())
 
+// A page's place in the URL's hash, without the query after it, which holds a list's search and filters
+export const pathOf = (hash: string) => hash.split('?')[0]
+
 // The nav item a page belongs to, from its URL's hash, such as types/blog for #/types/blog/archive. An entry's URL
 // doesn't name its type, so its page tells the shell through SectionContext once the entry loads.
 export function sectionOf(hash: string) {
-  const [section, name] = hash.replace(/^#\/?/, '').split('/')
+  const [section, name] = pathOf(hash).replace(/^#\/?/, '').split('/')
   if (section === 'types' && name) return `types/${name}`
   return ['media', 'forms', 'automations', 'schema', 'groups', 'keys'].includes(section) ? section : undefined
 }

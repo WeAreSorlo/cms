@@ -1,20 +1,35 @@
 import { mediaSchema } from '../src/schemas'
 import { ContentType, Entry, TypesContext, api, date, errorMessage, titleOf } from './api'
+import { fieldChoicesOf, filterOf, whereOf } from './lists'
 import {
   Badge,
   DialogClose,
   EmptyState,
+  ListFilters,
   Loading,
   Notice,
   PageHeader,
   Pages,
   Pagination,
+  Panel,
+  focusHeading,
   useConfirm,
+  useListQuery,
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, Modal } from 'iight'
-import { CircleAlert, FileAudio, File as FileIcon, FileText, FileVideo, Images, Trash2, Upload } from 'lucide-react'
-import { DragEvent, useContext, useEffect, useRef, useState } from 'react'
+import {
+  CircleAlert,
+  FileAudio,
+  File as FileIcon,
+  FileText,
+  FileVideo,
+  Images,
+  SearchX,
+  Trash2,
+  Upload,
+} from 'lucide-react'
+import { DragEvent, MouseEvent, useContext, useEffect, useRef, useState } from 'react'
 
 // A media file as the admin API returns it
 export interface Media {
@@ -30,8 +45,9 @@ export interface Media {
   createdAt: string
 }
 
-// Each type is a condition on the file's mime
-const filterSchema: Array<FieldSchema> = [
+// A search on names, and each type a condition on the file's mime
+const searchSchema: Array<FieldSchema> = [
+  { name: 'search', label: 'Search', type: 'text', width: 50, options: { placeholder: 'Name' } },
   {
     name: 'type',
     label: 'Type',
@@ -47,8 +63,25 @@ const filterSchema: Array<FieldSchema> = [
       ],
     },
   },
-  { name: 'search', label: 'Search', type: 'text', width: 50, options: { placeholder: 'Name' } },
 ]
+
+// What a filter's rules can test of a file, by the names the list API gives them
+const mediaFields = new Map(
+  (
+    [
+      { name: 'name', label: 'Name', type: 'text' },
+      { name: 'alt', label: 'Alt text', type: 'text' },
+      { name: 'caption', label: 'Caption', type: 'text' },
+      { name: 'mime', label: 'MIME type', type: 'text' },
+      { name: 'width', label: 'Width', type: 'number' },
+      { name: 'height', label: 'Height', type: 'number' },
+      { name: 'createdAt', label: 'Uploaded', type: 'date' },
+    ] satisfies Array<FieldSchema>
+  ).map((field) => [field.name, field]),
+)
+const mediaChoices = fieldChoicesOf(mediaFields)
+// A picker for a field that takes some types has nothing to filter by type
+const nameSchema = searchSchema.filter((field) => field.name !== 'type')
 
 const isImage = (media: Media) => media.mime.startsWith('image/')
 const extension = (media: Media) => media.name.split('.').pop()!.toUpperCase()
@@ -123,17 +156,17 @@ interface Pick {
   onPick: (media: Media) => void
 }
 
-// The media library: every file in a grid, newest first, with a type filter and a search on names. Files dropped on
-// the grid upload, as chosen ones do. Given a field to pick for, it shows only the types the field takes, and a click
-// picks the file rather than editing it.
-export function MediaLibrary({ pick }: { pick?: Pick }) {
-  const [filters, setFilters] = useState<Record<string, any>>({})
-  // Bumped to empty the filters, since the form keeps what was typed into it
-  const [filterForm, setFilterForm] = useState(0)
-  const [page, setPage] = useState(1)
+// The media library: every file in a grid, newest first, with a search on names, a type filter and a filter on its
+// details, in the URL's query. Files dropped on the grid upload, as chosen ones do. Given a field to pick for, it
+// shows only the types the field takes, keeps its filters to itself, and a click picks the file rather than editing it.
+export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
+  const filters = useListQuery(pick ? undefined : query)
+  const { page, setPage } = filters
   const [list, setList] = useState<{ data: Array<Media>; pagination: Pagination }>()
   const [reloads, setReloads] = useState(0)
   const [editing, setEditing] = useState<Media>()
+  const [error, setError] = useState('')
+  // The files an upload turned away
   const [problems, setProblems] = useState<Array<string>>([])
   // Such as Uploading 2 of 3…, while files go up
   const [progress, setProgress] = useState('')
@@ -141,27 +174,43 @@ export function MediaLibrary({ pick }: { pick?: Pick }) {
   const picker = useRef<HTMLInputElement>(null)
   const toast = useToast()
 
+  const type = filters.params.get('type')
+  const search = filters.params.get('search')?.trim()
+  const { where, left } = whereOf(
+    mediaFields,
+    filterOf(filters.params),
+    [type && { field: 'mime', op: 'like', value: type }, search && { field: 'name', op: 'like', value: search }].filter(
+      (condition) => !!condition,
+    ),
+  )
+  // Any of the types, each with the filters, since groups join with OR
+  const groups = pick?.types?.length
+    ? pick.types.flatMap((type) =>
+        (where.length ? where : [[]]).map((group) => [
+          { field: 'mime', op: 'like', value: type.replace(/\*$/, '') },
+          ...group,
+        ]),
+      )
+    : where
+  const groupsKey = JSON.stringify(groups)
+
   useEffect(() => {
-    const where = [
-      filters.type && { field: 'mime', op: 'like', value: filters.type },
-      filters.search && { field: 'name', op: 'like', value: filters.search },
-    ].filter(Boolean)
     const params = new URLSearchParams({ order: '{"createdAt":"desc"}', page: String(page), perPage: '24' })
-    // Any of the types, each with the filters, since groups join with OR
-    const groups = pick?.types?.length
-      ? pick.types.map((type) => [{ field: 'mime', op: 'like', value: type.replace(/\*$/, '') }, ...where])
-      : [where]
-    if (groups.some((group) => group.length)) params.set('where', JSON.stringify(groups))
+    if (groups.length) params.set('where', groupsKey)
 
     // A slow reply to an earlier search mustn't replace a newer one
     let current = true
     api('GET', `/media?${params}`)
-      .then(({ body }) => current && setList(body))
-      .catch((error) => current && setProblems([errorMessage(error)]))
+      .then(({ body }) => {
+        if (!current) return
+        setList(body)
+        setError('')
+      })
+      .catch((error) => current && setError(errorMessage(error)))
     return () => {
       current = false
     }
-  }, [filters, page, reloads, pick?.types?.join()])
+  }, [groupsKey, page, reloads])
 
   // A picker takes only its field's types, which the file chooser enforces with accept, and dropped files skip
   const takes = (file: File) =>
@@ -197,10 +246,12 @@ export function MediaLibrary({ pick }: { pick?: Pick }) {
     setReloads((count) => count + 1)
   }
 
-  const clearFilters = () => {
-    setFilters({})
-    setPage(1)
-    setFilterForm((count) => count + 1)
+  // Its button goes, so focus moves to a picker's search, or to the page's heading
+  const clearFilters = (event: MouseEvent<HTMLButtonElement>) => {
+    const search = event.currentTarget.closest('dialog')?.querySelector<HTMLElement>('.cms-filters input')
+    filters.clear()
+    if (search) search.focus()
+    else focusHeading()
   }
 
   // Dragging over a child of the zone leaves the zone itself, so only leaving for somewhere outside it counts
@@ -233,9 +284,32 @@ export function MediaLibrary({ pick }: { pick?: Pick }) {
     </button>
   )
 
+  const filterForms = (
+    <ListFilters
+      list={filters}
+      schema={pick?.types?.length ? nameSchema : searchSchema}
+      fieldChoices={mediaChoices}
+      count={list?.pagination.total}
+      noun={['file', 'files']}
+      left={left}
+    />
+  )
+
   return (
     <div className={pick ? undefined : 'cms-page'}>
-      {pick ? <div className='cms-toolbar'>{uploadButton}</div> : <PageHeader title='Media' actions={uploadButton} />}
+      {pick ? (
+        <>
+          <div className='cms-toolbar'>{uploadButton}</div>
+          {filterForms}
+        </>
+      ) : (
+        <>
+          <PageHeader title='Media' />
+          <Panel label='Media' actions={uploadButton} sheet='Filters'>
+            {filterForms}
+          </Panel>
+        </>
+      )}
       <input
         ref={picker}
         type='file'
@@ -249,16 +323,7 @@ export function MediaLibrary({ pick }: { pick?: Pick }) {
         }}
       />
 
-      <Form
-        key={filterForm}
-        // A picker for a field that takes some types has nothing to filter by type
-        schema={pick?.types?.length ? filterSchema.slice(1) : filterSchema}
-        onValuesChange={(next) => {
-          setFilters(next)
-          setPage(1)
-        }}
-      />
-
+      {error && <Notice tone='danger'>{error}</Notice>}
       {problems.length > 0 && (
         <Notice tone='danger'>
           {problems.length === 1 ? (
@@ -274,14 +339,14 @@ export function MediaLibrary({ pick }: { pick?: Pick }) {
       )}
 
       <div className='cms-dropzone' data-dragging={dragging || undefined} {...drop}>
-        {!list && !problems.length && <Loading />}
+        {!list && !error && <Loading />}
         {list?.data.length === 0 &&
-          (filters.type || filters.search ? (
+          (where.length ? (
             <EmptyState
-              icon={<Images />}
+              icon={<SearchX />}
               action={
                 <button type='button' className='iight-button' onClick={clearFilters}>
-                  Clear the filters
+                  Clear filters
                 </button>
               }
             >

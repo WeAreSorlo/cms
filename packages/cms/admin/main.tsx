@@ -1,6 +1,6 @@
 import { signInSchema } from '../src/schemas'
 import './admin.scss'
-import { ContentType, GroupsContext, SharedGroup, TypesContext, api } from './api'
+import { ContentType, GroupsContext, SharedGroup, TypesContext, api, pathOf } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage } from './entries'
@@ -89,7 +89,7 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
 // #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, or #/schema/blog
-// and #/groups/seo in the type editor
+// and #/groups/seo in the type editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
 function Page({
   hash,
   types,
@@ -103,7 +103,9 @@ function Page({
   editable: boolean
   reloadTypes: () => Promise<void>
 }) {
-  const [section, name, action, ids] = hash.replace(/^#\/?/, '').split('/')
+  const path = pathOf(hash)
+  const query = hash.slice(path.length + 1)
+  const [section, name, action, ids] = path.replace(/^#\/?/, '').split('/')
   const type = section === 'types' ? types.get(name) : undefined
 
   if (Design && section === 'design') {
@@ -125,7 +127,7 @@ function Page({
     return <GroupEditor key={name} group={groups.get(name)} editable={editable} onSaved={reloadTypes} />
   }
   if (section === 'groups') return <GroupList groups={groups} editable={editable} />
-  if (section === 'media') return <MediaLibrary />
+  if (section === 'media') return <MediaLibrary query={query} />
   if (section === 'forms' && name === 'new') return <FormEditor key='new' />
   if (section === 'forms' && name && isView(action)) return <Inbox key={`${name}/${action}`} id={name} view={action} />
   if (section === 'forms' && name) return <FormPage key={name} id={name} />
@@ -144,7 +146,9 @@ function Page({
   if (type?.structure === 'singleton') return <SingletonPage key={type.name} type={type} />
   if (type && action === 'new') return <EntryEditor key={`${type.name}/new`} type={type} />
   if (type && action === 'bulk') return <BulkEditor key={hash} type={type} ids={ids?.split(',') ?? []} />
-  if (type) return <EntryList key={`${type.name}/${action}`} type={type} archived={action === 'archive'} />
+  if (type) {
+    return <EntryList key={`${type.name}/${action}`} type={type} archived={action === 'archive'} query={query} />
+  }
   return <p>{types.size ? 'Choose a content type.' : 'Add a content type to schema/types to get started.'}</p>
 }
 

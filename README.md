@@ -58,10 +58,12 @@ Each content type is a JSON file in the site project's `schema/types` folder, na
 | `structure`         | `collection`, `hierarchical` for pages with parents, or `singleton` for a type of one entry                                          |
 | `drafts`            | Optional, `false` for a type whose every save publishes, running every check, in place of keeping drafts. Drafts are on if not given |
 | `icon`              | Optional, the name of an icon                                                                                                        |
-| `titleField`        | Optional, the top-level field that titles an entry                                                                                   |
+| `titleField`        | Optional, the top-level field that titles an entry, which a list's search looks in                                                   |
 | `slugField`         | Optional, a top-level `identifier` field. Slugs are unique among siblings, archived included                                         |
 | `listColumns`       | Optional, the top-level fields the admin's lists show                                                                                |
 | `fields`            | A core schema. Every field and flexible layout needs an `id`, such as `fld_k3x9q2mz`                                                 |
+
+Each type's list in the admin has a panel beside it with New, Bulk edit and the archive, a search on the title field, and Filter, core's conditions input over the type's top-level fields. The search and the filter stay in the URL, as in `#/types/blog?search=lamp`, so a link shares them. They become the list API's `where`, which has every operator but starts with, so the list leaves those rules out and says so. A search or filter on a hierarchical type lists the pages that match, rather than the tree. The Media page has the same, beside its type filter, over names, alt text, captions, MIME types, dimensions and upload dates.
 
 ### The type editor
 

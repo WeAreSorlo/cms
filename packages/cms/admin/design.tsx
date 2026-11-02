@@ -7,11 +7,13 @@ import './design.scss'
 import { Version, Versions } from './entries'
 import { iconInput, useInputs } from './fields'
 import { TypeGroups } from './groups'
+import { entryFields, fieldChoicesOf, filterOf, whereOf } from './lists'
 import { Media, MediaCard } from './media'
 import {
   Badge,
   EmptyState,
   IconButton,
+  ListFilters,
   Loading,
   Notice,
   PageHeader,
@@ -21,11 +23,12 @@ import {
   StatusBadge,
   ThemeSwitch,
   useConfirm,
+  useListQuery,
   useToast,
 } from './ui'
 import { ChangeList, JsonChanges } from './versions'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Sheet, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Plus, Sheet, Trash2 } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 const colours = [
@@ -367,6 +370,69 @@ const gridType: ContentType = {
   ],
 }
 const gridColumns = columnsOf(gridType.fields)
+
+// The same products' list panel, which keeps its search and filter here rather than in the URL. The filtered one has
+// a rule lists can use, and one they can't.
+const listFields = entryFields(gridType.fields)
+const listChoices = fieldChoicesOf(listFields)
+const listSearch: Array<FieldSchema> = [
+  { name: 'search', label: 'Search', type: 'text', options: { placeholder: 'Name' } },
+]
+const listPanels = [
+  { label: 'A list with an entry ticked', start: '' },
+  {
+    label: 'Searched and filtered',
+    start: new URLSearchParams({
+      search: 'lamp',
+      filter: JSON.stringify([
+        {
+          rules: [
+            { field: 'values.price', operator: 'greaterThan', value: '30' },
+            { field: 'values.name', operator: 'startsWith', value: 'Desk' },
+          ],
+        },
+      ]),
+    }).toString(),
+  },
+]
+
+function ListPanel({ start }: { start: string }) {
+  const toast = useToast()
+  const list = useListQuery(undefined, start)
+  const { left } = whereOf(listFields, filterOf(list.params))
+  return (
+    <Panel
+      label='Products'
+      sheet='Filters'
+      actions={
+        <>
+          <button type='button' className='iight-button iight-button--primary' onClick={() => toast('Opens New')}>
+            <Plus /> New product
+          </button>
+          {!list.filtered && (
+            <button type='button' className='iight-button' onClick={() => toast('Opens the grid')}>
+              <Sheet /> Bulk edit 1 entry
+            </button>
+          )}
+        </>
+      }
+      footer={
+        <button type='button' className='iight-button' onClick={() => toast('Opens the archive')}>
+          <Archive /> Archive
+        </button>
+      }
+    >
+      <ListFilters
+        list={list}
+        schema={listSearch}
+        fieldChoices={listChoices}
+        count={list.filtered ? 1 : gridEntries.length}
+        noun={['entry', 'entries']}
+        left={left}
+      />
+    </Panel>
+  )
+}
 
 const sampleEntry = (id: string, status: Status, values: Record<string, any>): Entry => ({
   id,
@@ -717,18 +783,31 @@ export default function Design() {
         </ul>
       </PanelSlot.Provider>
 
+      <h2>Lists</h2>
+      <p>
+        Every page's panel holds its actions, a list's as well as an editor's. A list's has New at the top, with Bulk
+        edit once entries are ticked, then a search on the title field and Filter, which opens core's conditions input
+        over the type's fields, then Clear filters once either is set and how many entries the list holds, which is
+        announced as it changes. The archive is at the bottom. On a list's page both stay in the URL, and below 64rem
+        the top is the bar, whose Filters opens the rest, but here they stay as they are.
+      </p>
+      <PanelSlot.Provider value={null}>
+        <ul className='cms-design__panels'>
+          {listPanels.map(({ label, start }) => (
+            <li key={label}>
+              <h3>{label}</h3>
+              <ListPanel start={start} />
+            </li>
+          ))}
+        </ul>
+      </PanelSlot.Provider>
+
       <h2>Bulk editing</h2>
       <p>
         Ticking entries in a list, and the grid that Bulk edit opens them in. Its cells show their values as the list
         does. An edited cell is tinted, a refused one is outlined with its messages, and a field its conditions hide
-        says so. Specs opens in a dialog.
+        says so. Specs opens in a dialog. Save and Publish are in the grid's panel.
       </p>
-      <div className='cms-header__actions'>
-        <span className='cms-muted'>1 selected</span>
-        <button type='button' className='iight-button' onClick={() => toast('Opened the grid')}>
-          <Sheet /> Bulk edit
-        </button>
-      </div>
       <table className='cms-table'>
         <thead>
           <tr>

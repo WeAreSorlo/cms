@@ -1,4 +1,5 @@
-import type { Status } from './api'
+import { Status, pathOf } from './api'
+import { filterOf } from './lists'
 import Form, { FieldSchema, Modal, ValidationReport, flattenValidationReport } from 'iight'
 import {
   ChevronLeft,
@@ -6,8 +7,10 @@ import {
   CircleAlert,
   CircleCheck,
   Info,
+  ListFilter,
   LoaderCircle,
   LucideProvider,
+  SlidersHorizontal,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -20,7 +23,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -67,18 +72,16 @@ export const TypeIcon = ({ name }: { name?: string }) => (
   </Suspense>
 )
 
-// A page's title on one line after a link to the list it's in, with details such as a badge beside it, and its
-// actions on the right. The h1 holds only the title, since the shell titles the document after it.
+// A page's title on one line after a link to the list it's in, with details such as a badge beside it. The h1 holds
+// only the title, since the shell titles the document after it. The page's actions are in its panel.
 export function PageHeader({
   back,
   title,
   meta,
-  actions,
 }: {
   back?: { href: string; label: string }
   title: ReactNode
   meta?: ReactNode
-  actions?: ReactNode
 }) {
   return (
     <header className='cms-header'>
@@ -92,24 +95,24 @@ export function PageHeader({
         <h1>{title}</h1>
         {meta && <span className='cms-header__meta'>{meta}</span>}
       </div>
-      {actions && <div className='cms-header__actions'>{actions}</div>}
     </header>
   )
 }
 
-// Where editors' panels go: the shell's column at the window's right, or nowhere, as on the reference page, which
-// shows its panels in place
+// Where pages' panels go: the top of the shell's column at the window's right, or nowhere, as on the reference page,
+// which shows its panels in place
 export const PanelSlot = createContext<HTMLElement | null>(null)
 
-// An editor's panel: its actions at the top with what stops them, details in the middle, and the actions that take
-// the page away, such as Delete, at the bottom. From 64rem it floats beside the page, as tall as the window, and only
-// its middle scrolls. Below that, its actions are a bar fixed to the bottom of the window, and the rest follows the
-// page.
+// A page's panel: its actions at the top with what stops them, details in the middle, and the actions that take the
+// page away, such as Delete, at the bottom. From 64rem it fills the shell's column beside the page, as tall as the
+// window, and only its middle scrolls. Below that, its actions are a bar fixed to the bottom of the window, and the
+// rest follows the page, or with sheet, opens from a button of that name in the bar, as a list's filters do.
 export function Panel({
   actions,
   problem,
   label,
   footer,
+  sheet,
   children,
 }: {
   actions?: ReactNode
@@ -117,11 +120,15 @@ export function Panel({
   // The panel's name, such as About this entry
   label?: string
   footer?: ReactNode
+  sheet?: string
   children?: ReactNode
 }) {
   const slot = useContext(PanelSlot)
   const bar = useRef<HTMLDivElement>(null)
-  const hasBar = !!(actions || problem)
+  const sheetButton = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const id = useId()
+  const hasBar = !!(actions || problem || sheet)
 
   // The page makes room for the bar, as tall as its buttons and problem make it
   useLayoutEffect(() => {
@@ -136,12 +143,29 @@ export function Panel({
     }
   }, [slot, hasBar])
 
+  // A panel with nothing in it leaves the shell's column empty, rather than holding an empty landmark
+  if (!hasBar && !children && !footer) return null
+
   // The whole panel is the landmark, since the shell's column sits outside main and the actions need one too
   const panel = (
-    <aside className='cms-panel' aria-label={label}>
+    <aside className='cms-panel' aria-label={label} data-sheet={sheet && ''}>
       {hasBar && (
         <div ref={bar} className='cms-panel__actions'>
-          {actions && <div className='cms-panel__buttons'>{actions}</div>}
+          <div className='cms-panel__buttons'>
+            {actions}
+            {sheet && (
+              <button
+                ref={sheetButton}
+                type='button'
+                className='iight-button cms-panel__sheet'
+                aria-expanded={open}
+                aria-controls={id}
+                onClick={() => setOpen(!open)}
+              >
+                <SlidersHorizontal /> {sheet}
+              </button>
+            )}
+          </div>
           {problem && (
             <p className='cms-problem' role='alert'>
               <CircleAlert /> {problem}
@@ -149,11 +173,164 @@ export function Panel({
           )}
         </div>
       )}
-      {children && <div className='cms-panel__body'>{children}</div>}
+      {children && (
+        <div
+          id={id}
+          className='cms-panel__body'
+          data-open={open || undefined}
+          onKeyDown={(event) => {
+            if (!open || event.key !== 'Escape') return
+            setOpen(false)
+            sheetButton.current?.focus()
+          }}
+        >
+          {children}
+        </div>
+      )}
       {footer && <div className='cms-panel__footer'>{footer}</div>}
     </aside>
   )
   return slot ? createPortal(panel, slot) : panel
+}
+
+// Moves focus to the page's heading, as the shell does on a change of page, such as when the focused button goes
+export function focusHeading() {
+  const heading = document.querySelector<HTMLElement>('main h1')
+  if (!heading) return
+  heading.tabIndex = -1
+  heading.focus()
+}
+
+// A list's search and filter, kept in the URL's query after the page's path, so they survive a reload and can be
+// shared, or without a query, as in a picker, kept here from start. Its forms start from what's shown, which follows
+// the query when it changes from elsewhere, such as the nav's link to the bare list, and after clear. Its page starts
+// again at the first whenever the query changes.
+export function useListQuery(query?: string, start = '') {
+  const [kept, setKept] = useState(start)
+  const params = useMemo(() => new URLSearchParams(query ?? kept), [query, kept])
+  const current = params.toString()
+  const written = useRef(current)
+  const [shown, setShown] = useState(params)
+  useEffect(() => {
+    if (current === written.current) return
+    written.current = current
+    setShown(params)
+  }, [current])
+
+  const [paging, setPaging] = useState({ query: current, page: 1 })
+  const page = paging.query === current ? paging.page : 1
+  const setPage = (page: number) => setPaging({ query: current, page })
+
+  // Empty values leave the query. Replacing the URL keeps history to one entry for the page.
+  const write = (next: URLSearchParams) => {
+    for (const key of [...next.keys()]) if (!next.get(key)) next.delete(key)
+    written.current = next.toString()
+    if (query === undefined) setKept(written.current)
+    else location.replace(`${pathOf(location.hash)}${written.current && `?${written.current}`}`)
+  }
+
+  const clear = () => {
+    write(new URLSearchParams())
+    setShown(new URLSearchParams())
+  }
+
+  return { params, shown, write, clear, page, setPage, filtered: current !== '' }
+}
+
+// A list's search box and Filter, which shows and hides core's conditions input over the fields it lists, then Clear
+// filters once anything's set, and how many the list holds, announced as that changes
+export function ListFilters({
+  list,
+  schema,
+  fieldChoices,
+  count,
+  noun,
+  left,
+}: {
+  list: ReturnType<typeof useListQuery>
+  // The search's fields, named as the query's keys, such as search. The same array from render to render, since a new
+  // one starts the form again from what's shown, losing what's being typed.
+  schema: Array<FieldSchema>
+  fieldChoices: Array<object>
+  // How many the list holds, once it's loaded
+  count?: number
+  noun: [one: string, many: string]
+  // How many rules the list leaves out, since it can't filter with them
+  left: number
+}) {
+  const id = useId()
+  const area = useRef<HTMLDivElement>(null)
+  const { params, shown, write } = list
+  // Open whenever the rules shown come from elsewhere, such as a shared link, so they can be seen
+  const filterValues = useMemo(() => ({ filter: filterOf(shown) }), [shown])
+  const [open, setOpen] = useState(filterValues.filter.length > 0)
+  useEffect(() => {
+    if (filterValues.filter.length) setOpen(true)
+  }, [filterValues])
+  const searchValues = useMemo(
+    () => Object.fromEntries(schema.map((field) => [field.name, shown.get(field.name) ?? ''])),
+    [shown, schema],
+  )
+  const filterSchema = useMemo<Array<FieldSchema>>(
+    () => [
+      {
+        name: 'filter',
+        label: 'Rules',
+        type: 'conditions',
+        instructions: `Shows the ${noun[1]} that match every rule of any group.`,
+        options: { fieldChoices },
+      },
+    ],
+    [fieldChoices, noun[1]],
+  )
+
+  const change = (values: Record<string, any>) => {
+    const next = new URLSearchParams(params)
+    for (const [key, value] of Object.entries(values)) {
+      next.set(key, typeof value === 'string' ? value : value?.length ? JSON.stringify(value) : '')
+    }
+    write(next)
+  }
+
+  // Its button goes, so focus moves to the search
+  const clear = () => {
+    list.clear()
+    area.current?.querySelector<HTMLElement>('input, select')?.focus()
+  }
+
+  return (
+    <div ref={area} className='cms-filters'>
+      <Form schema={schema} values={searchValues} onValuesChange={change} />
+      <button
+        type='button'
+        className='iight-button'
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
+      >
+        <ListFilter /> Filter
+      </button>
+      <div id={id} hidden={!open}>
+        <Form schema={filterSchema} values={filterValues} onValuesChange={change} />
+        {left > 0 && (
+          <Notice tone='warning'>
+            {left === 1
+              ? "A rule can't filter this list, so it's left out."
+              : `${left} rules can't filter this list, so they're left out.`}{' '}
+            Lists can filter with every operator but starts with.
+          </Notice>
+        )}
+      </div>
+      {list.filtered && (
+        <button type='button' className='iight-button' onClick={clear}>
+          <X /> Clear filters
+        </button>
+      )}
+      <p className='cms-muted' role='status'>
+        {count !== undefined && (count === 0 ? `No ${noun[1]}` : `${count} ${count === 1 ? noun[0] : noun[1]}`)}
+      </p>
+    </div>
+  )
 }
 
 const noticeIcons = { info: Info, success: CircleCheck, warning: TriangleAlert, danger: CircleAlert }

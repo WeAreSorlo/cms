@@ -48,7 +48,8 @@ export function KeyList() {
 
   return (
     <div className='cms-page'>
-      <PageHeader title='API keys' actions={newKey} />
+      <PageHeader title='API keys' />
+      <Panel label='API keys' actions={newKey} />
       <p>Every key reads published content and media through the delivery API, and its permissions let it do more.</p>
       {error && <Notice tone='danger'>{error}</Notice>}
       {!keys && !error && <Loading />}

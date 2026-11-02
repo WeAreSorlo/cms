@@ -5,6 +5,8 @@ test("finds the nav item a page's URL belongs to", () => {
   expect(sectionOf('#/types/blog')).toBe('types/blog')
   expect(sectionOf('#/types/blog/archive')).toBe('types/blog')
   expect(sectionOf('#/types/blog/new')).toBe('types/blog')
+  expect(sectionOf('#/types/blog?search=lamp')).toBe('types/blog')
+  expect(sectionOf('#/media?filter=%5B%5D')).toBe('media')
   expect(sectionOf('#/forms/01a1831e/inbox')).toBe('forms')
   expect(sectionOf('#/automations/new/01a1831e')).toBe('automations')
   expect(sectionOf('#/schema/blog')).toBe('schema')

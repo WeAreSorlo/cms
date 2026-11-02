@@ -97,7 +97,8 @@ export function AutomationList() {
 
   return (
     <div className='cms-page'>
-      <PageHeader title='Automations' actions={newAutomation} />
+      <PageHeader title='Automations' />
+      <Panel label='Automations' actions={newAutomation} />
       {error && <Notice tone='danger'>{error}</Notice>}
       {!automations && !error && <Loading />}
       {automations?.length === 0 && (
@@ -228,13 +229,6 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
       <PageHeader
         back={{ href: '#/automations', label: 'Automations' }}
         title={automation ? automation.name : 'New automation'}
-        actions={
-          automation && (
-            <a className='iight-button' href={`#/automations/${automation.id}/runs`}>
-              <History /> Runs
-            </a>
-          )
-        }
       />
 
       <div ref={area}>
@@ -249,14 +243,21 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
         label='About this automation'
         problem={problem}
         actions={
-          <button
-            type='button'
-            className='iight-button iight-button--primary'
-            aria-busy={busy === 'save'}
-            onClick={save}
-          >
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
+          <>
+            <button
+              type='button'
+              className='iight-button iight-button--primary'
+              aria-busy={busy === 'save'}
+              onClick={save}
+            >
+              {busy === 'save' ? 'Saving…' : 'Save'}
+            </button>
+            {automation && (
+              <a className='iight-button' href={`#/automations/${automation.id}/runs`}>
+                <History /> Runs
+              </a>
+            )}
+          </>
         }
         footer={
           automation && (
@@ -359,16 +360,19 @@ export function Runs({ id }: { id: string }) {
       <PageHeader
         back={{ href: '#/automations', label: 'Automations' }}
         title={automation ? `${automation.name}: runs` : 'Runs'}
+      />
+      <Panel
+        label={automation ? `${automation.name}: runs` : 'Runs'}
         actions={
           <>
+            <button type='button' className='iight-button' onClick={refresh}>
+              <RefreshCw /> Refresh
+            </button>
             {automation && (
               <a className='iight-button' href={`#/automations/${id}`}>
                 <Pencil /> Edit the automation
               </a>
             )}
-            <button type='button' className='iight-button' onClick={refresh}>
-              <RefreshCw /> Refresh
-            </button>
           </>
         }
       />

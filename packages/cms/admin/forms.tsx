@@ -79,7 +79,8 @@ export function FormList() {
 
   return (
     <div className='cms-page'>
-      <PageHeader title='Forms' actions={newForm} />
+      <PageHeader title='Forms' />
+      <Panel label='Forms' actions={newForm} />
       {error && <Notice tone='danger'>{error}</Notice>}
       {!forms && !error && <Loading />}
       {forms?.length === 0 && (
@@ -184,13 +185,6 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
         back={{ href: '#/forms', label: 'Forms' }}
         title={form ? form.label : 'New form'}
         meta={form && <Badge>Version {form.version}</Badge>}
-        actions={
-          form && (
-            <a className='iight-button' href={`#/forms/${form.id}/inbox`}>
-              <InboxIcon /> Inbox
-            </a>
-          )
-        }
       />
 
       <div ref={forms}>
@@ -207,9 +201,16 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
         label='About this form'
         problem={problem}
         actions={
-          <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={save}>
-            {busy ? 'Saving…' : 'Save'}
-          </button>
+          <>
+            <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={save}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+            {form && (
+              <a className='iight-button' href={`#/forms/${form.id}/inbox`}>
+                <InboxIcon /> Inbox
+              </a>
+            )}
+          </>
         }
       />
 
@@ -340,6 +341,9 @@ export function Inbox({ id, view }: { id: string; view: View }) {
       <PageHeader
         back={{ href: '#/forms', label: 'Forms' }}
         title={form ? `${form.label}: ${views[view].toLowerCase()}` : views[view]}
+      />
+      <Panel
+        label={form ? `${form.label}: ${views[view].toLowerCase()}` : views[view]}
         actions={
           form && (
             <a className='iight-button' href={`#/forms/${id}`}>

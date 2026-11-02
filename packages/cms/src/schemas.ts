@@ -180,6 +180,18 @@ const ruleTypes: Record<string, string> = {
 
 const isChoice = (field: FieldSchema) => ['select', 'radio', 'checkbox'].includes(field.type)
 
+// What rules on fields compare, as core's conditions input takes it: their choices, or their type. Fields of different
+// kinds compare as text.
+export function ruleKind(fields: Array<FieldSchema>): { type?: string; choices?: Array<any> } {
+  const kinds = new Set(fields.map((field) => (isChoice(field) ? 'choices' : (ruleTypes[field.type] ?? 'text'))))
+  const kind = kinds.size === 1 ? [...kinds][0] : 'text'
+  if (kind !== 'choices') return { type: kind }
+  const choices = fields
+    .flatMap((field): Array<any> => field.options?.choices ?? [])
+    .flatMap((choice) => (choice?.choices?.length ? choice.choices : [choice]))
+  return { choices: [...new Map(choices.map((choice) => [String(choice?.value), choice])).values()] }
+}
+
 // The paths into an event's data that an automation's rules can test, as core's conditions input lists them: the
 // event's own first, then the types' and the forms' top-level fields, by label, as "Blog posts › Featured". Groups
 // are left out, since a rule can't compare them, and so is content, which holds no value.
@@ -201,17 +213,10 @@ function eventFields(types: Iterable<HasFields & { name: string }>, forms: Array
 
     return [...named].map(([name, uses]) => {
       const fields = uses.map(({ field }) => field)
-      const kinds = new Set(fields.map((field) => (isChoice(field) ? 'choices' : (ruleTypes[field.type] ?? 'text'))))
-      const choices = fields
-        .flatMap((field): Array<any> => field.options?.choices ?? [])
-        .flatMap((choice) => (choice?.choices?.length ? choice.choices : [choice]))
-      const kind = kinds.size === 1 ? [...kinds][0] : 'text'
       return {
         value: path + name,
         label: `${uses.map(({ owner }) => owner).join(', ')} › ${fields[0].label ?? name}`,
-        ...(kind === 'choices'
-          ? { choices: [...new Map(choices.map((choice) => [String(choice?.value), choice])).values()] }
-          : { type: kind }),
+        ...ruleKind(fields),
       }
     })
   }

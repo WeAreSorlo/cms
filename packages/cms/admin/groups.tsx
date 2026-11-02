@@ -44,7 +44,8 @@ export function GroupList({ groups, editable }: { groups: Map<string, SharedGrou
 
   return (
     <div className='cms-page'>
-      <PageHeader title='Shared groups' actions={newGroup} />
+      <PageHeader title='Shared groups' />
+      <Panel label='Shared groups' actions={newGroup} />
       {!editable && <Notice>{readOnly}</Notice>}
       {groups.size === 0 ? (
         <EmptyState icon={<Component />} action={newGroup}>

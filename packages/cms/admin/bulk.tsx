@@ -3,7 +3,7 @@ import { ContentType, Entry, api, errorMessage, formatValue, titleOf } from './a
 import { same } from './compare'
 import { CellText, FieldValue } from './entries'
 import { useInputs, useLinkNames } from './fields'
-import { Badge, Dialog, EmptyState, Loading, Notice, PageHeader, StatusBadge, useToast } from './ui'
+import { Badge, Dialog, EmptyState, Loading, Notice, PageHeader, Panel, StatusBadge, useToast } from './ui'
 import Form, {
   FieldSchema,
   FlatValidationReport,
@@ -12,7 +12,7 @@ import Form, {
   inputs as coreInputs,
   validateValues,
 } from 'iight'
-import { CircleAlert, Columns3, Sheet } from 'lucide-react'
+import { Columns3, Sheet } from 'lucide-react'
 import {
   FocusEvent,
   KeyboardEvent,
@@ -441,8 +441,10 @@ export function Grid({
     if (editing?.row !== row || editing.column !== column) edit(row, column)
   }
 
-  // Tab comes back to the cell that last had focus
+  // Tab comes back to the cell that last had focus. Focus alone doesn't always bring a cell into a narrow box, as
+  // beside the panel at 1024px, so it scrolls in clear of the column that stays on the left.
   const onFocus = (event: FocusEvent<HTMLTableElement>) => {
+    if (event.target.matches('[data-cell]')) event.target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     const [row, column] = event.target.closest<HTMLElement>('[data-cell]')?.dataset.cell?.split(' ').map(Number) ?? []
     if (row !== undefined) setActive((now) => (now[0] === row && now[1] === column ? now : [row, column]))
   }
@@ -759,8 +761,40 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
         back={back}
         title={`${type.label}: bulk edit`}
         meta={rows && <span className='cms-muted'>{count(rows.length, 'entry', 'entries')}</span>}
-        actions={<ColumnsMenu columns={every} chosen={chosen} onChoose={choose} />}
       />
+      <Panel
+        label={`${type.label}: bulk edit`}
+        problem={problem}
+        actions={
+          !!rows?.length && (
+            <>
+              <button
+                type='button'
+                className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
+                aria-busy={busy === 'save'}
+                onClick={() => save(false)}
+              >
+                {busy === 'save' ? 'Saving…' : 'Save'}
+              </button>
+              {drafts && (
+                <button
+                  type='button'
+                  className='iight-button iight-button--primary'
+                  aria-busy={busy === 'publish'}
+                  onClick={() => save(true)}
+                >
+                  {busy === 'publish' ? 'Publishing…' : 'Publish'}
+                </button>
+              )}
+              <span className='cms-panel__note'>
+                {edited.length ? `${count(edited.length, 'row', 'rows')} edited` : 'No changes yet'}
+              </span>
+            </>
+          )
+        }
+      >
+        <ColumnsMenu columns={every} chosen={chosen} onChoose={choose} />
+      </Panel>
 
       {ids.length > wanted.length && (
         <Notice>
@@ -781,37 +815,6 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
         </EmptyState>
       )}
       {!!rows?.length && <Grid type={type} columns={columns} rows={rows} onChange={change} />}
-
-      {!!rows?.length && (
-        <div className='cms-action-bar'>
-          {drafts && (
-            <button
-              type='button'
-              className='iight-button iight-button--primary'
-              aria-busy={busy === 'publish'}
-              onClick={() => save(true)}
-            >
-              {busy === 'publish' ? 'Publishing…' : 'Publish'}
-            </button>
-          )}
-          <button
-            type='button'
-            className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
-            aria-busy={busy === 'save'}
-            onClick={() => save(false)}
-          >
-            {busy === 'save' ? 'Saving…' : 'Save'}
-          </button>
-          <span className='cms-muted'>
-            {edited.length ? `${count(edited.length, 'row', 'rows')} edited` : 'No changes yet'}
-          </span>
-          {problem && (
-            <p className='cms-problem' role='alert'>
-              <CircleAlert /> {problem}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   )
 }
