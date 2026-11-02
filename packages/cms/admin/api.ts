@@ -19,7 +19,21 @@ export const pathOf = (hash: string) => hash.split('?')[0]
 export function sectionOf(hash: string) {
   const [section, name] = pathOf(hash).replace(/^#\/?/, '').split('/')
   if (section === 'types' && name) return `types/${name}`
-  return ['media', 'forms', 'automations', 'schema', 'groups', 'keys', 'tokens'].includes(section) ? section : undefined
+  return ['chat', 'media', 'forms', 'automations', 'schema', 'groups', 'keys', 'tokens'].includes(section)
+    ? section
+    : undefined
+}
+
+// Where the assistant is told the person is, from the URL's hash: an entry's editor or one of its versions, a type's
+// list or singleton, or a form and its inbox. The server checks it before the model sees it.
+export function pageOf(hash: string) {
+  const [section, name, action, number] = pathOf(hash).replace(/^#\/?/, '').split('/')
+  if (section === 'entries' && name) {
+    return action === 'versions' && number ? { entry: name, version: Number(number) } : { entry: name }
+  }
+  if (section === 'types' && name) return { type: name }
+  if (section === 'forms' && name && name !== 'new') return { form: name }
+  return {}
 }
 
 export const SectionContext = createContext((section: string) => {})

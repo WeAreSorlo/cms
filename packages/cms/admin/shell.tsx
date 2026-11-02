@@ -1,4 +1,5 @@
 import { ContentType, SectionContext, pathOf, sectionOf } from './api'
+import { AssistantContext, useAssistantState } from './chat'
 import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
 import {
   Blocks,
@@ -9,14 +10,19 @@ import {
   LogOut,
   LucideProvider,
   Menu,
+  MessagesSquare,
   Plug,
   SunMoon,
   Workflow,
   X,
 } from 'lucide-react'
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { ReactNode, Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 
-// The page around every admin page: the nav with the user's row, a skip link, and the column for the page's panel.
+// The assistant under the page's panel, in a chunk of its own with its Markdown renderer
+const PanelAssistant = lazy(() => import('./assistant').then((module) => ({ default: module.PanelAssistant })))
+
+// The page around every admin page: the nav with the user's row, a skip link, and the column for the page's panel and,
+// with the assistant on, the assistant under it, whose chat lasts from page to page.
 // After each change of page it titles the document after the page's heading and moves focus there, so screen readers
 // announce the new page. A list's search and filters change only the query after the page's path, which keeps the page.
 export function Shell({
@@ -24,6 +30,7 @@ export function Shell({
   types,
   user,
   mcp,
+  ai,
   onSignOut,
   children,
 }: {
@@ -32,11 +39,14 @@ export function Shell({
   user: { name: string }
   // Whether /mcp is on, so the user's row links to their MCP tokens
   mcp: boolean
+  // Whether the assistant is on, with Chat at the top of the nav
+  ai: boolean
   onSignOut: () => void
   children: ReactNode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
+  const assistant = useAssistantState(ai)
   const main = useRef<HTMLElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
 
@@ -84,6 +94,7 @@ export function Shell({
   }, [path])
 
   const groups = [
+    ...(ai ? [[{ section: 'chat', label: 'Chat', icon: <MessagesSquare /> }]] : []),
     [...types.values()].map((type) => ({
       section: `types/${type.name}`,
       label: type.label,
@@ -180,21 +191,29 @@ export function Shell({
           </div>
         </nav>
 
-        <main id='main' ref={main} tabIndex={-1}>
-          <SectionContext.Provider value={showSection}>
-            <PanelSlot.Provider value={panelSlot}>
-              <Toaster>
-                <Confirmer>{children}</Confirmer>
-              </Toaster>
-            </PanelSlot.Provider>
-          </SectionContext.Provider>
-        </main>
-        {/* The panel on every page: the page's own at the top, then the assistant's region, which the shell keeps
-            across pages so a chat lasts, and which is empty until the assistant comes (PLAN.md section 21) */}
-        <div className='cms-side'>
-          <div ref={setPanelSlot} className='cms-panel-slot' />
-          <div className='cms-side__assistant' />
-        </div>
+        <AssistantContext.Provider value={assistant}>
+          <main id='main' ref={main} tabIndex={-1}>
+            <SectionContext.Provider value={showSection}>
+              <PanelSlot.Provider value={panelSlot}>
+                <Toaster>
+                  <Confirmer>{children}</Confirmer>
+                </Toaster>
+              </PanelSlot.Provider>
+            </SectionContext.Provider>
+          </main>
+          {/* The panel on every page: the page's own at the top, then the assistant, which the shell keeps across
+              pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section 21) */}
+          <div className='cms-side'>
+            <div ref={setPanelSlot} className='cms-panel-slot' />
+            {ai && section !== 'chat' && (
+              <aside className='cms-side__assistant' aria-label='Assistant'>
+                <Suspense>
+                  <PanelAssistant />
+                </Suspense>
+              </aside>
+            )}
+          </div>
+        </AssistantContext.Provider>
       </div>
     </LucideProvider>
   )

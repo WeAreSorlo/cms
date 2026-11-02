@@ -1,5 +1,7 @@
 import type { DeliveryOptions, FormOptions, MediaOptions, Storage, VersionOptions } from '.'
+import type { AiProvider } from './ai'
 import { automationRoutes } from './automations'
+import { chatRoutes } from './chats'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, uuidv7 } from './db'
@@ -48,6 +50,8 @@ export interface AppOptions {
   admin?: string
   // Whether /mcp and the admin's MCP tokens page are on
   mcp?: boolean
+  // The model provider for the admin's assistant and Chat page, which are off without one
+  ai?: AiProvider
 }
 
 export function createApp(
@@ -64,6 +68,7 @@ export function createApp(
     versions,
     admin,
     mcp = false,
+    ai,
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
@@ -182,7 +187,8 @@ export function createApp(
   app.use('/api/automations/*', signedIn)
   app.use('/api/keys/*', signedIn)
   if (mcp) app.use('/api/tokens/*', signedIn)
-  app.route('/api', typeRoutes(types, groups, editor, mcp))
+  if (ai) app.use('/api/chats/*', signedIn)
+  app.route('/api', typeRoutes(types, groups, editor, { mcp, ai: !!ai }))
   app.route('/api', entryRoutes(db, types, migrations, versions))
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
@@ -194,6 +200,9 @@ export function createApp(
     app.route('/api', tokenRoutes(db))
     app.route('/', mcpRoutes(db, types, migrations))
   }
+
+  // The admin's assistant reads the same way, with the site's own model (PLAN.md section 21)
+  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
   app.route('/v1', publicFormRoutes(db, forms))

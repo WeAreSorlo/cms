@@ -1,4 +1,5 @@
 import type { Config } from '.'
+import { anthropic } from './ai'
 import { createApp } from './app'
 import { createWorker } from './automations'
 import { checkEntries, contentMigrations, loadContentMigrations } from './content'
@@ -151,6 +152,7 @@ async function dev(db: Kysely<Database>) {
     forms: config.forms,
     versions: config.versions,
     mcp: config.mcp,
+    ai: config.ai && anthropic(config.ai),
   })
   const api = getRequestListener(app.fetch)
 
@@ -183,6 +185,7 @@ async function start(db: Kysely<Database>) {
     forms: config.forms,
     versions: config.versions,
     mcp: config.mcp,
+    ai: config.ai && anthropic(config.ai),
   })
 
   // Hands events on to automations, in this process
@@ -291,6 +294,11 @@ if (!existsSync(configFile)) {
   console.error(`There's no iight.config.ts in ${process.cwd()}. Run iight from your site project.`)
   process.exit(1)
 }
+
+// The site project's .env, such as for ANTHROPIC_API_KEY or DATABASE_URL, which never replaces what the environment
+// already sets
+const envFile = resolve('.env')
+if (existsSync(envFile)) process.loadEnvFile(envFile)
 
 const config: Config = (await import(pathToFileURL(configFile).href)).default
 const db = createDb(config.database.url)

@@ -23,6 +23,9 @@ import { createRoot } from 'react-dom/client'
 // The design system's reference page, at #/design. Only iight dev has it, so the built admin leaves it out.
 const Design = import.meta.env.DEV ? lazy(() => import('./design')) : undefined
 
+// The Chat page, in the assistant's own chunk
+const ChatPage = lazy(() => import('./assistant').then((module) => ({ default: module.ChatPage })))
+
 interface User {
   id: string
   email: string
@@ -90,14 +93,15 @@ function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
 // #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/keys/<id>, #/tokens/<id>
-// with MCP on, or #/schema/blog and #/groups/seo in the type editor. A list's search and filters follow its path, as in
-// #/types/blog?search=lamp.
+// with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog and #/groups/seo in the type editor. A list's
+// search and filters follow its path, as in #/types/blog?search=lamp.
 function Page({
   hash,
   types,
   groups,
   editable,
   mcp,
+  ai,
   reloadTypes,
 }: {
   hash: string
@@ -105,6 +109,7 @@ function Page({
   groups: Map<string, SharedGroup>
   editable: boolean
   mcp: boolean
+  ai: boolean
   reloadTypes: () => Promise<void>
 }) {
   const path = pathOf(hash)
@@ -116,6 +121,13 @@ function Page({
     return (
       <Suspense>
         <Design />
+      </Suspense>
+    )
+  }
+  if (ai && section === 'chat') {
+    return (
+      <Suspense>
+        <ChatPage query={query} />
       </Suspense>
     )
   }
@@ -167,6 +179,8 @@ function App() {
   const [editable, setEditable] = useState(false)
   // Whether /mcp is on, and with it the MCP tokens page
   const [mcp, setMcp] = useState(false)
+  // Whether the assistant is on, and with it the Chat page
+  const [ai, setAi] = useState(false)
 
   // The one copy of the URL's hash, so the shell and the page see each change in the same render
   const [hash, setHash] = useState(location.hash)
@@ -189,6 +203,7 @@ function App() {
     setGroups(new Map(body.groups.map((group: SharedGroup) => [group.name, group])))
     setEditable(body.editable)
     setMcp(body.mcp)
+    setAi(body.ai)
   }, [])
 
   useEffect(() => {
@@ -205,10 +220,18 @@ function App() {
   if (!types) return null
 
   return (
-    <Shell hash={hash} types={types} user={user} mcp={mcp} onSignOut={signOut}>
+    <Shell hash={hash} types={types} user={user} mcp={mcp} ai={ai} onSignOut={signOut}>
       <TypesContext.Provider value={types}>
         <GroupsContext.Provider value={groups}>
-          <Page hash={hash} types={types} groups={groups} editable={editable} mcp={mcp} reloadTypes={reloadTypes} />
+          <Page
+            hash={hash}
+            types={types}
+            groups={groups}
+            editable={editable}
+            mcp={mcp}
+            ai={ai}
+            reloadTypes={reloadTypes}
+          />
         </GroupsContext.Provider>
       </TypesContext.Provider>
     </Shell>

@@ -46,6 +46,22 @@ export const tokenSchema: Array<FieldSchema> = [
   },
 ]
 
+// A chat's name, edited on the admin's Chat page and checked by PUT /api/chats/:id
+export const chatTitleSchema: Array<FieldSchema> = [
+  { name: 'title', label: 'Name', type: 'text', required: true, options: { maxLength: 100 } },
+]
+
+// A message to the admin's assistant, written in the box under its chat and checked by POST /api/chats/:id/messages
+export const chatMessageSchema: Array<FieldSchema> = [
+  {
+    name: 'text',
+    label: 'Message',
+    type: 'textarea',
+    required: true,
+    options: { maxLength: 20_000, rows: 1, placeholder: 'Ask about the content' },
+  },
+]
+
 // A media file's details, edited in the admin's media library and checked by PUT /api/media/:id
 export const mediaSchema: Array<FieldSchema> = [
   { name: 'name', label: 'Name', type: 'text', required: true, options: { maxLength: 200 } },

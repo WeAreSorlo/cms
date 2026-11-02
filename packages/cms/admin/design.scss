@@ -14,6 +14,17 @@
     }
   }
 
+  // The assistant as the panel shows it, in a card as wide as the panel
+  &__assistant {
+    display: flex;
+    flex-direction: column;
+    width: var(--cms-panel);
+    height: 34rem;
+    background: var(--cms-surface);
+    border: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: var(--iight-size-2);
+  }
+
   &__swatches,
   &__scale,
   &__boxes {

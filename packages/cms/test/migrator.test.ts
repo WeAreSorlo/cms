@@ -113,6 +113,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_10_30_000015_add_version_names_and_publishes',
     '2026_10_31_000016_add_version_parents',
     '2026_11_02_000017_create_personal_tokens_table',
+    '2026_11_02_000018_create_chats_tables',
   ])
 
   await migrate(db, migrations)
@@ -120,6 +121,8 @@ test("the CMS's own migrations run forward and back", async () => {
     'api_keys',
     'automation_runs',
     'automations',
+    'chat_messages',
+    'chats',
     'entries',
     'entry_relations',
     'entry_versions',

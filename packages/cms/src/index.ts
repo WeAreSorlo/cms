@@ -19,6 +19,24 @@ export interface Config {
   // Turns on /mcp, where AI clients such as Claude Code read the site's content as a person, with a token from the
   // admin's MCP tokens page. Off if not given.
   mcp?: boolean
+  // Turns on the admin's assistant and its Chat page, which read the site's content with a model from this provider,
+  // billed to its account. Off if not given.
+  ai?: AiOptions
+}
+
+// The model the admin's assistant uses
+export interface AiOptions {
+  provider: 'anthropic'
+  // claude-opus-5-5 if not given
+  model?: string
+  // The provider's API key, only ever read on the server. ANTHROPIC_API_KEY if not given.
+  apiKey?: string
+  // How much the model thinks before it answers, which is most of what a reply costs and how long it takes. medium if
+  // not given.
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  // Whether a request the provider's safety classifiers decline is tried again on the model the provider recommends
+  // for that kind of decline. On if not given.
+  fallback?: boolean
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>

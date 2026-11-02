@@ -7,6 +7,8 @@
 $phone: 40rem;
 // From here an editor's panel floats beside the page
 $aside: 64rem;
+// Below that, how wide the button is that opens the assistant, beside the page's bar
+$assistant-button: 7.5rem;
 
 // Room for the sticky bars, so a focused field never hides behind them. Below 64rem, an editor's actions are a bar
 // fixed to the bottom of the window, which its panel measures as --cms-bar.
@@ -767,9 +769,343 @@ a.iight-button {
   display: contents;
 }
 
-// The assistant's place under the page's panel, which takes no room while it's empty
-.cms-side__assistant:empty {
+// The assistant under the page's panel, which shares the column with it, the page's panel taking at most half
+.cms-side__assistant {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-height: 0;
+  border-top: var(--iight-size-px) solid var(--cms-rule);
+
+  // A page with no panel leaves it the whole column
+  .cms-panel-slot:empty + & {
+    border-top: 0;
+  }
+}
+
+.cms-assistant {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+// The chat's name, which opens the person's other chats, and New chat
+.cms-assistant__header {
+  display: flex;
+  flex: none;
+  gap: var(--iight-size-2);
+  align-items: center;
+  padding: var(--iight-size-2) var(--iight-size-3);
+  border-bottom: var(--iight-size-px) solid var(--cms-rule);
+}
+
+.cms-assistant__switch {
+  display: flex;
+  flex: 1;
+  gap: var(--iight-size-2);
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  anchor-name: --cms-chats;
+
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+// The person's chats, in a popover from the assistant's header or in the Chat page's panel
+.cms-chats {
+  box-sizing: border-box;
+  width: min(20rem, calc(100vw - 2 * var(--cms-inset)));
+  max-height: min(24rem, 60dvh);
+  overflow-y: auto;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+
+  &:popover-open {
+    display: flex;
+  }
+}
+
+@supports (position-area: bottom) {
+  .cms-chats {
+    position-anchor: --cms-chats;
+    position-area: bottom span-left;
+    margin: var(--iight-size-1) 0 0;
+  }
+}
+
+.cms-chats__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  a,
+  button {
+    display: flex;
+    gap: var(--iight-size-2);
+    justify-content: space-between;
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--iight-size-1) var(--iight-size-2);
+    font: inherit;
+    color: var(--cms-text);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    background: none;
+    border: 0;
+    border-radius: var(--iight-size-1);
+
+    &:hover {
+      background: var(--cms-subtle);
+    }
+
+    &[aria-current] {
+      font-weight: 600;
+      background: var(--cms-accent-tint);
+    }
+
+    > span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    > .cms-muted {
+      flex: none;
+      font-size: var(--cms-text-xs);
+      font-weight: 400;
+    }
+  }
+}
+
+// A chat: its messages, which scroll, and the box to write in under them
+.cms-chat {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cms-chat__messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--iight-size-3);
+
+  > ol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--iight-size-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  > .cms-empty {
+    padding: var(--cms-size-6) var(--iight-size-3);
+  }
+}
+
+// The person's own messages, as they wrote them
+.cms-chat__mine {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: var(--iight-size-2) var(--iight-size-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--cms-subtle);
+  border-radius: var(--iight-size-2);
+}
+
+.cms-chat__reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--iight-size-2);
+}
+
+// A tool the reply used, such as Searched entries for “lamp”: 4 found
+.cms-chat__step {
+  display: flex;
+  gap: var(--iight-size-1);
+  margin: 0;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  color: var(--cms-muted);
+
+  > svg {
+    flex: none;
+    margin-top: calc((var(--cms-leading-sm) - 1rem) / 2);
+  }
+
+  &[data-failed] {
+    color: var(--cms-danger);
+  }
+}
+
+// A reply's text, from its Markdown
+.cms-reply {
+  overflow-wrap: anywhere;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  p,
+  ul,
+  ol,
+  pre,
+  table,
+  blockquote {
+    margin: 0 0 var(--iight-size-2);
+  }
+
+  ul,
+  ol {
+    padding-left: var(--cms-size-6);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    margin: var(--iight-size-3) 0 var(--iight-size-1);
+    font-size: var(--cms-text-base);
+    line-height: var(--cms-leading-base);
+  }
+
+  code {
+    font-family: var(--cms-font-mono);
+    font-size: var(--cms-text-sm);
+  }
+
+  :not(pre) > code {
+    padding: 0 var(--iight-size-1);
+    background: var(--cms-subtle);
+    border-radius: var(--iight-size-1);
+  }
+
+  pre {
+    overflow-x: auto;
+    padding: var(--iight-size-2);
+    background: var(--cms-subtle);
+    border-radius: var(--iight-size-1);
+  }
+
+  table {
+    display: block;
+    overflow-x: auto;
+    font-size: var(--cms-text-sm);
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    padding: var(--iight-size-1) var(--iight-size-2);
+    text-align: left;
+    border: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  blockquote {
+    padding-left: var(--iight-size-3);
+    color: var(--cms-muted);
+    border-left: 2px solid var(--cms-rule);
+  }
+}
+
+// The box to write in, which grows with what's written, and Send or Stop beside it. Its label is for screen readers.
+.cms-composer {
+  display: flex;
+  flex: none;
+  gap: var(--iight-size-2);
+  align-items: flex-end;
+  padding: var(--iight-size-3);
+  border-top: var(--iight-size-px) solid var(--cms-rule);
+
+  > :first-child {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .iight-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+
+  textarea {
+    box-sizing: border-box;
+    max-height: 12rem;
+    resize: none;
+    field-sizing: content;
+  }
+
+  > .iight-button {
+    display: inline-flex;
+    flex: none;
+    gap: var(--iight-size-1);
+    align-items: center;
+  }
+}
+
+// The Chat page: the chat in a card as tall as the window leaves it
+.cms-chat-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - 2 * var(--cms-inset) - var(--iight-size-2) - var(--cms-size-6));
+
+  > .cms-chat {
+    background: var(--cms-surface);
+    border: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: var(--iight-size-2);
+  }
+}
+
+// Below 64rem, the button that opens the assistant full screen, at the end of the page's bar
+.cms-assistant__open {
   display: none;
+}
+
+// The assistant full screen, in a dialog as big as the window
+.iight-modal[open]:has(.cms-assistant--sheet) {
+  box-sizing: border-box;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  border-radius: 0;
+
+  > .iight-modal__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
+.cms-assistant__sheet {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.cms-assistant--sheet > .cms-assistant__header {
+  padding-inline: 0;
 }
 
 // A list's search, Filter and its rules, Clear filters and how many the list holds
@@ -815,6 +1151,12 @@ a.iight-button {
     border: 0;
     border-radius: 0;
     box-shadow: none;
+
+    // With the assistant under it, as tall as it needs up to half the column
+    .cms-side:has(> .cms-side__assistant) & {
+      flex: 0 1 auto;
+      max-height: 50%;
+    }
   }
 }
 
@@ -833,6 +1175,46 @@ a.iight-button {
 
   .cms-panel-slot .cms-panel__buttons > .cms-panel__sheet {
     display: inline-block;
+  }
+
+  // The assistant opens full screen from a button of its own at the end of the bar, which the page's bar leaves room
+  // for, as the page does above it
+  .cms-side__assistant {
+    border: 0;
+
+    > .cms-assistant {
+      display: none;
+    }
+  }
+
+  .cms-side .cms-assistant__open {
+    position: fixed;
+    right: var(--cms-inset);
+    bottom: var(--cms-inset);
+    z-index: 1;
+    display: inline-flex;
+    gap: var(--iight-size-1);
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: $assistant-button;
+    height: var(--cms-bar, calc(var(--cms-control) + 2 * var(--iight-size-3) + 2 * var(--iight-size-px)));
+    background: var(--cms-surface);
+    border: var(--iight-size-px) solid var(--cms-rule);
+    border-radius: var(--iight-size-2);
+    box-shadow: var(--cms-shadow-2);
+  }
+
+  .cms-side:has(> .cms-side__assistant) .cms-panel-slot > .cms-panel > .cms-panel__actions {
+    right: calc(2 * var(--cms-inset) + #{$assistant-button});
+  }
+
+  .admin:has(.cms-side__assistant) > main {
+    padding-bottom: calc(var(--cms-size-6) + var(--cms-control) + 2 * var(--iight-size-3) + var(--cms-inset));
+  }
+
+  .cms-chat-page {
+    height: calc(100dvh - 3 * var(--cms-inset) - var(--iight-size-2) - var(--cms-size-6) - var(--cms-bar, 0px));
   }
 
   .cms-panel-slot > .cms-panel {
@@ -1532,6 +1914,29 @@ a.iight-button {
 }
 
 @media (max-width: $phone) {
+  // The assistant's button is its icon alone, its name for screen readers
+  .cms-side .cms-assistant__open {
+    width: calc(var(--cms-control) + 2 * var(--iight-size-3));
+
+    > span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+  }
+
+  .cms-side:has(> .cms-side__assistant) .cms-panel-slot > .cms-panel > .cms-panel__actions {
+    right: calc(2 * var(--cms-inset) + var(--cms-control) + 2 * var(--iight-size-3));
+  }
+
+  // Under the phone's top bar
+  .cms-chat-page {
+    height: calc(100dvh - 3.5rem - 2 * var(--iight-size-4) - var(--cms-bar, 0px) - var(--cms-inset));
+  }
+
   .admin {
     grid-template-rows: none;
     grid-template-columns: minmax(0, 1fr);

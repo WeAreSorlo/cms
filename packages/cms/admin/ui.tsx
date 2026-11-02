@@ -335,11 +335,20 @@ export function ListFilters({
 
 const noticeIcons = { info: Info, success: CircleCheck, warning: TriangleAlert, danger: CircleAlert }
 
-// Something that stays true of the page, such as an entry being archived. Problems are announced straight away.
-export function Notice({ tone = 'info', children }: { tone?: keyof typeof noticeIcons; children: ReactNode }) {
+// Something that stays true of the page, such as an entry being archived. Problems are announced straight away, unless
+// it's quiet, as in a chat's replies, which a status of their own reads out.
+export function Notice({
+  tone = 'info',
+  quiet,
+  children,
+}: {
+  tone?: keyof typeof noticeIcons
+  quiet?: boolean
+  children: ReactNode
+}) {
   const Icon = noticeIcons[tone]
   return (
-    <div className={`cms-notice cms-notice--${tone}`} role={tone === 'danger' ? 'alert' : 'status'}>
+    <div className={`cms-notice cms-notice--${tone}`} role={quiet ? undefined : tone === 'danger' ? 'alert' : 'status'}>
       <Icon />
       <div>{children}</div>
     </div>

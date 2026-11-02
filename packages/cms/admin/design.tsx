@@ -1,6 +1,8 @@
 import { versionSchema } from '../src/schemas'
 import { ContentType, Entry, GroupsContext, SharedGroup, Status } from './api'
+import { AssistantChat } from './assistant'
 import { Grid, columnsOf, useRows } from './bulk'
+import { Assistant, AssistantContext, Chat, ChatMessage } from './chat'
 import { compare, compareParent } from './compare'
 import { contrast, pairs } from './contrast'
 import './design.scss'
@@ -505,6 +507,105 @@ const groupFields = (state: string): Array<FieldSchema> => [
   },
 ]
 
+// The assistant's chats and replies, with what Markdown can and can't do in a reply
+const sampleChats: Array<Chat> = [
+  {
+    id: 'chat-1',
+    title: 'Which posts mention the preview?',
+    createdAt: '2026-11-02T09:00:00Z',
+    updatedAt: '2026-11-02T09:05:00Z',
+  },
+  { id: 'chat-2', title: null, createdAt: '2026-11-01T16:00:00Z', updatedAt: '2026-11-01T16:00:00Z' },
+]
+const sampleReply =
+  'Four posts mention it. Two call it a **private preview**, and two a *closed beta*:\n\n' +
+  '- [Launch day](#/design) and [Pricing](#/design) say private preview\n' +
+  '- [Roadmap](#/design) says closed beta, and so does `values.summary` in [FAQ](#/design)\n\n' +
+  '| Post | Says |\n| --- | --- |\n| Launch day | private preview |\n| Roadmap | closed beta |\n\n' +
+  'HTML such as <b>this</b> is dropped, an image ![like this](https://example.com/x.png) never loads, and a ' +
+  '[script link](javascript:alert(1)) keeps only its text.'
+const sampleMessages: Array<ChatMessage> = [
+  { role: 'user', text: 'Which posts mention the private preview?' },
+  {
+    role: 'assistant',
+    parts: [
+      { type: 'step', text: 'Searched entries for “private preview”: 4 found', failed: false },
+      { type: 'step', text: 'Read an entry: failed', failed: true },
+      { type: 'step', text: 'Read “Launch day”', failed: false },
+      { type: 'text', text: sampleReply },
+    ],
+    notice: null,
+  },
+  { role: 'user', text: 'Check this page for typos\nand say where each one is' },
+  {
+    role: 'assistant',
+    parts: [{ type: 'text', text: 'The intro has two:' }],
+    notice: { tone: 'warning', text: 'The reply reached its length limit, so it was cut off.' },
+  },
+]
+const assistants: Array<{ label: string; assistant: Partial<Assistant> }> = [
+  { label: 'A chat', assistant: {} },
+  {
+    label: 'Replying',
+    assistant: {
+      replying: true,
+      messages: [
+        sampleMessages[0],
+        {
+          role: 'assistant',
+          parts: [
+            { type: 'step', text: 'Searched entries for “private preview”: 4 found', failed: false },
+            { type: 'text', text: 'Four posts mention' },
+          ],
+          notice: null,
+        },
+      ],
+    },
+  },
+  {
+    label: 'Stopped, declined and failed',
+    assistant: {
+      messages: [
+        { role: 'user', text: 'Write it all out' },
+        { role: 'assistant', parts: [{ type: 'text', text: 'Here goes' }], notice: { tone: 'info', text: 'Stopped.' } },
+        { role: 'user', text: 'Something odd' },
+        {
+          role: 'assistant',
+          parts: [],
+          notice: { tone: 'warning', text: 'The assistant declined to answer this. Try asking another way.' },
+        },
+        { role: 'user', text: 'Once more' },
+        {
+          role: 'assistant',
+          parts: [],
+          notice: {
+            tone: 'danger',
+            text: 'Anthropic is limiting how often this site can ask right now. Try again in a minute.',
+          },
+        },
+      ],
+    },
+  },
+  { label: 'A new chat', assistant: { chat: null, messages: [] } },
+]
+
+// A stand-in for the shell's assistant, which never sends anything
+const sampleAssistant = (assistant: Partial<Assistant>, toast: (message: string) => void): Assistant => ({
+  chats: sampleChats,
+  more: true,
+  showMore: async () => toast('Showed more chats'),
+  chat: sampleChats[0],
+  messages: sampleMessages,
+  replying: false,
+  status: '',
+  open: async () => toast('Opened a chat'),
+  send: async () => void toast('Sent'),
+  stop: () => toast('Stopped'),
+  rename: async () => undefined,
+  remove: async () => undefined,
+  ...assistant,
+})
+
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 // The design system's tokens and components in the current theme, for checking changes to them. iight dev serves it at
@@ -873,6 +974,25 @@ export default function Design() {
           </ul>
         </PanelSlot.Provider>
       </GroupsContext.Provider>
+
+      <h2>Assistant</h2>
+      <p>
+        The assistant under each page's panel, and on the Chat page at full width. Each of its tools is a step, a reply
+        renders its Markdown as React elements, with no HTML, images or script links, and a reply that ends early says
+        why. While it replies, Send is Stop. Below 64rem it opens from the end of the bottom bar, full screen.
+      </p>
+      <ul className='cms-design__panels'>
+        {assistants.map(({ label, assistant }) => (
+          <li key={label}>
+            <h3>{label}</h3>
+            <div className='cms-design__assistant'>
+              <AssistantContext.Provider value={sampleAssistant(assistant, toast)}>
+                <AssistantChat />
+              </AssistantContext.Provider>
+            </div>
+          </li>
+        ))}
+      </ul>
 
       <h2>Media cards</h2>
       <ul className='cms-media-grid'>

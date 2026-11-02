@@ -100,6 +100,31 @@ export interface Database {
     last_used_at: Date | null
     created_at: Generated<Date>
   }
+  // Each person's chats with the admin's assistant (PLAN.md section 21)
+  chats: {
+    id: string
+    user_id: string
+    // From the first message until the person renames it
+    title: string | null
+    created_at: Generated<Date>
+    // When the last message was sent, which orders the person's chats
+    updated_at: Generated<Date>
+  }
+  // A chat's messages in order, as its model saw them: each of the person's messages, the page it was sent from, then
+  // each round of the reply with its tool results. Rows are only ever added.
+  chat_messages: {
+    chat_id: string
+    position: number
+    role: 'user' | 'assistant' | 'system'
+    // The content blocks exactly as they were sent, or as the provider returned them
+    content: JsonList<Record<string, any>>
+    // For replies: the model that wrote it, why it stopped (end, tools, length, refused or stopped) and the tokens it
+    // took, as the provider counts them
+    model: string | null
+    stop_reason: string | null
+    usage: Record<string, any> | null
+    created_at: Generated<Date>
+  }
   media: {
     id: string
     // The FlyDrive service that stores the file, and the file's key there
