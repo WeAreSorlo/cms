@@ -119,11 +119,10 @@ export function mcpRoutes(
         .where('revoked_at', 'is', null)
         .executeTakeFirst())
 
-    // As the MCP spec's authorization section asks, naming where OAuth's protected resource metadata goes. It's served
-    // with OAuth (PLAN.md section 21, phase 15), since the spec has it name an authorization server.
+    // A plain bearer challenge, naming no OAuth metadata, since the CMS has no OAuth for MCP (PLAN.md section 21) and
+    // a client that does OAuth would go looking for it
     if (!found) {
-      const metadata = `${origin(c)}/.well-known/oauth-protected-resource/mcp`
-      c.header('WWW-Authenticate', `Bearer resource_metadata="${metadata}"${sent ? ', error="invalid_token"' : ''}`)
+      c.header('WWW-Authenticate', sent ? 'Bearer error="invalid_token"' : 'Bearer')
       return c.json({ message: 'Unauthenticated.' }, 401)
     }
     await markUsed(db, 'personal_tokens', found.token)

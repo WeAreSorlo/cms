@@ -136,19 +136,17 @@ test('each person makes, lists and revokes their own tokens, and only the reply 
   expect(revoked?.revoked_at).toBeInstanceOf(Date)
 })
 
-test('/mcp replies 401 with the header the MCP spec asks for to anything but a token', async () => {
-  const metadata = 'resource_metadata="http://localhost/.well-known/oauth-protected-resource/mcp"'
-
+test('/mcp replies 401 with a bearer challenge to anything but a token', async () => {
   const none = await post()
   expect(none.status).toBe(401)
-  expect(none.headers.get('www-authenticate')).toBe(`Bearer ${metadata}`)
+  expect(none.headers.get('www-authenticate')).toBe('Bearer')
   expect(await none.json()).toEqual({ message: 'Unauthenticated.' })
 
   // A wrong token, an API key and a session say the token is invalid, or send none
   for (const sent of ['iightpat_nope', await createApiKey(db, 'Website', ['preview', 'types', 'submit'])]) {
     const refused = await post(sent)
     expect(refused.status).toBe(401)
-    expect(refused.headers.get('www-authenticate')).toBe(`Bearer ${metadata}, error="invalid_token"`)
+    expect(refused.headers.get('www-authenticate')).toBe('Bearer error="invalid_token"')
   }
   expect((await post(undefined, { headers: { cookie } })).status).toBe(401)
   await expect(connect('iightpat_nope')).rejects.toThrow()

@@ -675,7 +675,7 @@ The server takes Streamable HTTP at `https://<your CMS>/mcp`, with the token as 
   }
   ```
 
-The server is stateless: each POST gets a server of its own, which replies with JSON, so nothing is kept between requests and any process can answer. GET and DELETE reply 405, since nothing streams. A request without a valid token gets a 401 with `WWW-Authenticate: Bearer resource_metadata="https://<your CMS>/.well-known/oauth-protected-resource/mcp"`, with `error="invalid_token"` when it sent one, as the MCP spec's authorization section has it. That document comes with OAuth, for the clients that only connect that way, so it's a 404 until then.
+The server is stateless: each POST gets a server of its own, which replies with JSON, so nothing is kept between requests and any process can answer. GET and DELETE reply 405, since nothing streams. A request without a valid token gets a 401 with `WWW-Authenticate: Bearer`, with `error="invalid_token"` when it sent one. The CMS has no OAuth yet, so ChatGPT can't connect, and nor can claude.ai unless its custom connectors offer your organisation request headers, which are in beta. Claude Desktop can connect through the [`mcp-remote`](https://npmjs.com/package/mcp-remote) bridge, which sends the token as a header.
 
 ### Tools
 
