@@ -327,7 +327,8 @@ export function ListFilters({
         </button>
       )}
       <p className='cms-muted' role='status'>
-        {count !== undefined && (count === 0 ? `No ${noun[1]}` : `${count} ${count === 1 ? noun[0] : noun[1]}`)}
+        {count !== undefined &&
+          (count === 0 ? `No ${noun[1]}` : `${count.toLocaleString()} ${count === 1 ? noun[0] : noun[1]}`)}
       </p>
     </div>
   )
@@ -411,7 +412,8 @@ export function Pages({ pagination, onPage }: { pagination: Pagination; onPage: 
   return (
     <nav className='cms-pages' aria-label='Pages'>
       <span>
-        {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
+        {((page - 1) * perPage + 1).toLocaleString()}–{Math.min(page * perPage, total).toLocaleString()} of{' '}
+        {total.toLocaleString()}
       </span>
       {lastPage > 1 && (
         <>

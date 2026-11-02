@@ -27,9 +27,14 @@
 
   &__swatches,
   &__scale,
-  &__boxes {
+  &__boxes,
+  &__lines {
     padding: 0;
     list-style: none;
+  }
+
+  &__lines h3 {
+    margin-bottom: var(--iight-size-1);
   }
 
   &__swatches {

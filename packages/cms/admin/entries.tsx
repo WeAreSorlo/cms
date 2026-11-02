@@ -1,3 +1,4 @@
+import { maxTicked } from '../src/schemas'
 import {
   ContentType,
   Entry,
@@ -5,11 +6,13 @@ import {
   TypesContext,
   allEntries,
   api,
+  count,
   date,
   errorMessage,
   formatField,
   formatValue,
   listView,
+  matchingOf,
   shortDate,
   titleOf,
   tree,
@@ -17,7 +20,17 @@ import {
 } from './api'
 import { AssistantContext, useBeside } from './chat'
 import { useInputs } from './fields'
-import { entryFields, fieldChoicesOf, filterOf, sortable, whereOf } from './lists'
+import {
+  Ticks,
+  changeTicks,
+  entryFields,
+  fieldChoicesOf,
+  filterOf,
+  sortable,
+  ticksOf,
+  watchTicks,
+  whereOf,
+} from './lists'
 import { UsedBy } from './media'
 import {
   Badge,
@@ -39,8 +52,19 @@ import {
   useToast,
 } from './ui'
 import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronsUpDown, Plus, SearchX, Sheet, Trash2 } from 'lucide-react'
-import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
+  CircleAlert,
+  Plus,
+  SearchX,
+  Sheet,
+  Trash2,
+} from 'lucide-react'
+import { useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { flushSync } from 'react-dom'
 
 // A cell's text, or a dash when there's nothing
@@ -61,17 +85,150 @@ export const FieldValue = ({ field, value }: { field?: FieldSchema; value: unkno
   <CellText text={field?.type === 'boolean' ? (value ? 'Yes' : '') : formatValue(field, value)} />
 )
 
+// The line above a list's table while its ticks can reach past the page, or do: how many are ticked, Select all for
+// every entry the list holds once the whole page is ticked, and Untick all. Select all becomes Untick all in place, so
+// focus stays on it. Its words are a status, so ticking the page reads them out.
+export function TickedLine({
+  ticked,
+  onPage,
+  shown,
+  total,
+  every,
+  matching,
+  selecting = false,
+  problem,
+  onSelectAll,
+  onUntickAll,
+}: {
+  // How many are ticked, how many of them are on this page, and how many rows the page shows
+  ticked: number
+  onPage: number
+  shown: number
+  // How many entries the list holds, and whether the last Select all ticked every one of them, which are still ticked
+  total?: number
+  every: boolean
+  // What its search and filter find, such as matching your filter, when it has either
+  matching?: string
+  selecting?: boolean
+  problem?: string
+  onSelectAll: () => void
+  onUntickAll: () => void
+}) {
+  const these =
+    total === undefined ? '' : matching ? `${total.toLocaleString()} ${matching}` : count(total, 'entry', 'entries')
+  const canSelect = shown > 0 && onPage === shown && total !== undefined && total > shown && !every
+  // Every entry the list holds, past this page
+  const everyShown = every && total !== undefined && total > shown
+  const elsewhere = ticked - onPage
+  const line = everyShown || canSelect || elsewhere > 0
+  const text = !line
+    ? ''
+    : everyShown
+      ? `All ${these} are ticked${ticked > total ? `, ${ticked.toLocaleString()} in all` : ''}.`
+      : elsewhere > 0
+        ? `${ticked.toLocaleString()} ticked, ${onPage.toLocaleString()} on this page.`
+        : `All ${count(shown, 'entry', 'entries')} on this page are ticked.`
+  const tooMany = canSelect && total > maxTicked
+  const buttons = [
+    canSelect && !tooMany && { label: selecting ? 'Selecting…' : `Select all ${these}`, onClick: onSelectAll },
+    (everyShown || elsewhere > 0) && { label: 'Untick all', onClick: onUntickAll },
+  ].filter((button) => !!button)
+
+  return (
+    <div className='cms-ticked' data-shown={line || !!problem || undefined}>
+      <p role='status'>
+        {text}
+        {tooMany && ` Narrow the search or filter to ${maxTicked.toLocaleString()} or fewer to select them all.`}
+      </p>
+      {buttons.map((button, at) => (
+        <button
+          // By place, so Select all stays the same button once it becomes Untick all
+          key={at}
+          type='button'
+          className='link'
+          aria-busy={(at === 0 && canSelect && selecting) || undefined}
+          onClick={button.onClick}
+        >
+          {button.label}
+        </button>
+      ))}
+      {problem && (
+        <p className='cms-problem' role='alert'>
+          <CircleAlert /> {problem}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// A list's ticks and its run, as the admin keeps them, which change while a run goes on whatever page is open
+const useTicks = (list: string) => useSyncExternalStore(watchTicks, () => ticksOf(list))
+
+// The names of the automations that any of some events trigger, each of which can run once for every entry an action
+// changes
+async function automationsOn(events: Array<string>) {
+  const automations: Array<{ name: string; triggers: Array<string> }> = (await api('GET', '/automations')).body.data
+  return automations
+    .filter((automation) => automation.triggers.some((event) => events.includes(event)))
+    .map((automation) => automation.name)
+}
+
+// Such as Notify editors runs when entries are archived, so it can run once for every entry
+const runsOnEach = (names: Array<string>, when: string) =>
+  `${new Intl.ListFormat('en').format(names)} ${names.length === 1 ? 'runs' : 'run'} when entries are ${when}, so ${
+    names.length === 1 ? 'it' : 'each'
+  } can run once for every entry.`
+
+// How many of some entries, counting the pages under them, other entries link to
+// shortcut: past 10,000 ticked it asks 10,000 at a time, so links between two batches count too, ask once if that matters
+async function linkedOf(type: ContentType, ids: Array<string>) {
+  let linked = 0
+  for (let at = 0; at < ids.length; at += maxTicked) {
+    const { body } = await api('POST', `/types/${type.name}/entries/used-by`, { ids: ids.slice(at, at + maxTicked) })
+    linked += body.data.count
+  }
+  return linked
+}
+
+// Such as 12 of them are linked from other entries, whose links to them will stop working on the site
+function linkedText(linked: number, of: number, pages: boolean) {
+  const one = linked === 1
+  const which = of === 1 ? 'It' : `${linked.toLocaleString()} of them`
+  const under = pages ? (one ? ', or a page under it,' : ', or pages under them,') : ''
+  const is = !one ? ' are' : which === 'It' && !under ? "'s" : ' is'
+  return `${which}${under}${is} linked from other entries, whose links to ${one ? 'it' : 'them'} will stop working on the site.`
+}
+
+// What the archive and restore routes reply for each entry they were sent
+interface Result {
+  id: string
+  status: number
+  message?: string
+}
+
 // A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive,
-// with a search over the title field and a filter over the other fields, in the URL's query
+// with a search over the title field and a filter over the other fields, in the URL's query. Entries ticked here, as
+// many as the list holds, can be bulk edited a hundred at a time, archived, or in the archive, restored.
 export function EntryList({ type, archived = false, query }: { type: ContentType; archived?: boolean; query: string }) {
   const [rows, setRows] = useState<ReturnType<typeof tree>>()
   const [pagination, setPagination] = useState<Pagination>()
   const [sort, setSort] = useState<{ name: string; direction: 'asc' | 'desc' }>()
   const [error, setError] = useState('')
-  // The entries ticked for bulk editing, in the order they were ticked, kept as pages, sorts and filters change
-  const [ticked, setTicked] = useState<Array<string>>([])
+  // The entries ticked, in the order they were ticked, kept as pages, sorts and filters change, and until the tab
+  // reloads, with the archive or restore under way and what the last one couldn't do
+  const ticksKey = archived ? `${type.name}/archive` : type.name
+  const { ticked, selected, run, ended, problem } = useTicks(ticksKey)
+  const setTicks = (change: (now: Ticks) => Ticks) => changeTicks(ticksKey, change)
+  const tickedIds = useMemo(() => [...ticked], [ticked])
   // The archive, search and filter the total was counted for, so the assistant's line never shows another's count
   const [counted, setCounted] = useState('')
+  const [selecting, setSelecting] = useState(false)
+  const [lineProblem, setLineProblem] = useState('')
+  // Bumped to load the list again as it is now, such as once Select all has ticked what it holds
+  const [reloads, setReloads] = useState(0)
+  const headerBox = useRef<HTMLInputElement>(null)
+  const confirm = useConfirm()
+  const toast = useToast()
   const list = useListQuery(query)
   const { page, setPage } = list
   const fields = useMemo(() => entryFields(type.fields), [type])
@@ -102,6 +259,8 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
   // A slow reply to an earlier search mustn't replace a newer one
   const loads = useRef(0)
   const filter = JSON.stringify(where)
+  // The archive, search and filter the list shows, which its count and its last Select all were for
+  const listing = `${archived}${filter}`
   const order = sort ? { [`values.${sort.name}`]: sort.direction } : { createdAt: 'desc' }
   const load = useCallback(async () => {
     const mine = ++loads.current
@@ -121,18 +280,30 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
       if (where.length) params.set('where', filter)
       const { body } = await api('GET', `/types/${type.name}/entries?${params}`)
       if (mine !== loads.current) return
+      // A page that isn't there now, as once its entries are archived, gives way to the last one that is
+      if (page > body.pagination.lastPage) return setPage(body.pagination.lastPage)
       setRows(body.data.map((entry: Entry) => ({ entry, depth: 0, index: 0, siblings: 1 })))
       setPagination(body.pagination)
-      setCounted(`${archived}${filter}`)
+      setCounted(listing)
       setError('')
     } catch (error) {
       if (mine === loads.current) setError(errorMessage(error))
     }
   }, [type, archived, ordered, page, sort, filter])
 
+  // A run that ends, on this page or after it was left, loads the list again
   useEffect(() => {
     load()
-  }, [load])
+  }, [load, reloads, ended])
+
+  // Once a run ends, focus that went with its button, which goes with the last of the ticks, moves to the page's
+  // heading, as long as the list is still showing. Focus anywhere else stays put.
+  const endedBefore = useRef(ended)
+  useEffect(() => {
+    if (ended === endedBefore.current) return
+    endedBefore.current = ended
+    if (document.activeElement === document.body) focusHeading()
+  }, [ended])
 
   const move = async (entry: Entry, position: number) => {
     await api('PUT', `/entries/${entry.id}/position`, { position }).catch((error) => setError(errorMessage(error)))
@@ -147,24 +318,160 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
   }
 
   // The assistant beside the list takes "these" to be the ticked entries, or those the search and filter match
+  const total = ordered ? rows?.length : counted === listing ? pagination?.total : undefined
+  const searched = !!search
+  const filtered = filterOf(list.params).length > 0
   usePageView(
     listView(type, {
-      ticked,
+      ticked: tickedIds,
       where,
       order,
-      total: ordered || counted !== `${archived}${filter}` ? undefined : pagination?.total,
-      searched: !!search,
-      filtered: filterOf(list.params).length > 0,
+      total: ordered ? undefined : total,
+      searched,
+      filtered,
       archived,
     }),
   )
 
   const tick = (ids: Array<string>, on: boolean) =>
-    setTicked((all) =>
-      on ? [...all, ...ids.filter((id) => !all.includes(id))] : all.filter((id) => !ids.includes(id)),
-    )
+    setTicks((now) => {
+      const ticked = new Set(now.ticked)
+      for (const id of ids) {
+        if (on) ticked.add(id)
+        else ticked.delete(id)
+      }
+      return { ...now, ticked }
+    })
   const shownIds = rows?.map(({ entry }) => entry.id) ?? []
-  const pageTicked = shownIds.length > 0 && shownIds.every((id) => ticked.includes(id))
+  const onPage = shownIds.filter((id) => ticked.has(id)).length
+  const pageTicked = shownIds.length > 0 && onPage === shownIds.length
+  // The last Select all was for this list as it stands, it holds as many entries as were found, and all are ticked
+  const every =
+    selected?.listing === listing && selected.ids.length === total && selected.ids.every((id) => ticked.has(id))
+
+  // Ticks every entry the list holds, after those already ticked, in the list's order
+  const selectAll = async () => {
+    if (selecting) return
+    setSelecting(true)
+    setLineProblem('')
+    try {
+      const params = new URLSearchParams({ archived: String(archived), order: JSON.stringify(order) })
+      if (where.length) params.set('where', filter)
+      const found: Array<string> = (await api('GET', `/types/${type.name}/entries/ids?${params}`)).body.data
+      setTicks((now) => ({ ...now, ticked: new Set([...now.ticked, ...found]), selected: { listing, ids: found } }))
+      // So the line counts what the list holds now
+      setReloads((count) => count + 1)
+    } catch (error) {
+      setLineProblem(errorMessage(error))
+    } finally {
+      setSelecting(false)
+    }
+  }
+
+  // The line goes, so focus moves to the box that ticks the page
+  const untickAll = () => {
+    setTicks((now) => ({ ...now, ticked: new Set(), selected: undefined, problem: undefined }))
+    setLineProblem('')
+    headerBox.current?.focus()
+  }
+
+  // Archives or restores the ticked entries a hundred at a time, unticking each hundred as it finishes. A page whose
+  // parent comes back in a later hundred is tried again once the rest are done, until a round brings none back. What
+  // a failure leaves is still ticked, for going on with. The run keeps to what's kept with the ticks, rather than this
+  // page, so it goes on, and shows, if the list is left and comes back, and a second can't start, from the first click.
+  const actOnTicked = async (action: 'archive' | 'restore') => {
+    if (ticksOf(ticksKey).run) return
+    const ids = [...ticksOf(ticksKey).ticked]
+    const total = ids.length
+    setTicks((now) => ({ ...now, run: { action, done: 0, total, asking: true }, problem: undefined }))
+    const verb = action === 'archive' ? 'Archive' : 'Restore'
+    const done = { count: 0, changed: 0 }
+    let started = false
+    let stopped: string | undefined
+    try {
+      const [listening, linked] = await Promise.all([
+        automationsOn(action === 'archive' ? ['entry.archived', 'entry.unpublished'] : ['entry.restored']),
+        action === 'archive' ? linkedOf(type, ids) : 0,
+      ])
+      const warning = listening.length > 0 && (
+        <Notice tone='warning'>
+          {runsOnEach(listening, action === 'archive' ? 'archived or unpublished' : 'restored')}
+        </Notice>
+      )
+      const pages = type.structure === 'hierarchical'
+      // Restoring asks first only when automations would run for each one
+      const sure =
+        (action === 'restore' && !warning) ||
+        (await confirm({
+          title: `${verb} ${count(total, 'entry', 'entries')}?`,
+          body: (
+            <>
+              <p>
+                {action === 'archive'
+                  ? `Archived entries leave the live site${pages ? ', with the pages under them' : ''}. You can restore them from the archive.`
+                  : 'Restored entries come back as drafts, to publish again.'}
+              </p>
+              {linked > 0 && <Notice tone='warning'>{linkedText(linked, total, pages)}</Notice>}
+              {warning}
+            </>
+          ),
+          action: verb,
+          danger: action === 'archive',
+        }))
+      if (!sure) return
+
+      started = true
+      setTicks((now) => ({ ...now, run: { action, done: 0, total } }))
+      let left = ids
+      let refused: Array<Result> = []
+      while (left.length) {
+        refused = []
+        for (let at = 0; at < left.length; at += 100) {
+          const { body } = await api('POST', `/types/${type.name}/entries/${action}`, {
+            ids: left.slice(at, at + 100),
+          })
+          const results: Array<Result> = body.data
+          // Those archived or deleted since untick too, and leave the last Select all, since they've left the list
+          const finished = results.filter((result) => result.status !== 409)
+          refused.push(...results.filter((result) => result.status === 409))
+          const gone = new Set(finished.map((result) => result.id))
+          done.count += finished.length
+          done.changed += finished.filter((result) => result.status === 200).length
+          setTicks((now) => ({
+            ...now,
+            ticked: new Set([...now.ticked].filter((id) => !gone.has(id))),
+            selected: now.selected && { ...now.selected, ids: now.selected.ids.filter((id) => !gone.has(id)) },
+            run: { action, done: done.count, total },
+          }))
+        }
+        if (refused.length === left.length) break
+        left = refused.map((result) => result.id)
+      }
+
+      if (done.changed) toast(`${verb}d ${count(done.changed, 'entry', 'entries')}`)
+      if (refused.length === 1) stopped = "A page wasn't restored, since its parent is archived. It's still ticked."
+      else if (refused.length) {
+        const pages = refused.length.toLocaleString()
+        stopped = `${pages} pages weren't restored, since their parents are archived. They're still ticked.`
+      }
+    } catch (error) {
+      const message = errorMessage(error).replace(/\.$/, '')
+      const so = `${verb}d ${done.count.toLocaleString()} of ${count(total, 'entry', 'entries')}, then stopped`
+      stopped = done.count
+        ? `${so}: ${message}. The rest are still ticked, so ${verb} goes on with them.`
+        : errorMessage(error)
+    } finally {
+      setTicks((now) => ({ ...now, run: undefined, problem: stopped, ended: now.ended + (started ? 1 : 0) }))
+    }
+  }
+
+  // Past a hundred it says how far it's got, as Apply all does. While it asks first, it says nothing yet.
+  const working = run && !run.asking
+  const progress =
+    working &&
+    `${run.action === 'archive' ? 'Archiving' : 'Restoring'}${
+      run.total > 100 ? ` ${run.done.toLocaleString()} of ${run.total.toLocaleString()}` : ''
+    }…`
 
   const newEntry = (
     <a className='iight-button iight-button--primary' href={`#/types/${type.name}/new`}>
@@ -201,13 +508,26 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
       <Panel
         label={title}
         sheet='Filters'
+        problem={problem}
         actions={
-          !archived && (
+          archived ? (
+            ticked.size > 0 && (
+              <button
+                type='button'
+                className='iight-button iight-button--primary'
+                aria-busy={!!working}
+                onClick={() => actOnTicked('restore')}
+              >
+                <ArchiveRestore /> {working ? progress : `Restore ${count(ticked.size, 'entry', 'entries')}`}
+              </button>
+            )
+          ) : (
             <>
               {newEntry}
-              {ticked.length > 0 && (
-                <a className='iight-button' href={`#/types/${type.name}/bulk/${ticked.join(',')}`}>
-                  <Sheet /> Bulk edit {ticked.length === 1 ? '1 entry' : `${ticked.length} entries`}
+              {/* The grid opens the first hundred, and goes through the rest a hundred at a time */}
+              {ticked.size > 0 && (
+                <a className='iight-button' href={`#/types/${type.name}/bulk/${tickedIds.slice(0, 100).join(',')}`}>
+                  <Sheet /> Bulk edit {count(ticked.size, 'entry', 'entries')}
                 </a>
               )}
             </>
@@ -215,9 +535,21 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
         }
         footer={
           !archived && (
-            <a className='iight-button' href={`#/types/${type.name}/archive`}>
-              <Archive /> Archive
-            </a>
+            <>
+              {ticked.size > 0 && (
+                <button
+                  type='button'
+                  className='iight-button iight-button--danger'
+                  aria-busy={!!working}
+                  onClick={() => actOnTicked('archive')}
+                >
+                  <Archive /> {working ? progress : `Archive ${count(ticked.size, 'entry', 'entries')}`}
+                </button>
+              )}
+              <a className='iight-button' href={`#/types/${type.name}/archive`}>
+                Open the archive
+              </a>
+            </>
           )
         }
       >
@@ -230,6 +562,9 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
           left={left}
         />
       </Panel>
+      <p className='cms-visually-hidden' role='status'>
+        {progress || ''}
+      </p>
 
       {error && <Notice tone='danger'>{error}</Notice>}
       {!rows && !error && <Loading />}
@@ -254,25 +589,38 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
         ))}
 
       {!!rows?.length && (
+        <TickedLine
+          ticked={ticked.size}
+          onPage={onPage}
+          shown={shownIds.length}
+          total={total}
+          every={every}
+          matching={where.length ? matchingOf(searched, filtered) : undefined}
+          selecting={selecting}
+          problem={lineProblem}
+          onSelectAll={selectAll}
+          onUntickAll={untickAll}
+        />
+      )}
+      {!!rows?.length && (
         <div className='cms-table-wrap'>
           <table className='cms-table'>
             <thead>
               <tr>
-                {!archived && (
-                  <th className='cms-table__tick'>
-                    <label>
-                      <input
-                        type='checkbox'
-                        aria-label='Select every entry on this page'
-                        checked={pageTicked}
-                        ref={(box) => {
-                          if (box) box.indeterminate = !pageTicked && shownIds.some((id) => ticked.includes(id))
-                        }}
-                        onChange={(event) => tick(shownIds, event.target.checked)}
-                      />
-                    </label>
-                  </th>
-                )}
+                <th className='cms-table__tick'>
+                  <label>
+                    <input
+                      ref={(box) => {
+                        headerBox.current = box
+                        if (box) box.indeterminate = !pageTicked && onPage > 0
+                      }}
+                      type='checkbox'
+                      aria-label='Select every entry on this page'
+                      checked={pageTicked}
+                      onChange={(event) => tick(shownIds, event.target.checked)}
+                    />
+                  </label>
+                </th>
                 {columns.map((column) => {
                   const direction = sort?.name === column.name ? sort.direction : undefined
                   return (
@@ -304,19 +652,17 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
             </thead>
             <tbody>
               {rows.map(({ entry, depth, index, siblings }) => (
-                <tr key={entry.id} className={ticked.includes(entry.id) ? 'cms-table__selected' : undefined}>
-                  {!archived && (
-                    <td className='cms-table__tick'>
-                      <label>
-                        <input
-                          type='checkbox'
-                          aria-label={`Select ${titleOf(type, entry)}`}
-                          checked={ticked.includes(entry.id)}
-                          onChange={(event) => tick([entry.id], event.target.checked)}
-                        />
-                      </label>
-                    </td>
-                  )}
+                <tr key={entry.id} className={ticked.has(entry.id) ? 'cms-table__selected' : undefined}>
+                  <td className='cms-table__tick'>
+                    <label>
+                      <input
+                        type='checkbox'
+                        aria-label={`Select ${titleOf(type, entry)}`}
+                        checked={ticked.has(entry.id)}
+                        onChange={(event) => tick([entry.id], event.target.checked)}
+                      />
+                    </label>
+                  </td>
                   {columns.map((column, position) => (
                     <td key={column.name} className={column.number ? 'cms-table__number' : undefined}>
                       {position === 0 ? (

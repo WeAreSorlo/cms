@@ -386,20 +386,19 @@ export function chatRoutes(
   }
 
   // A list's entries that the person means by "these": those they ticked, in the order they ticked them, that are still
-  // on the list, or else those the list's own query finds with its search and filter, in its order. Past maxNamed, as
-  // the admin's line above the box says, only how many.
+  // on the list, or in the archive for the archive, or else those the list's own query finds with its search and
+  // filter, in its order. Past maxNamed, as the admin's line above the box says, only how many.
   const theseOf = async (type: ContentType, { ticked, where, order, archived }: Record<string, unknown>) => {
     if (Array.isArray(ticked) && ticked.length) {
       if (ticked.length > maxNamed) return { ticked: true, count: ticked.length, ids: [], gone: 0 }
       const ids = [...new Set(ticked.filter(isUuid))]
-      // Only a list's entries that aren't archived can be ticked
       const found = ids.length
         ? await db
             .selectFrom('entries')
             .select('id')
             .where('id', 'in', ids)
             .where('type', '=', type.name)
-            .where('archived_at', 'is', null)
+            .where('archived_at', archived === true ? 'is not' : 'is', null)
             .execute()
         : []
       const kept = ids.filter((id) => found.some((row) => row.id === id))
@@ -457,11 +456,12 @@ export function chatRoutes(
       const on = `The person is on ${sent.archived === true ? 'the archive' : 'the list'} of ${listed.label}, the ${listed.name} type`
       const these = await theseOf(listed, sent)
       if (!these) return `${on}.`
+      const there = sent.archived === true ? 'in the archive' : 'on the list'
       const gone =
         these.gone === 1
-          ? " 1 of the entries they ticked isn't on the list now, so it's left out."
+          ? ` 1 of the entries they ticked isn't ${there} now, so it's left out.`
           : these.gone
-            ? ` ${these.gone} of the entries they ticked aren't on the list now, so they're left out.`
+            ? ` ${these.gone} of the entries they ticked aren't ${there} now, so they're left out.`
             : ''
       if (!these.count) return `${on}${these.ticked ? '' : ', filtered to no entries'}.${gone}`
       const chosen = these.ticked

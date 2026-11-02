@@ -308,6 +308,31 @@ pre {
   }
 }
 
+// The line above a list's table while its ticks can reach past the page, with Select all and Untick all. Empty, it's
+// still there, so its status reads out what it says once it shows.
+.cms-ticked {
+  p {
+    margin: 0;
+  }
+
+  &[data-shown] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--iight-size-1) var(--iight-size-3);
+    margin-bottom: var(--iight-size-2);
+    padding: var(--iight-size-2) var(--iight-size-3);
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+    background: var(--cms-subtle);
+    border-radius: var(--iight-size-2);
+  }
+
+  .cms-problem {
+    flex-basis: 100%;
+  }
+}
+
 // Bulk editing's grid scrolls in its own box, keeping its header and the column that names each row in view
 .cms-grid-wrap {
   max-height: max(20rem, calc(100dvh - 16rem));

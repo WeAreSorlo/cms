@@ -6,7 +6,7 @@ import { Assistant, AssistantContext, Chat, ChatMessage, Proposal } from './chat
 import { compare, compareParent } from './compare'
 import { contrast, pairs } from './contrast'
 import './design.scss'
-import { Version, Versions } from './entries'
+import { TickedLine, Version, Versions } from './entries'
 import { iconInput, useInputs } from './fields'
 import { TypeGroups } from './groups'
 import { entryFields, fieldChoicesOf, filterOf, whereOf } from './lists'
@@ -438,9 +438,20 @@ function ListPanel({ start }: { start: string }) {
         </>
       }
       footer={
-        <button type='button' className='iight-button' onClick={() => toast('Opens the archive')}>
-          <Archive /> Archive
-        </button>
+        <>
+          {!list.filtered && (
+            <button
+              type='button'
+              className='iight-button iight-button--danger'
+              onClick={() => toast('Asks before archiving')}
+            >
+              <Archive /> Archive 1 entry
+            </button>
+          )}
+          <button type='button' className='iight-button' onClick={() => toast('Opens the archive')}>
+            Open the archive
+          </button>
+        </>
       }
     >
       <ListFilters
@@ -454,6 +465,33 @@ function ListPanel({ start }: { start: string }) {
     </Panel>
   )
 }
+
+// The line above a list's table in each of its states, for a list of 1,240 entries 15 to a page
+const tickedLines: Array<{ label: string } & Omit<Parameters<typeof TickedLine>[0], 'onSelectAll' | 'onUntickAll'>> = [
+  { label: 'The whole page ticked', ticked: 15, onPage: 15, shown: 15, total: 1240, every: false },
+  {
+    label: 'The whole page ticked, with a filter',
+    ticked: 15,
+    onPage: 15,
+    shown: 15,
+    total: 37,
+    every: false,
+    matching: 'matching your filter',
+  },
+  { label: 'Selecting', ticked: 15, onPage: 15, shown: 15, total: 1240, every: false, selecting: true },
+  { label: 'More than 10,000', ticked: 15, onPage: 15, shown: 15, total: 12_480, every: false },
+  { label: 'Every entry ticked', ticked: 1240, onPage: 15, shown: 15, total: 1240, every: true },
+  { label: 'Some ticked on other pages', ticked: 1239, onPage: 14, shown: 15, total: 1240, every: false },
+  {
+    label: "Select all couldn't",
+    ticked: 15,
+    onPage: 15,
+    shown: 15,
+    total: 1240,
+    every: false,
+    problem: 'Bad Gateway',
+  },
+]
 
 const sampleEntry = (id: string, status: Status, values: Record<string, any>): Entry => ({
   id,
@@ -1421,8 +1459,10 @@ export default function Design() {
         Every page's panel holds its actions, a list's as well as an editor's. A list's has New at the top, with Bulk
         edit once entries are ticked, then a search on the title field and Filter, which opens core's conditions input
         over the type's fields, then Clear filters once either is set and how many entries the list holds, which is
-        announced as it changes. The archive is at the bottom. On a list's page both stay in the URL, and below 64rem
-        the top is the bar, whose Filters opens the rest, but here they stay as they are.
+        announced as it changes. Archive for the ticked entries, which asks first, and the link to the archive are at
+        the bottom. In the archive, Restore for the ticked entries is at the top. On a list's page the search and filter
+        stay in the URL, and below 64rem the top is the bar, whose Filters opens the rest, but here they stay as they
+        are.
       </p>
       <PanelSlot.Provider value={null}>
         <ul className='cms-design__panels'>
@@ -1437,9 +1477,27 @@ export default function Design() {
 
       <h2>Bulk editing</h2>
       <p>
-        Ticking entries in a list, and the grid that Bulk edit opens them in. Its cells show their values as the list
-        does. An edited cell is tinted, a refused one is outlined with its messages, and a field its conditions hide
-        says so. Specs opens in a dialog. Save and Publish are in the grid's panel.
+        Ticking entries in a list, and the grid that Bulk edit opens them in. Once the whole page is ticked, the line
+        above the table offers every entry the list holds, as many as 10,000, which then stay ticked as the list
+        changes, until the tab reloads. Select all becomes Untick all in place.
+      </p>
+      <ul className='cms-design__lines'>
+        {tickedLines.map(({ label, ...line }) => (
+          <li key={label}>
+            <h3>{label}</h3>
+            <TickedLine
+              {...line}
+              onSelectAll={() => toast('Ticks every entry the list holds')}
+              onUntickAll={() => toast('Unticks every entry')}
+            />
+          </li>
+        ))}
+      </ul>
+      <p>
+        The grid's cells show their values as the list does. An edited cell is tinted, a refused one is outlined with
+        its messages, and a field its conditions hide says so. Specs opens in a dialog. Save and Publish are in the
+        grid's panel. Past a hundred ticked, its pages go through them a hundred at a time, asking first before they
+        leave edits unsaved.
       </p>
       <table className='cms-table'>
         <thead>
@@ -1476,6 +1534,10 @@ export default function Design() {
         </tbody>
       </table>
       {grid.rows && <Grid type={gridType} columns={gridColumns} rows={grid.rows} onChange={grid.change} />}
+      <Pages
+        pagination={{ page: 2, perPage: 100, total: 1240, lastPage: 13 }}
+        onPage={(page) => toast(`Opens hundred ${page}`)}
+      />
       <div className='actions'>
         <button type='button' className='iight-button' onClick={refuse}>
           Refuse the first row

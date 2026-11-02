@@ -299,19 +299,25 @@ export const usedBy = (db: Kysely<Database>, id: string) =>
     .orderBy('updated_at', 'desc')
     .execute()
 
-// One page of the rows a select finds, filtered and sorted by the query
-async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Subject, query: Query) {
-  const filtered = from.$if(query.where.length > 0, (qb) =>
+// The rows a select finds that match the query's where
+const filter = (from: SelectQueryBuilder<any, any, {}>, subject: Subject, query: Query) =>
+  from.$if(query.where.length > 0, (qb) =>
     qb.where((eb) => eb.or(query.where.map((group) => eb.and(group.map((item) => conditionSql(eb, subject, item)))))),
   )
 
+// Rows in the query's order, then by id, so rows that tie keep their places from page to page
+function sort<Row>(rows: SelectQueryBuilder<any, any, Row>, subject: Subject, query: Query) {
+  for (const [field, direction] of Object.entries(query.order)) rows = rows.orderBy(read(subject, field), direction)
+  return rows.orderBy('id')
+}
+
+// One page of the rows a select finds, filtered and sorted by the query
+async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Subject, query: Query) {
+  const filtered = filter(from, subject, query)
   const { total } = await filtered.select((eb) => eb.fn.countAll<string>().as('total')).executeTakeFirstOrThrow()
 
-  let rows = filtered.selectAll()
-  for (const [field, direction] of Object.entries(query.order)) rows = rows.orderBy(read(subject, field), direction)
   const { page, perPage } = query
-  const data = await rows
-    .orderBy('id')
+  const data = await sort(filtered.selectAll(), subject, query)
     .limit(perPage)
     .offset((page - 1) * perPage)
     .execute()
@@ -325,6 +331,16 @@ async function paginate<Row>(from: SelectQueryBuilder<any, any, {}>, subject: Su
 // One page of a type's entries, from where they're read, such as their live copies
 export const listEntries = <Row>(from: SelectQueryBuilder<any, any, {}>, type: ContentType, query: Query) =>
   paginate<Row>(from.where('type', '=', type.name), entrySubject(type), query)
+
+// The ids of every one of a type's entries that the query finds, in its order as the list pages them, or null when
+// more than max do. Its page and perPage don't count.
+export async function entryIds(from: SelectQueryBuilder<any, any, {}>, type: ContentType, query: Query, max: number) {
+  const subject = entrySubject(type)
+  const rows = await sort(filter(from.where('type', '=', type.name), subject, query).select('id'), subject, query)
+    .limit(max + 1)
+    .execute()
+  return rows.length > max ? null : rows.map((row: { id: string }) => row.id)
+}
 
 // Whether an entry has a text value that holds some text, case-insensitive, in any field at any depth.
 // jsonb_path_query walks every value once, arrays included.

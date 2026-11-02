@@ -67,6 +67,9 @@ export const chatTitleSchema: Array<FieldSchema> = [
 // The most entries a message to the assistant names as "these", past which its model gets only how many
 export const maxNamed = 100
 
+// The most entries one Select all in a list ticks
+export const maxTicked = 10_000
+
 export const chatMessageSchema: Array<FieldSchema> = [
   {
     name: 'text',

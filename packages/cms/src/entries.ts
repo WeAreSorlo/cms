@@ -3,9 +3,9 @@ import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
 import { inputs, isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { addEvents } from './events'
-import { EntryRow, StatusRow, listEntries, parseQuery, toAdminEntry, usedBy, withStatus } from './query'
+import { EntryRow, StatusRow, entryIds, listEntries, parseQuery, toAdminEntry, usedBy, withStatus } from './query'
 import { cmsInputs, saveRelations, serverInputs } from './relations'
-import { EventName, versionSchema } from './schemas'
+import { EventName, maxTicked, versionSchema } from './schemas'
 import type { ContentType } from './types'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
@@ -19,6 +19,8 @@ const slugTaken = 'Another entry here already uses this slug.'
 const liveSlugTaken = 'A published entry here already uses this slug.'
 const unpublishedParent = "Its parent isn't published. Publish the parent first."
 const archived = 'This entry is archived. Restore it to edit it.'
+const parentArchived = 'Its parent is archived. Restore the parent first.'
+const notOfType = "There's no entry of this type with this id."
 
 const isObject = (value: unknown): value is Record<string, any> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -37,11 +39,11 @@ export function merge(fields: Array<FieldSchema>, values: Record<string, any>, c
   return merged
 }
 
-// The entry and everything under it, as a "tree" for the statement that follows
-const tree = (id: string) => sql`
+// The entries and everything under them, as a "tree" for the statement that follows
+const tree = (ids: Array<string>) => sql`
   with recursive tree as (
-    select id from entries where id = ${id}
-    union all
+    select id from entries where id = any(${ids}::uuid[])
+    union
     select entries.id from entries join tree on entries.parent_id = tree.id
   )`
 
@@ -85,6 +87,37 @@ async function unpublish(trx: Kysely<Database>, ids: Array<string>) {
     delete from published_entries using live where published_entries.id = live.id returning published_entries.id
   `.execute(trx)
   await addEntryEvents(trx, 'entry.unpublished', rows)
+}
+
+// Archives entries with their descendants that aren't archived, all stamped with the transaction's time, so restoring
+// one of them brings back just what was archived along with it. It takes them off the live site, with the live pages
+// under them.
+async function archive(trx: Kysely<Database>, ids: Array<string>) {
+  const { rows } = await sql<{ id: string }>`${tree(ids)}
+    update entries set archived_at = now() from tree where entries.id = tree.id and entries.archived_at is null
+    returning entries.id
+  `.execute(trx)
+  await unpublish(
+    trx,
+    rows.map((row) => row.id),
+  )
+  await addEntryEvents(trx, 'entry.archived', rows)
+}
+
+// Restores an entry with what was archived along with it, as drafts to publish again, or throws a 409 while its
+// parent is archived
+async function restore(trx: Kysely<Database>, row: { id: string; parent_id: string | null }) {
+  const parent = row.parent_id
+    ? await trx.selectFrom('entries').select('archived_at').where('id', '=', row.parent_id).executeTakeFirst()
+    : undefined
+  if (parent?.archived_at) throw new HTTPException(409, { message: parentArchived })
+
+  const { rows } = await sql<{ id: string }>`${tree([row.id])}
+    update entries set archived_at = null from tree
+    where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})
+    returning entries.id
+  `.execute(trx)
+  await addEntryEvents(trx, 'entry.restored', rows)
 }
 
 // Makes what was just saved the entry's live copy, and has the live pages under it follow its live uri, which comes
@@ -548,6 +581,47 @@ export function entryRoutes(
     return type
   }
 
+  // A type whose entries can be made and acted on many at once, which a singleton's one entry can't
+  const listNamed = (name: string) => {
+    const type = typeNamed(name)
+    if (type.structure === 'singleton') throw new HTTPException(409, { message: 'A singleton has one entry, open it.' })
+    return type
+  }
+
+  // The ids sent to act on many of a type's entries at once: 1 to max of them, each sent once. A UUID's case doesn't
+  // count, as Postgres ignores it, so one sent in capitals is the same entry.
+  const idsSent = async (c: Context<AdminEnv>, max = 100) => {
+    const ids: Array<string> = (await c.req.json().catch(() => ({})))?.ids
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > max || !ids.every((id) => typeof id === 'string')) {
+      throw new HTTPException(400, { message: `ids must list 1 to ${max.toLocaleString('en')} entry ids.` })
+    }
+    if (new Set(ids.map((id) => id.toLowerCase())).size < ids.length) {
+      throw new HTTPException(400, { message: 'Each entry can only be sent once.' })
+    }
+    return ids
+  }
+
+  // Each sent id's result in the order sent: the entry as it is now, why it was refused, or a 404 for an id that isn't
+  // one of the type's entries. Rows and refusals are by the database's lower-case ids.
+  const results = async (
+    trx: Kysely<Database>,
+    type: ContentType,
+    ids: Array<string>,
+    refused = new Map<string, HTTPException>(),
+  ) => {
+    const uuids = ids.filter(isUuid)
+    const rows = uuids.length
+      ? await withStatus(trx).selectAll().where('type', '=', type.name).where('id', 'in', uuids).execute()
+      : []
+    const found = new Map(rows.map((row) => [row.id, row]))
+    return ids.map((id) => {
+      const error = refused.get(id.toLowerCase())
+      if (error) return { id, status: error.status, message: error.message }
+      const row = found.get(id.toLowerCase())
+      return row ? { id, status: 200, data: toAdminEntry(row) } : { id, status: 404, message: notOfType }
+    })
+  }
+
   const find = (id: string) => findEntry(db, types, id)
 
   const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200) =>
@@ -574,20 +648,31 @@ export function entryRoutes(
     return c.json({ data: data.map(toAdminEntry), pagination })
   })
 
-  app.post('/types/:type/entries', async (c) => {
+  // Select all in a list (PLAN.md section 18): the ids of every entry its query finds, as the list orders them, for
+  // ticking them all. It takes the list's where, order and archived, and refuses past maxTicked.
+  app.get('/types/:type/entries/ids', async (c) => {
     const type = typeNamed(c.req.param('type'))
-    if (type.structure === 'singleton') throw new HTTPException(409, { message: 'A singleton has one entry, open it.' })
-    return save(c, type)
+    const query = parseQuery(type, c.req.query())
+    const archived = c.req.query('archived') === 'true'
+    const from = db.selectFrom('entries').where('archived_at', archived ? 'is not' : 'is', null)
+    const data = await entryIds(from, type, query, maxTicked)
+    if (!data) {
+      const most = maxTicked.toLocaleString('en')
+      throw new HTTPException(400, {
+        message: `More than ${most} entries match. Narrow the search or filter to ${most} or fewer.`,
+      })
+    }
+    return c.json({ data })
   })
+
+  app.post('/types/:type/entries', async (c) => save(c, listNamed(c.req.param('type'))))
 
   // Bulk editing (PLAN.md section 18): save the changed fields of up to 100 of a type's entries, with one publish for
   // them all, replying with each one's result in the order sent. Each saves on its own, as PUT /entries/:id saves,
   // so the rows that pass are saved whatever happens to the others. Each merges into its entry as it's locked for the
   // save, so another save's changes to its other fields are kept, however close together they land.
   app.patch('/types/:type/entries', async (c) => {
-    const type = typeNamed(c.req.param('type'))
-    if (type.structure === 'singleton') throw new HTTPException(409, { message: 'A singleton has one entry, open it.' })
-
+    const type = listNamed(c.req.param('type'))
     const body = await c.req.json().catch(() => ({}))
     const entries: Array<{ id: string; values: Record<string, any> }> = body?.entries
     const sound =
@@ -596,7 +681,7 @@ export function entryRoutes(
       entries.length <= 100 &&
       entries.every((entry) => isObject(entry) && typeof entry.id === 'string' && isObject(entry.values))
     if (!sound) throw new HTTPException(400, { message: 'entries must list 1 to 100 entries, each { id, values }.' })
-    if (new Set(entries.map((entry) => entry.id)).size < entries.length) {
+    if (new Set(entries.map((entry) => entry.id.toLowerCase())).size < entries.length) {
       throw new HTTPException(400, { message: 'Each entry can only be sent once.' })
     }
 
@@ -618,11 +703,87 @@ export function entryRoutes(
         )
       } catch (error) {
         if (!(error instanceof HTTPException)) throw error
-        const message = error.status === 404 ? "There's no entry of this type with this id." : error.message
+        const message = error.status === 404 ? notOfType : error.message
         data.push({ id, status: error.status, message })
       }
     }
     return c.json({ data })
+  })
+
+  // Archive up to 100 of a type's entries at once, each as POST /entries/:id/archive archives it, in one transaction, so
+  // all are stamped with one time, replying with each one's result in the order sent. One already archived stays as it
+  // is.
+  app.post('/types/:type/entries/archive', async (c) => {
+    const type = listNamed(c.req.param('type'))
+    const ids = await idsSent(c)
+    const uuids = ids.filter(isUuid)
+    const data = await db.transaction().execute(async (trx) => {
+      const found = uuids.length
+        ? await trx.selectFrom('entries').select('id').where('type', '=', type.name).where('id', 'in', uuids).execute()
+        : []
+      await archive(
+        trx,
+        found.map((row) => row.id),
+      )
+      return results(trx, type, ids)
+    })
+    return c.json({ data })
+  })
+
+  // Restore up to 100 of a type's entries at once, each as POST /entries/:id/restore restores it, in one transaction,
+  // replying with each one's result in the order sent. Parents go first, so a page sent with its parent comes back
+  // after it, and one whose parent stays archived gets a 409. One that isn't archived stays as it is.
+  app.post('/types/:type/entries/restore', async (c) => {
+    const type = listNamed(c.req.param('type'))
+    const ids = await idsSent(c)
+    const uuids = ids.filter(isUuid)
+    const data = await db.transaction().execute(async (trx) => {
+      // How many ancestors each has, at any depth, since a page's parent may not be among those sent
+      const { rows } = await sql<{ id: string; parent_id: string | null }>`
+        with recursive up as (
+          select id as entry, parent_id, 0 as depth from entries where type = ${type.name} and id = any(${uuids}::uuid[])
+          union all
+          select up.entry, entries.parent_id, up.depth + 1 from entries join up on entries.id = up.parent_id
+        )
+        select entries.id, entries.parent_id from entries
+        join (select entry, max(depth) as depth from up group by entry) depths on depths.entry = entries.id
+        order by depths.depth, entries.id
+      `.execute(trx)
+
+      const refused = new Map<string, HTTPException>()
+      for (const row of rows) {
+        try {
+          await restore(trx, row)
+        } catch (error) {
+          if (!(error instanceof HTTPException)) throw error
+          refused.set(row.id, error)
+        }
+      }
+      return results(trx, type, ids, refused)
+    })
+    return c.json({ data })
+  })
+
+  // How many of up to maxTicked of a type's entries, counting the pages under them, other entries link to, for bulk
+  // Archive to warn of before it takes them off the site. Links from among them, or from pages under them, which go
+  // with them, and from archived entries don't count, and nor do entries already archived.
+  app.post('/types/:type/entries/used-by', async (c) => {
+    const type = listNamed(c.req.param('type'))
+    const ids = (await idsSent(c, maxTicked)).filter(isUuid)
+    const { rows } = await sql<{ count: number }>`
+      with recursive tree as (
+        select id as root, id from entries
+        where type = ${type.name} and archived_at is null and id = any(${ids}::uuid[])
+        union
+        select tree.root, entries.id from entries join tree on entries.parent_id = tree.id
+        where entries.archived_at is null
+      )
+      select count(distinct tree.root)::int as count from tree
+      join entry_relations link on link.target_id = tree.id
+      join entries source on source.id = link.entry_id
+      where source.archived_at is null and source.id not in (select id from tree)
+    `.execute(db)
+    return c.json({ data: { count: rows[0].count } })
   })
 
   // A singleton's entry, created the first time it's opened
@@ -726,37 +887,14 @@ export function entryRoutes(
   // just those. It takes them off the live site, with the live pages under them.
   app.post('/entries/:id/archive', async (c) => {
     const { row } = await find(c.req.param('id'))
-    await db.transaction().execute(async (trx) => {
-      const { rows } = await sql<{ id: string }>`${tree(row.id)}
-        update entries set archived_at = now() from tree where entries.id = tree.id and entries.archived_at is null
-        returning entries.id
-      `.execute(trx)
-      await unpublish(
-        trx,
-        rows.map((row) => row.id),
-      )
-      await addEntryEvents(trx, 'entry.archived', rows)
-    })
+    await db.transaction().execute((trx) => archive(trx, [row.id]))
     return reply(c, row.id)
   })
 
   // Restoring gives back drafts, to publish again
   app.post('/entries/:id/restore', async (c) => {
     const { row } = await find(c.req.param('id'))
-    const parent = row.parent_id
-      ? await db.selectFrom('entries').select('archived_at').where('id', '=', row.parent_id).executeTakeFirst()
-      : undefined
-    if (parent?.archived_at)
-      throw new HTTPException(409, { message: 'Its parent is archived. Restore the parent first.' })
-
-    await db.transaction().execute(async (trx) => {
-      const { rows } = await sql<{ id: string }>`${tree(row.id)}
-        update entries set archived_at = null from tree
-        where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})
-        returning entries.id
-      `.execute(trx)
-      await addEntryEvents(trx, 'entry.restored', rows)
-    })
+    await db.transaction().execute((trx) => restore(trx, row))
     return reply(c, row.id)
   })
 
@@ -776,7 +914,7 @@ export function entryRoutes(
     if (!row.archived_at) throw new HTTPException(409, { message: 'Archive the entry before deleting it.' })
 
     const { users } = (
-      await sql<{ users: number }>`${tree(row.id)}
+      await sql<{ users: number }>`${tree([row.id])}
         select count(distinct entry_id)::int as users from entry_relations
         where target_id in (select id from tree) and entry_id not in (select id from tree)
       `.execute(db)
@@ -789,7 +927,7 @@ export function entryRoutes(
 
     await db.transaction().execute(async (trx) => {
       // The whole tree, rather than leaving its descendants to the cascade, so each one gets its event
-      const { rows } = await sql<EntryRow>`${tree(row.id)}
+      const { rows } = await sql<EntryRow>`${tree([row.id])}
         delete from entries using tree where entries.id = tree.id returning entries.*
       `.execute(trx)
       // As they were left: archived, so not live, and with their versions gone

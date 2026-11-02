@@ -112,3 +112,45 @@ export function whereOf(fields: Map<string, FieldSchema>, filter: Array<unknown>
   const where = groups.length ? groups.map((group) => [...also, ...group]) : also.length ? [also] : []
   return { where, left }
 }
+
+// The entries ticked in a list, such as blog or its archive, blog/archive, in the order they were ticked, with what the
+// last Select all found and the archive or restore under way. The admin keeps them until the tab reloads, so they
+// outlast a visit to the grid, an entry or the archive, and a list that shows again shows its run as it stands
+// (PLAN.md section 18).
+export interface Ticks {
+  ticked: Set<string>
+  // The archive, search and filter it was for, and the ids it found, so the list knows while every entry it holds is
+  // ticked
+  selected?: { listing: string; ids: Array<string> }
+  // Archiving or restoring them a hundred at a time, and how far it's got, or asking first, before it starts
+  run?: { action: 'archive' | 'restore'; done: number; total: number; asking?: boolean }
+  // How many runs have ended, so a list showing loads again as one does, and what the last one couldn't do
+  ended: number
+  problem?: string
+}
+
+const none: Ticks = { ticked: new Set(), ended: 0 }
+const kept = new Map<string, Ticks>()
+const watchers = new Set<() => void>()
+
+export const ticksOf = (list: string) => kept.get(list) ?? none
+
+// Changes a list's ticks, and tells the lists showing them
+export function changeTicks(list: string, change: (now: Ticks) => Ticks) {
+  kept.set(list, change(ticksOf(list)))
+  for (const watcher of watchers) watcher()
+}
+
+export function watchTicks(watcher: () => void) {
+  watchers.add(watcher)
+  return () => void watchers.delete(watcher)
+}
+
+// The hundred of a list's ticks that bulk editing shows, which the grid's address names, as a page of them. There's
+// none for a hundred or fewer, or for ids that aren't one of the hundreds, as after a reload.
+export function hundredOf(ticked: Array<string>, ids: Array<string>) {
+  const start = ticked.indexOf(ids[0])
+  const hundred = start % 100 === 0 ? ticked.slice(start, start + 100) : []
+  if (ticked.length <= 100 || hundred.length !== ids.length || hundred.some((id, at) => id !== ids[at])) return
+  return { page: start / 100 + 1, perPage: 100, total: ticked.length, lastPage: Math.ceil(ticked.length / 100) }
+}

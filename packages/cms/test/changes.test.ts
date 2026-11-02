@@ -822,9 +822,15 @@ test('a list sends the entries "these" means, as the line above the box says, ea
   const checked = await sent(view({ ticked: [crossing, archived, event.body.data.id, uuidv7(), 'nope'] }).page)
   expect(checked).toContain(`has ticked 1 of its entries, so "these" and "the ticked ones" mean them: ${crossing}.`)
   expect(checked).toContain("4 of the entries they ticked aren't on the list now, so they're left out.")
-  // Ticked entries are never archived ones, whatever else the page says
-  const onArchive = await sent({ type: 'blog', ticked: [archived, crossing], archived: true })
-  expect(onArchive).toContain(`has ticked 1 of its entries, so "these" and "the ticked ones" mean them: ${crossing}.`)
+  // In the archive, ticked entries are archived ones
+  const archiveTicked = view({ ticked: [archived, crossing], archived: true })
+  expect(archiveTicked.label).toBe('Blog posts archive: 2 ticked')
+  const onArchive = await sent(archiveTicked.page)
+  expect(onArchive).toContain(
+    `on the archive of Blog posts, the blog type, and has ticked 1 of its entries, so "these" and "the ticked ones" ` +
+      `mean them: ${archived}.`,
+  )
+  expect(onArchive).toContain("1 of the entries they ticked isn't in the archive now, so it's left out.")
 
   // With nothing ticked, the entries the search finds, in the list's order, and never the search itself
   const where = [[{ field: 'values.title', op: 'like', value: 'Zebra' }]]

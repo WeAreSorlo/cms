@@ -52,6 +52,10 @@ export function usePageView(view: PageView | null | undefined) {
   }, [key, show])
 }
 
+// What a list's search and filter find, as its lines say, such as 37 matching your filter
+export const matchingOf = (searched: boolean, filtered: boolean) =>
+  `matching ${searched && filtered ? 'your search and filter' : searched ? 'your search' : 'your filter'}`
+
 // A list's view: its ticked entries, in the order they were ticked, or else those its search and filter match, in its
 // order, which the server finds with the list's own query, or else the type alone
 export function listView(
@@ -71,14 +75,16 @@ export function listView(
   const name = archived ? `${type.label} archive` : type.label
   if (ticked.length) {
     const many = ticked.length > maxNamed ? `, too many to send, so tick ${maxNamed} or fewer` : ''
-    return { page: { type: type.name, ticked }, label: `${name}: ${ticked.length} ticked${many}` }
+    return {
+      page: { type: type.name, ticked, ...(archived && { archived }) },
+      label: `${name}: ${ticked.length} ticked${many}`,
+    }
   }
   if (where.length && total !== undefined) {
-    const by = searched && filtered ? 'your search and filter' : searched ? 'your search' : 'your filter'
     const many = total > maxNamed ? `, too many to send, so narrow it to ${maxNamed} or fewer` : ''
     return {
       page: { type: type.name, where, order, ...(archived && { archived }) },
-      label: `${name}: ${total} matching ${by}${many}`,
+      label: `${name}: ${total} ${matchingOf(searched, filtered)}${many}`,
     }
   }
   return { page: { type: type.name, ...(archived && { archived }) }, label: name }
@@ -107,6 +113,10 @@ export interface Entry {
 }
 
 export type Status = 'draft' | 'published' | 'changed'
+
+// Such as 1 entry or 1,240 entries
+export const count = (length: number, one: string, many: string) =>
+  `${length.toLocaleString()} ${length === 1 ? one : many}`
 
 export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
 

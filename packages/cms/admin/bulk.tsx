@@ -1,10 +1,23 @@
 import { idsOf } from '../src/fields'
-import { ContentType, Entry, api, errorMessage, formatValue, listView, titleOf, usePageView } from './api'
+import { ContentType, Entry, api, count, errorMessage, formatValue, listView, titleOf, usePageView } from './api'
 import { AssistantContext, useBeside } from './chat'
 import { same } from './compare'
 import { CellText, FieldValue } from './entries'
 import { useInputs, useLinkNames } from './fields'
-import { Badge, Dialog, EmptyState, Loading, Notice, PageHeader, Panel, StatusBadge, useToast } from './ui'
+import { hundredOf, ticksOf } from './lists'
+import {
+  Badge,
+  Dialog,
+  EmptyState,
+  Loading,
+  Notice,
+  PageHeader,
+  Pages,
+  Panel,
+  StatusBadge,
+  useConfirm,
+  useToast,
+} from './ui'
 import Form, {
   FieldSchema,
   FlatValidationReport,
@@ -82,8 +95,6 @@ export function changes(fields: Array<FieldSchema>, values: any, saved: any) {
   }
   return changed
 }
-
-const count = (length: number, one: string, many: string) => `${length} ${length === 1 ? one : many}`
 
 // What a repeater, matrix or flexible cell shows of its value
 const summaries: Record<string, (value: Array<any>) => string> = {
@@ -668,15 +679,21 @@ interface Result {
 
 // The page for the entries ticked in a type's list, up to 100 of them, with Save, and Publish while the type has
 // drafts. Each sends the edited rows that pass their checks, every check for Publish. The rows that save take what
-// was saved, and the rest stay highlighted with their messages, with focus on the first cell to fix.
+// was saved, and the rest stay highlighted with their messages, with focus on the first cell to fix. Past a hundred
+// ticked, its address names one hundred of them, and its pages go through the rest, asking first before they leave
+// edits unsaved.
 export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string> }) {
   // The grid's rows are the entries that were ticked, which the assistant beside it takes "these" to be
   usePageView(
     listView(type, { ticked: ids, where: [], order: undefined, searched: false, filtered: false, archived: false }),
   )
   const toast = useToast()
+  const confirm = useConfirm()
   const inputs = useAllInputs()
   const area = useRef<HTMLDivElement>(null)
+  // The list's ticks as the grid opened, and which hundred of them it shows, while there are more
+  const [ticked] = useState(() => [...ticksOf(type.name).ticked])
+  const pages = hundredOf(ticked, ids)
   const { rows, setRows, check, change } = useRows(type)
   const every = useMemo(() => columnsOf(type.fields), [type])
   const [chosen, choose] = useChosenColumns(type, every)
@@ -775,6 +792,19 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
     }
   }
 
+  // Edits are lost once another hundred opens
+  const turn = async (page: number) => {
+    const sure =
+      !edited.length ||
+      (await confirm({
+        title: `Leave ${count(edited.length, 'edited row', 'edited rows')} unsaved?`,
+        body: 'Their edits are lost once another hundred opens. Save first to keep them.',
+        action: 'Leave unsaved',
+        danger: true,
+      }))
+    if (sure) location.hash = `#/types/${type.name}/bulk/${ticked.slice((page - 1) * 100, page * 100).join(',')}`
+  }
+
   const back = { href: `#/types/${type.name}`, label: type.label }
   return (
     <div ref={area} className='cms-page'>
@@ -836,6 +866,7 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
         </EmptyState>
       )}
       {!!rows?.length && <Grid type={type} columns={columns} rows={rows} onChange={change} />}
+      {pages && <Pages pagination={pages} onPage={turn} />}
     </div>
   )
 }
