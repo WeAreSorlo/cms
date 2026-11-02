@@ -342,45 +342,52 @@ export function Shell({
         </nav>
 
         <AssistantContext.Provider value={assistant}>
-          <main id='main' ref={main} tabIndex={-1}>
-            <SectionContext.Provider value={showSection}>
-              <PageViewContext.Provider value={setView}>
-                <PanelSlot.Provider value={panelSlot}>
-                  <Toaster>
-                    <Confirmer>{children}</Confirmer>
-                  </Toaster>
-                </PanelSlot.Provider>
-              </PageViewContext.Provider>
-            </SectionContext.Provider>
-          </main>
-          {/* The panel on every page: the page's own card at the top, then the assistant's, which the shell keeps
-              across pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section 21).
-              Handles on its left edge and between the cards resize the panel and the assistant, whose title hides
-              its chat. */}
-          <div id='cms-side' className='cms-side'>
-            <Splitter name='panel-width' label='Resize the panel' controls='cms-side' vertical measure={panelWidth} />
-            <div ref={setPanelSlot} className='cms-panel-slot' />
-            {ai && section !== 'chat' && (
-              <>
+          {/* Around the panel as well as the page, for the assistant in it */}
+          <Toaster>
+            <Confirmer>
+              <main id='main' ref={main} tabIndex={-1}>
+                <SectionContext.Provider value={showSection}>
+                  <PageViewContext.Provider value={setView}>
+                    <PanelSlot.Provider value={panelSlot}>{children}</PanelSlot.Provider>
+                  </PageViewContext.Provider>
+                </SectionContext.Provider>
+              </main>
+              {/* The panel on every page: the page's own card at the top, then the assistant's, which the shell keeps
+                  across pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section
+                  21). Handles on its left edge and between the cards resize the panel and the assistant, whose title
+                  hides its chat. */}
+              <div id='cms-side' className='cms-side'>
                 <Splitter
-                  name='assistant-height'
-                  label='Resize the assistant'
-                  controls='cms-assistant'
-                  measure={assistantHeight}
+                  name='panel-width'
+                  label='Resize the panel'
+                  controls='cms-side'
+                  vertical
+                  measure={panelWidth}
                 />
-                <aside
-                  id='cms-assistant'
-                  className='cms-side__assistant'
-                  aria-label='Assistant'
-                  data-collapsed={collapsed || undefined}
-                >
-                  <Suspense>
-                    <PanelAssistant view={view} collapsed={collapsed} onCollapse={collapse} />
-                  </Suspense>
-                </aside>
-              </>
-            )}
-          </div>
+                <div ref={setPanelSlot} className='cms-panel-slot' />
+                {ai && section !== 'chat' && (
+                  <>
+                    <Splitter
+                      name='assistant-height'
+                      label='Resize the assistant'
+                      controls='cms-assistant'
+                      measure={assistantHeight}
+                    />
+                    <aside
+                      id='cms-assistant'
+                      className='cms-side__assistant'
+                      aria-label='Assistant'
+                      data-collapsed={collapsed || undefined}
+                    >
+                      <Suspense>
+                        <PanelAssistant view={view} collapsed={collapsed} onCollapse={collapse} />
+                      </Suspense>
+                    </aside>
+                  </>
+                )}
+              </div>
+            </Confirmer>
+          </Toaster>
         </AssistantContext.Provider>
       </div>
     </LucideProvider>

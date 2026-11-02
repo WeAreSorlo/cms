@@ -525,7 +525,8 @@ const ToastContext = createContext((message: string) => {})
 // Shows a passing message, for results that leave the page as it was, such as Saved
 export const useToast = () => useContext(ToastContext)
 
-// The one live region for toasts. Each lasts 5 seconds, paused while the pointer or focus is on it.
+// A live region for toasts: the shell's, and one in a dialog that toasts while it stays open. Each lasts 5 seconds,
+// paused while the pointer or focus is on it.
 export function Toaster({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Array<{ id: number; message: string }>>([])
   const toast = useCallback((message: string) => setToasts((shown) => [...shown, { id: Math.random(), message }]), [])
@@ -558,7 +559,12 @@ function Toast({ id, message, onDismiss }: { id: number; message: string; onDism
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      onKeyDown={(event) => event.key === 'Escape' && onDismiss(id)}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        // Only the toast, not the dialog it may be in
+        event.preventDefault()
+        onDismiss(id)
+      }}
     >
       <CircleCheck />
       {message}

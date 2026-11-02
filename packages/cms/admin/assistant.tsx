@@ -11,6 +11,7 @@ import {
   Notice,
   PageHeader,
   Panel,
+  Toaster,
   focusHeading,
   focusInvalid,
   useConfirm,
@@ -996,16 +997,19 @@ export function PanelAssistant({
       </button>
       {open && (
         <Dialog title='Assistant' onClose={() => setOpen(false)}>
-          <div
-            className='cms-assistant__sheet'
-            onClick={(event) => {
-              // After the link has been followed, which it isn't once it's gone
-              const link = event.target instanceof Element && event.target.closest('a[href^="#/"]')
-              if (link) setTimeout(() => setOpen(false))
-            }}
-          >
-            <AssistantChat sheet view={view} />
-          </div>
+          {/* Toasts of its own, since the page's, outside the dialog, are behind it and inert while it's open */}
+          <Toaster>
+            <div
+              className='cms-assistant__sheet'
+              onClick={(event) => {
+                // After the link has been followed, which it isn't once it's gone
+                const link = event.target instanceof Element && event.target.closest('a[href^="#/"]')
+                if (link) setTimeout(() => setOpen(false))
+              }}
+            >
+              <AssistantChat sheet view={view} />
+            </div>
+          </Toaster>
         </Dialog>
       )}
     </>

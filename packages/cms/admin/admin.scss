@@ -1316,6 +1316,19 @@ a.iight-button {
   padding-inline: 0;
 }
 
+// Its toasts just above its message box, where browsers can place them there, since the page's bar they'd otherwise
+// clear is behind the dialog and some pages have none
+.cms-assistant--sheet .cms-composer {
+  anchor-name: --cms-composer;
+}
+
+@supports (bottom: anchor(top)) {
+  .cms-assistant__sheet ~ .cms-toasts {
+    position-anchor: --cms-composer;
+    bottom: calc(anchor(top) + var(--cms-inset));
+  }
+}
+
 // A list's search, Filter and its rules, Clear filters and how many the list holds
 .cms-filters {
   display: flex;
