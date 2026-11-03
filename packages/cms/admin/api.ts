@@ -20,6 +20,8 @@ export const pathOf = (hash: string) => hash.split('?')[0]
 export function sectionOf(hash: string) {
   const [section, name] = pathOf(hash).replace(/^#\/?/, '').split('/')
   if (section === 'types' && name) return `types/${name}`
+  // Not a nav item, but the person's menu marks it
+  if (section === 'account' && name === 'tokens') return 'account/tokens'
   return [
     'chat',
     'media',
@@ -31,10 +33,16 @@ export function sectionOf(hash: string) {
     'keys',
     'users',
     'account',
-    'tokens',
   ].includes(section)
     ? section
     : undefined
+}
+
+// The first letters of someone's first and last names, for the button that opens their menu
+export function initialsOf(name: string) {
+  const words = name.split(/\s+/).filter(Boolean)
+  const first = (word = '') => [...word][0] ?? ''
+  return (first(words[0]) + (words.length > 1 ? first(words[words.length - 1]) : '')).toLocaleUpperCase()
 }
 
 // What the assistant beside a page takes "this" and "these" to mean: the page its next message sends, which the server

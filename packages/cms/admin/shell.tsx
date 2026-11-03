@@ -1,9 +1,20 @@
-import { ContentType, PageView, PageViewContext, SectionContext, navigation, pathOf, sectionOf } from './api'
+import {
+  ContentType,
+  PageView,
+  PageViewContext,
+  SectionContext,
+  initialsOf,
+  navigation,
+  pathOf,
+  sectionOf,
+} from './api'
 import { AssistantContext, useAssistantState } from './chat'
 import { MigrationsContext, ShellMigrationsNotice, useMigrations } from './migrations'
-import { Confirmer, IconButton, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
+import { Confirmer, PanelSlot, ThemeSwitch, Toaster, TypeIcon } from './ui'
 import {
   Blocks,
+  ChevronsUpDown,
+  CircleUserRound,
   ClipboardList,
   Component,
   DatabaseZap,
@@ -14,12 +25,11 @@ import {
   Menu,
   Plug,
   Sparkles,
-  SunMoon,
   Users,
   Workflow,
   X,
 } from 'lucide-react'
-import { ReactNode, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { ReactNode, Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 
 // The assistant under the page's panel, in a chunk of its own with its Markdown renderer
 const PanelAssistant = lazy(() => import('./assistant').then((module) => ({ default: module.PanelAssistant })))
@@ -152,6 +162,65 @@ function Splitter({
   )
 }
 
+// The person's initials and name, cut short when it's too long, which opens their menu. Its name for screen readers
+// starts with the name it shows.
+export function AccountButton({ name, menu, open }: { name: string; menu?: string; open?: boolean }) {
+  return (
+    <button type='button' className='cms-account' popoverTarget={menu} aria-expanded={open}>
+      <span className='cms-account__initials' aria-hidden>
+        {initialsOf(name)}
+      </span>
+      <span className='cms-account__name'>{name}</span>
+      <span className='cms-visually-hidden'>, account menu</span>
+      <ChevronsUpDown />
+    </button>
+  )
+}
+
+// The person's menu: who they are, their own pages, the one open marked, the theme, and Sign out. onPick closes it as
+// a link is followed.
+export function AccountMenu({
+  user,
+  mcp,
+  section,
+  onPick,
+  onSignOut,
+}: {
+  user: { name: string; email: string }
+  mcp: boolean
+  section?: string
+  onPick?: () => void
+  onSignOut: () => void
+}) {
+  const current = (page: string) => (page === section ? ('page' as const) : undefined)
+  return (
+    <>
+      <p className='cms-account-menu__who'>
+        <strong>{user.name}</strong>
+        <span className='cms-muted'>{user.email}</span>
+      </p>
+      <ul>
+        <li>
+          <a href='#/account' aria-current={current('account')} onClick={onPick}>
+            <CircleUserRound /> Your account
+          </a>
+        </li>
+        {mcp && (
+          <li>
+            <a href='#/account/tokens' aria-current={current('account/tokens')} onClick={onPick}>
+              <Plug /> MCP tokens
+            </a>
+          </li>
+        )}
+      </ul>
+      <ThemeSwitch />
+      <button type='button' className='cms-account-menu__sign-out' onClick={onSignOut}>
+        <LogOut /> Sign out
+      </button>
+    </>
+  )
+}
+
 // The page around every admin page: the nav with the user's row, a skip link, and the column for the page's panel and,
 // with the assistant on, the assistant under it, whose chat lasts from page to page.
 // After each change of page it titles the document after the page's heading and moves focus there, so screen readers
@@ -170,21 +239,23 @@ export function Shell({
 }: {
   hash: string
   types: Map<string, ContentType>
-  user: { id: string; name: string }
-  // Whether someone has just signed in, joined or reset their password, whose page went with the focus it had
+  user: { id: string; name: string; email: string }
   // Whether the type editor is on, as in iight dev, where migrations run from the admin
   editable: boolean
-  // Whether /mcp is on, so the user's row links to their MCP tokens
+  // Whether /mcp is on, so the person's menu links to their MCP tokens
   mcp: boolean
   // Whether the assistant is on, with Assistant at the top of the nav
   ai: boolean
   onSignOut: () => void
   // Loads the types again, once the assistant's Apply has changed one
   onTypes?: () => Promise<unknown>
+  // Whether someone has just signed in, joined or reset their password, whose page went with the focus it had
   arriving?: boolean
   children: ReactNode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const accountMenu = useId()
+  const [accountOpen, setAccountOpen] = useState(false)
   const [panelSlot, setPanelSlot] = useState<HTMLDivElement | null>(null)
   const assistant = useAssistantState(ai, user.id, onTypes)
   // What migrations wait, for the notice above every page and the Migrations page, loaded again with the types
@@ -325,36 +396,23 @@ export function Shell({
             ))}
           </div>
           <div className='cms-nav__user'>
-            <a className='cms-nav__account' href='#/account' aria-current={section === 'account' ? 'page' : undefined}>
-              Signed in as {user.name}
-            </a>
-            {mcp && (
-              <a
-                className='cms-icon-button'
-                href='#/tokens'
-                aria-label='MCP tokens'
-                title='MCP tokens'
-                aria-current={section === 'tokens' ? 'page' : undefined}
-              >
-                <Plug />
-              </a>
-            )}
-            <button
-              type='button'
-              className='cms-icon-button cms-nav__theme'
-              aria-label='Theme'
-              title='Theme'
-              popoverTarget='cms-theme'
+            <AccountButton name={user.name} menu={accountMenu} open={accountOpen} />
+            {/* After its button, so Tab goes into it. Hiding it returns focus to the button, which a new page's
+                heading then takes. */}
+            <div
+              id={accountMenu}
+              className='cms-popover cms-account-menu'
+              popover='auto'
+              onToggle={(event) => setAccountOpen(event.newState === 'open')}
             >
-              <SunMoon />
-            </button>
-            {/* After its button, so Tab goes into it */}
-            <div id='cms-theme' className='cms-popover' popover='auto'>
-              <ThemeSwitch />
+              <AccountMenu
+                user={user}
+                mcp={mcp}
+                section={section}
+                onPick={() => document.getElementById(accountMenu)?.hidePopover()}
+                onSignOut={onSignOut}
+              />
             </div>
-            <IconButton label='Sign out' onClick={onSignOut}>
-              <LogOut />
-            </IconButton>
           </div>
         </nav>
 

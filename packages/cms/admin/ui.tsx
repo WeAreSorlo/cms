@@ -10,7 +10,10 @@ import {
   ListFilter,
   LoaderCircle,
   LucideProvider,
+  Monitor,
+  Moon,
   SlidersHorizontal,
+  Sun,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -28,28 +31,31 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
 
-// Light, dark, or the OS's setting, remembered in this browser. index.html applies the choice before each first paint.
-export function ThemeSwitch() {
-  const [schema] = useState<Array<FieldSchema>>(() => [
-    {
-      type: 'radio',
-      name: 'theme',
-      label: 'Theme',
-      defaultValue: document.documentElement.dataset.theme ?? 'system',
-      options: {
-        choices: [
-          { value: 'system', label: 'System' },
-          { value: 'light', label: 'Light' },
-          { value: 'dark', label: 'Dark' },
-        ],
-      },
-    },
-  ])
+const themes = [
+  { value: 'system', label: 'System', icon: <Monitor /> },
+  { value: 'light', label: 'Light', icon: <Sun /> },
+  { value: 'dark', label: 'Dark', icon: <Moon /> },
+]
 
-  const choose = ({ theme }: Record<string, any>) => {
+// The theme on <html>, so every switch on the page shows the one chosen
+const watchTheme = (changed: () => void) => {
+  const observer = new MutationObserver(changed)
+  observer.observe(document.documentElement, { attributeFilter: ['data-theme'] })
+  return () => observer.disconnect()
+}
+
+// Light, dark, or the OS's setting, remembered in this browser, as three icons that switch at once, with their names
+// for screen readers. They're native radios, so the arrow keys move between them. index.html applies the choice
+// before each first paint.
+export function ThemeSwitch() {
+  const id = useId()
+  const theme = useSyncExternalStore(watchTheme, () => document.documentElement.dataset.theme ?? 'system')
+
+  const choose = (theme: string) => {
     const root = document.documentElement
     if (theme === 'light' || theme === 'dark') root.dataset.theme = theme
     else delete root.dataset.theme
@@ -61,7 +67,27 @@ export function ThemeSwitch() {
     } catch {}
   }
 
-  return <Form schema={schema} onValuesChange={choose} />
+  return (
+    <div className='cms-theme'>
+      <span id={id}>Theme</span>
+      <div className='cms-theme__choices' role='radiogroup' aria-labelledby={id}>
+        {themes.map(({ value, label, icon }) => (
+          <label key={value} title={label}>
+            <input
+              className='cms-visually-hidden'
+              type='radio'
+              name={id}
+              value={value}
+              checked={theme === value}
+              onChange={() => choose(value)}
+            />
+            {icon}
+            <span className='cms-visually-hidden'>{label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // Lucide's list of every icon is large, so the type icons load after the rest of the page

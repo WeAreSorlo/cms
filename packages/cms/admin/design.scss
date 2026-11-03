@@ -14,6 +14,23 @@
     }
   }
 
+  // The person's button in a card as wide as the nav, beside their menu as it opens
+  &__account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--iight-size-4);
+    margin-bottom: var(--iight-size-4);
+
+    > .cms-nav__user {
+      box-sizing: border-box;
+      width: var(--cms-sidebar);
+      background: var(--cms-surface);
+      border: var(--iight-size-px) solid var(--cms-rule);
+      border-radius: var(--iight-size-2);
+    }
+  }
+
   // The assistant as the panel shows it, in a card as wide as the panel
   &__assistant {
     display: flex;

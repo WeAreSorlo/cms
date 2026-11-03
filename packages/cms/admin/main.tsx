@@ -38,8 +38,8 @@ const ChatPage = lazy(() => import('./assistant').then((module) => ({ default: m
 
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
 // #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/migrations, #/keys/<id>,
-// #/users/<id>, #/account, #/tokens/<id> with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog and
-// #/groups/seo in the type editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
+// #/users/<id>, #/account, #/account/tokens/<id> with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog
+// and #/groups/seo in the type editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
 function Page({
   hash,
   types,
@@ -115,10 +115,12 @@ function Page({
   if (section === 'users' && name === 'removed') return <RemovedUsers />
   if (section === 'users' && name) return <UserPage key={name} id={name} me={me} mcp={!!mcp} />
   if (section === 'users') return <UserList me={me} />
+  if (mcp && section === 'account' && name === 'tokens') {
+    if (action === 'new') return <TokenForm key='new' publish={mcp.publish} />
+    if (action) return <TokenPage key={action} id={action} publish={mcp.publish} />
+    return <TokenList publish={mcp.publish} />
+  }
   if (section === 'account') return <AccountPage onUser={onUser} mcp={!!mcp} />
-  if (mcp && section === 'tokens' && name === 'new') return <TokenForm key='new' publish={mcp.publish} />
-  if (mcp && section === 'tokens' && name) return <TokenPage key={name} id={name} publish={mcp.publish} />
-  if (mcp && section === 'tokens') return <TokenList publish={mcp.publish} />
   if (section === 'entries' && name && action === 'versions' && ids) {
     return <VersionPage key={hash} id={name} number={Number(ids)} types={types} />
   }
@@ -149,7 +151,13 @@ function App() {
   // The one copy of the URL's hash, so the shell and the page see each change in the same render
   const [hash, setHash] = useState(location.hash)
   useEffect(() => {
-    const update = () => setHash(location.hash)
+    const update = () => {
+      // MCP tokens moved into your account, so their old addresses, such as #/tokens/new, open them there
+      const moved = location.hash.replace(/^#\/tokens(?=[/?]|$)/, '#/account/tokens')
+      if (moved !== location.hash) return location.replace(moved)
+      setHash(location.hash)
+    }
+    update()
     addEventListener('hashchange', update)
     return () => removeEventListener('hashchange', update)
   }, [])

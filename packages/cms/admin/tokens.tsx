@@ -2,6 +2,7 @@ import { tokenSchema, tokenScopes, tokenScopesField } from '../src/schemas'
 import { api, errorMessage, shortDate } from './api'
 import { NewToken } from './keys'
 import { Badge, EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
+import { AccountTabs } from './users'
 import Form, { FormHandle } from 'iight'
 import { CircleAlert, Copy, Plug, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -69,14 +70,15 @@ export function TokenList({ publish }: { publish: boolean }) {
   }, [])
 
   const newToken = (
-    <a className='iight-button iight-button--primary' href='#/tokens/new'>
+    <a className='iight-button iight-button--primary' href='#/account/tokens/new'>
       <Plus /> New token
     </a>
   )
 
   return (
     <div className='cms-page'>
-      <PageHeader title='MCP tokens' />
+      <PageHeader title='Your account: MCP tokens' />
+      <AccountTabs current='tokens' />
       <Panel label='MCP tokens' actions={newToken} />
       <p>
         AI clients such as Claude Code, Cursor and VS Code connect to <code>{mcpUrl()}</code> with a token of yours,
@@ -105,7 +107,7 @@ export function TokenList({ publish }: { publish: boolean }) {
               {tokens.map((token) => (
                 <tr key={token.id}>
                   <td>
-                    <a href={`#/tokens/${token.id}`}>{token.name}</a>
+                    <a href={`#/account/tokens/${token.id}`}>{token.name}</a>
                   </td>
                   <td>
                     {counted(token.scopes, publish).length ? (
@@ -158,7 +160,7 @@ export function TokenForm({ publish }: { publish: boolean }) {
         return showInvalid()
       }
       made = body.data
-      location.hash = `#/tokens/${body.data.id}`
+      location.hash = `#/account/tokens/${body.data.id}`
     } catch (error) {
       setProblem(errorMessage(error))
     } finally {
@@ -168,7 +170,7 @@ export function TokenForm({ publish }: { publish: boolean }) {
 
   return (
     <div>
-      <PageHeader back={{ href: '#/tokens', label: 'MCP tokens' }} title='New token' />
+      <PageHeader back={{ href: '#/account/tokens', label: 'MCP tokens' }} title='New token' />
       <div ref={area}>
         <Form ref={form} schema={tokenSchema(publish)} onValuesChange={setValues} />
       </div>
@@ -272,7 +274,7 @@ export function TokenPage({ id, publish }: { id: string; publish: boolean }) {
     act('revoke', async () => {
       await api('DELETE', `/tokens/${token.id}`)
       toast(`Revoked ${token.name}`)
-      location.hash = '#/tokens'
+      location.hash = '#/account/tokens'
     })
   }
 
@@ -281,7 +283,7 @@ export function TokenPage({ id, publish }: { id: string; publish: boolean }) {
 
   return (
     <div>
-      <PageHeader back={{ href: '#/tokens', label: 'MCP tokens' }} title={token.name} />
+      <PageHeader back={{ href: '#/account/tokens', label: 'MCP tokens' }} title={token.name} />
       {secret && (
         <>
           <NewToken name={token.name} token={secret} noun='token' />

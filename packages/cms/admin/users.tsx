@@ -10,6 +10,7 @@ import {
   Notice,
   PageHeader,
   Panel,
+  RouteTabs,
   focusHeading,
   focusInvalid,
   useConfirm,
@@ -833,31 +834,48 @@ export function AccountPage({ onUser, mcp }: { onUser: (user: SignedIn) => void;
       toast('Signed out everywhere else')
     })
 
-  if (error) return <Notice tone='danger'>{error}</Notice>
-  if (!account || !schema) return <Loading />
-
   return (
     <div>
-      <PageHeader title='Your account' />
+      <PageHeader title={mcp ? 'Your account: profile' : 'Your account'} />
+      {mcp && <AccountTabs current='profile' />}
       {reset && (
         <Notice tone='success'>
           Your password has changed, and every other session has ended.
           {mcp && (
             <>
               {' '}
-              Your <a href='#/tokens'>MCP tokens</a> still work, so if someone else may have used your account, revoke
-              any you don't recognise.
+              Your <a href='#/account/tokens'>MCP tokens</a> still work, so if someone else may have used your account,
+              revoke any you don't recognise.
             </>
           )}
         </Notice>
       )}
-      <div ref={area}>
-        <Form key={round} ref={form} schema={schema} values={shown} onValuesChange={setValues} />
-      </div>
-      <AccountPanel account={account} busy={busy} problem={problem} onSave={save} onSignOut={signOutOthers} />
+      {error && <Notice tone='danger'>{error}</Notice>}
+      {!account && !error && <Loading />}
+      {account && schema && (
+        <>
+          <div ref={area}>
+            <Form key={round} ref={form} schema={schema} values={shown} onValuesChange={setValues} />
+          </div>
+          <AccountPanel account={account} busy={busy} problem={problem} onSave={save} onSignOut={signOutOthers} />
+        </>
+      )}
     </div>
   )
 }
+
+// Your account's two pages, Profile and, where /mcp is on, MCP tokens, each naming itself in the heading, as the inbox
+// does, so the document's title says which is open
+export const AccountTabs = ({ current }: { current: 'profile' | 'tokens' }) => (
+  <RouteTabs
+    label='Your account'
+    current={current}
+    tabs={[
+      { key: 'profile', href: '#/account', label: 'Profile' },
+      { key: 'tokens', href: '#/account/tokens', label: 'MCP tokens' },
+    ]}
+  />
+)
 
 // Your account's panel: Save, then the other browsers you're signed in on, with Sign out everywhere else
 export function AccountPanel({

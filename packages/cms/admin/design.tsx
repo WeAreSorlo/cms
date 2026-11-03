@@ -24,6 +24,7 @@ import {
   deletionsOf,
   deletionsQuestion,
 } from './migrations'
+import { AccountButton, AccountMenu } from './shell'
 import {
   Badge,
   EmptyState,
@@ -36,12 +37,11 @@ import {
   Panel,
   PanelSlot,
   StatusBadge,
-  ThemeSwitch,
   useConfirm,
   useListQuery,
   useToast,
 } from './ui'
-import { AccountPanel, Invite, InvitesTable, PeopleTable, Person, PersonPanel } from './users'
+import { AccountPanel, AccountTabs, Invite, InvitesTable, PeopleTable, Person, PersonPanel } from './users'
 import { ChangeList, JsonChanges } from './versions'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Plus, Sheet, Trash2 } from 'lucide-react'
@@ -90,6 +90,9 @@ const sampleFiles: Array<Media> = [
 
 // People: you, someone Levi invited, someone who has never signed in, and someone removed, whom an invite brings back
 const samplePerson = { lastActiveAt: null, invitedBy: null, removedAt: null, removedBy: null }
+// A name too long for the nav's button, which the menu shows in full
+const countess = { name: 'Augusta Ada King, Countess of Lovelace', email: 'ada@example.com' }
+
 const samplePeople: Array<Person> = [
   {
     ...samplePerson,
@@ -1319,7 +1322,22 @@ export default function Design() {
         The admin's tokens and components in the current theme. Only <code>iight dev</code> shows this page, and{' '}
         <code>DESIGN.md</code> has the plan.
       </p>
-      <ThemeSwitch />
+
+      <h2>Account menu</h2>
+      <p>
+        At the foot of the nav, the person's initials and name, cut short when it's too long, open their menu above it,
+        or below it where there's no room: who they are, Your account, MCP tokens where MCP is on, the theme, which
+        switches at once, and Sign out. Your account has two tabs, Profile and MCP tokens.
+      </p>
+      <div className='cms-design__account'>
+        <div className='cms-nav__user'>
+          <AccountButton name={countess.name} />
+        </div>
+        <div className='cms-popover cms-account-menu'>
+          <AccountMenu user={countess} mcp section='account' onSignOut={() => toast('Signed out')} />
+        </div>
+      </div>
+      <AccountTabs current='profile' />
 
       <h2>Colour</h2>
       <ul className='cms-design__swatches'>

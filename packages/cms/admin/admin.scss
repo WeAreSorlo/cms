@@ -179,27 +179,28 @@ pre {
   ul + ul {
     border-top: var(--iight-size-px) solid var(--cms-rule);
   }
+}
 
-  // As tall as a button, so touch screens get 40px rows too
-  a {
-    display: flex;
-    align-items: center;
-    gap: var(--iight-size-2);
-    padding: var(--iight-button-padding);
-    color: var(--cms-text);
-    text-decoration: none;
-    border: var(--iight-size-px) solid transparent;
-    border-radius: var(--iight-size-1);
+// As tall as a button, so touch screens get 40px rows too. The person's menu has the same rows.
+.cms-nav a,
+.cms-account-menu a {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-2);
+  padding: var(--iight-button-padding);
+  color: var(--cms-text);
+  text-decoration: none;
+  border: var(--iight-size-px) solid transparent;
+  border-radius: var(--iight-size-1);
 
-    &:hover {
-      background: var(--cms-subtle);
-    }
+  &:hover {
+    background: var(--cms-subtle);
+  }
 
-    &[aria-current='page'] {
-      font-weight: var(--iight-font-weight-bold);
-      color: var(--cms-on-accent);
-      background: var(--cms-accent);
-    }
+  &[aria-current='page'] {
+    font-weight: var(--iight-font-weight-bold);
+    color: var(--cms-on-accent);
+    background: var(--cms-accent);
   }
 }
 
@@ -210,39 +211,64 @@ pre {
 }
 
 .cms-nav__user {
-  display: flex;
-  align-items: center;
-  gap: var(--iight-size-1);
   padding: var(--iight-size-2);
   border-top: var(--iight-size-px) solid var(--cms-rule);
 }
 
-// Signed in as …, which opens your account, marked as the nav marks its current item. It shares the row with three
-// buttons, so it keeps its sides narrow.
-.cms-nav .cms-nav__account {
-  flex: 1;
-  min-width: 0;
-  padding-inline: var(--iight-size-1);
-  overflow-wrap: anywhere;
-}
-
-// A link that's an icon button, such as MCP tokens, keeps its square, rather than a nav item's padding
-.cms-nav .cms-icon-button {
+// The person's initials and name, as wide as the nav, which opens their menu
+.cms-account {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-2);
   box-sizing: border-box;
-  padding: 0;
+  width: 100%;
+  padding: var(--iight-size-1);
+  font: inherit;
+  color: var(--cms-text);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: var(--iight-size-px) solid transparent;
+  border-radius: var(--iight-size-1);
+
+  &:hover,
+  &[aria-expanded='true'] {
+    background: var(--cms-subtle);
+  }
+
+  > .lucide {
+    color: var(--cms-muted);
+  }
 }
 
-.cms-nav__theme {
-  anchor-name: --cms-theme;
+// Only the nav's, since the reference page shows another
+.cms-nav .cms-account {
+  anchor-name: --cms-account;
 }
 
-// The user's own pages, such as their MCP tokens, marked as the nav marks its current item
-.cms-nav__user .cms-icon-button[aria-current='page'] {
+// In lime, as the nav's current item is
+.cms-account__initials {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--cms-size-8);
+  height: var(--cms-size-8);
+  font-size: var(--cms-text-xs);
+  font-weight: var(--iight-font-weight-bold);
   color: var(--cms-on-accent);
   background: var(--cms-accent);
+  border-radius: var(--cms-radius-pill);
 }
 
-// The theme switch, over the page
+.cms-account__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// A card over the page, such as the person's menu
 .cms-popover {
   padding: var(--iight-size-3);
   color: var(--cms-text);
@@ -252,13 +278,113 @@ pre {
   box-shadow: var(--cms-shadow-2);
 }
 
-// Just above its button and level with its right edge, where browsers can place it there, and in the middle of the
-// window where they can't
+// Who the person is, their pages, the theme, and Sign out, between rules from edge to edge, as the nav's groups are
+.cms-account-menu {
+  box-sizing: border-box;
+  width: min(16rem, calc(100vw - 2 * var(--cms-inset)));
+  padding: 0;
+
+  > * {
+    margin: 0;
+    padding: var(--iight-size-2);
+  }
+
+  > * + * {
+    border-top: var(--iight-size-px) solid var(--cms-rule);
+  }
+
+  // Level with the links' text
+  > p,
+  > .cms-theme {
+    padding-inline: calc(2 * var(--iight-size-2) + var(--iight-size-px));
+  }
+
+  ul {
+    list-style: none;
+  }
+}
+
+.cms-account-menu__who {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+
+  > .cms-muted {
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+  }
+}
+
+.cms-account-menu__sign-out {
+  display: flex;
+  align-items: center;
+  gap: var(--iight-size-2);
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--iight-button-padding);
+  font: inherit;
+  color: var(--cms-danger);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: var(--iight-size-px) solid transparent;
+  border-radius: var(--iight-size-1);
+
+  &:hover {
+    background: var(--cms-danger-tint);
+  }
+}
+
+// Just above its button and level with its left edge, or below it when there's no room above, where browsers can
+// place it there, and in the middle of the window where they can't
 @supports (position-area: top) {
-  .cms-popover {
-    position-anchor: --cms-theme;
-    position-area: top span-left;
+  .cms-account-menu {
+    position-anchor: --cms-account;
+    position-area: top span-right;
+    position-try-fallbacks: flip-block;
     margin: 0 0 var(--iight-size-1);
+  }
+}
+
+// Theme, beside the three icons that choose it. The one chosen is in lime, as the nav's current item is, with a ring
+// in the accent's strong colour, which shows against white.
+.cms-theme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--iight-size-2);
+}
+
+.cms-theme__choices {
+  display: flex;
+  border: var(--iight-size-px) solid var(--cms-border);
+  border-radius: var(--iight-size-1);
+
+  label {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: var(--cms-control);
+    height: var(--cms-control);
+    color: var(--cms-muted);
+    cursor: pointer;
+    border-radius: calc(var(--iight-size-1) - var(--iight-size-px));
+
+    &:hover {
+      color: var(--cms-text);
+      background: var(--cms-subtle);
+    }
+
+    &:has(:checked) {
+      color: var(--cms-on-accent);
+      background: var(--cms-accent);
+      box-shadow: inset 0 0 0 var(--iight-size-px) var(--cms-accent-strong);
+    }
+
+    &:has(:focus-visible) {
+      outline: var(--iight-focus-outline);
+      outline-offset: var(--iight-focus-outline-offset);
+    }
   }
 }
 
