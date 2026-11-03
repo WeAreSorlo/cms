@@ -1,6 +1,7 @@
 import { createApp } from '../src/app'
 import { uuidv7 } from '../src/db'
 import { createApiKey } from '../src/delivery'
+import { preview } from '../src/media'
 import { db } from './database'
 import { setUp, types } from './fixtures'
 import { FSDriver } from 'flydrive/drivers/fs'
@@ -444,4 +445,36 @@ test("the admin's dev server serves no files from the workspace around it, such 
     server.close()
     await admin.close()
   }
+})
+
+test("a model's preview is a PNG only where something in it is transparent, and otherwise a far smaller JPEG", async () => {
+  const square = (alpha: number) =>
+    sharp({ create: { width: 1600, height: 1200, channels: 4, background: { r: 40, g: 120, b: 200, alpha } } })
+      .png()
+      .toBuffer()
+  const noisy = async (alpha: number) => {
+    // A photo's worth of detail, which a PNG keeps losslessly and a JPEG doesn't need to
+    const pixels = Buffer.alloc(1600 * 1200 * 4)
+    for (let index = 0; index < pixels.length; index++) pixels[index] = index % 4 === 3 ? alpha : (index * 7919) % 251
+    return sharp(pixels, { raw: { width: 1600, height: 1200, channels: 4 } })
+      .png()
+      .toBuffer()
+  }
+
+  // An alpha channel that's opaque throughout, as screenshots and exported photos often have
+  const opaque = await preview(await noisy(255), 'image/png')
+  expect(opaque.mimeType).toBe('image/jpeg')
+  const { width, height, hasAlpha } = await sharp(Buffer.from(opaque.data, 'base64')).metadata()
+  expect([width, height, hasAlpha]).toEqual([512, 384, false])
+  const kept = await preview(await noisy(128), 'image/png')
+  expect(kept.mimeType).toBe('image/png')
+  expect(opaque.data.length * 3).toBeLessThan(kept.data.length)
+
+  expect((await preview(await square(1), 'image/png')).mimeType).toBe('image/jpeg')
+  expect((await preview(await square(0.5), 'image/png')).mimeType).toBe('image/png')
+  // An SVG's background is transparent
+  const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 20'><circle cx='10' cy='10' r='8'/></svg>"
+  expect((await preview(Buffer.from(svg), 'image/svg+xml')).mimeType).toBe('image/png')
+  const filled = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 20'><rect width='40' height='20'/></svg>"
+  expect((await preview(Buffer.from(filled), 'image/svg+xml')).mimeType).toBe('image/jpeg')
 })

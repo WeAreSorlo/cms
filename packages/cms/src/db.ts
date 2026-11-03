@@ -135,6 +135,8 @@ export interface Database {
     model: string | null
     stop_reason: string | null
     usage: Record<string, any> | null
+    // For the person's messages: the ids of the media files they attached, in order, which the admin shows
+    files: Array<string> | null
     created_at: Generated<Date>
   }
   // The changes the assistant proposes, a row for each entry, form, file or content type, which the person applies or

@@ -1,9 +1,10 @@
 import { expandedType, form, media, relationship, shared } from '../src/fields'
-import { chatMessageSchema, chatTitleSchema, mediaSchema } from '../src/schemas'
+import { chatMessageSchema, chatTitleSchema, maxAttached, mediaSchema } from '../src/schemas'
 import { ContentType, GroupsContext, PageView, TypesContext, api, errorMessage, shortDate } from './api'
-import { Chat, ChatMessage, Proposal, SharedChat, editing, useAssistant } from './chat'
+import { Chat, ChatFile, ChatMessage, Proposal, SharedChat, editing, useAssistant } from './chat'
 import { compare, compareParent, compareTypes, linksOf } from './compare'
 import { useLinkNames } from './fields'
+import { Thumbnail } from './media'
 import {
   Badge,
   Dialog,
@@ -27,10 +28,14 @@ import {
   ChevronsUpDown,
   CircleAlert,
   EllipsisVertical,
+  FileX,
+  LoaderCircle,
+  Paperclip,
   Sparkles,
   Square,
   SquarePen,
   Target,
+  X,
 } from 'lucide-react'
 import {
   ComponentProps,
@@ -658,11 +663,37 @@ function Folded({ proposal }: { proposal: Proposal }) {
   )
 }
 
+// The files attached to one of the person's messages, as the media field shows its files, and a file deleted since as
+// a muted row
+const SentFiles = ({ files }: { files: Array<ChatFile | null> }) => (
+  <ul className='cms-picked'>
+    {files.map((file, index) => (
+      <li key={index} className={file ? undefined : 'cms-muted'}>
+        {file ? (
+          <Thumbnail media={file} />
+        ) : (
+          <span className='cms-picked__icon'>
+            <FileX />
+          </span>
+        )}
+        <span>{file?.name ?? 'Deleted file'}</span>
+      </li>
+    ))}
+  </ul>
+)
+
 export function Message({ message }: { message: ChatMessage }) {
   const assistant = useAssistant()
   const readOnly = useContext(ReadOnly)
   const end = useRef<HTMLParagraphElement>(null)
-  if (message.role === 'user') return <li className='cms-chat__mine'>{message.text}</li>
+  if (message.role === 'user') {
+    return (
+      <li className='cms-chat__mine'>
+        {!!message.files?.length && <SentFiles files={message.files} />}
+        {message.text}
+      </li>
+    )
+  }
   const latest = (proposal: Proposal) => ({ ...proposal, ...assistant.decided[proposal.id] })
   const steps = message.parts.filter((part) => part.type === 'step' && part.proposals?.length)
   const all = steps.flatMap((step) => (step.type === 'step' ? (step.proposals ?? []).map(latest) : []))
@@ -769,25 +800,212 @@ function Messages({ messages }: { messages: Array<ChatMessage> }) {
   )
 }
 
+// A file attached to the message being written: going up, in the media library, or turned away with the reason why
+export interface Attachment {
+  key: number
+  name: string
+  file?: ChatFile
+  problem?: string
+}
+
+// The files attached to the message being written, from Attach files, a drop or a paste. Each uploads to the media
+// library as it's attached, one after another, as on the Media page, up to maxAttached a message.
+function useAttachments(draft: Array<Attachment> = []) {
+  const assistant = useAssistant()
+  const [list, setList] = useState(draft)
+  // Files past the limit, or the server's reason it turned the files down
+  const [notice, setNotice] = useState('')
+  // Read out politely: Uploading beach.jpg…, then Attached beach.jpg
+  const [status, setStatus] = useState('')
+  const queue = useRef(Promise.resolve())
+  const keys = useRef(draft.length)
+  // How each upload ends, by its attachment's key, for a message waiting to send
+  const uploads = useRef(new Map<number, Promise<Partial<Attachment>>>())
+
+  const upload = async (key: number, file: File) => {
+    setStatus(`Uploading ${file.name}…`)
+    const done = await assistant.upload(file)
+    setList((all) => all.map((attachment) => (attachment.key === key ? { ...attachment, ...done } : attachment)))
+    // A failure says why in its row, as an alert
+    setStatus(done.file ? `Attached ${done.file.name}` : '')
+    return done
+  }
+
+  const attach = (files: Array<File>) => {
+    const room = Math.max(0, maxAttached - list.length)
+    const left = files.slice(room)
+    // Named only when it's one, so a long list can't push the box out of a narrow card
+    const which = left.length === 1 ? `${left[0].name} wasn't attached` : `${left.length} files weren't attached`
+    setNotice(left.length ? `${which}, since a message takes up to ${maxAttached} files.` : '')
+    const added = files.slice(0, room).map((file) => ({ key: ++keys.current, file }))
+    setList((all) => [...all, ...added.map(({ key, file }) => ({ key, name: file.name }))])
+    for (const { key, file } of added) {
+      const done = queue.current.then(() => upload(key, file))
+      uploads.current.set(key, done)
+      queue.current = done.then(() => {})
+    }
+  }
+
+  // The attachments as they are once those still going up are done
+  const settle = (attachments: Array<Attachment>) =>
+    Promise.all(
+      attachments.map(async (attachment) => ({ ...attachment, ...(await uploads.current.get(attachment.key)) })),
+    )
+
+  // Nothing uses an upload removed before sending, so it's deleted, unless something has linked to it since
+  const remove = (attachment: Attachment) => {
+    setList((all) => all.filter((other) => other.key !== attachment.key))
+    setNotice('')
+    uploads.current.delete(attachment.key)
+    if (attachment.file) assistant.discard(attachment.file)
+  }
+
+  const uploading = list.some((attachment) => !attachment.file && !attachment.problem)
+  return { list, setList, notice, setNotice, status, uploading, attach, settle, remove }
+}
+
+// What's attached to the message being written, above the box, each as the media field shows its files, with Remove,
+// but for while the message waits for its files to send, as they were when Send was pressed
+function Attached({
+  attachments,
+  locked,
+  onRemove,
+}: {
+  attachments: ReturnType<typeof useAttachments>
+  locked: boolean
+  onRemove: () => void
+}) {
+  const id = useId()
+  const { list, notice } = attachments
+  if (!list.length && !notice) return null
+  return (
+    <div className='cms-composer__files'>
+      {notice && <Notice tone='danger'>{notice}</Notice>}
+      {list.length > 0 && (
+        <>
+          <ul className='cms-picked'>
+            {list.map((attachment) => {
+              const name = attachment.file?.name ?? attachment.name
+              return (
+                <li key={attachment.key} data-failed={attachment.problem ? true : undefined}>
+                  {attachment.file ? (
+                    <Thumbnail media={attachment.file} />
+                  ) : (
+                    <span className='cms-picked__icon'>
+                      {attachment.problem ? <CircleAlert /> : <LoaderCircle className='cms-spin' />}
+                    </span>
+                  )}
+                  {attachment.problem ? (
+                    <span role='alert'>
+                      {name}
+                      <span id={`${id}-${attachment.key}`} className='cms-picked__problem'>
+                        {attachment.problem}
+                      </span>
+                    </span>
+                  ) : (
+                    <span>
+                      {name}
+                      {!attachment.file && <span className='cms-muted'> Uploading…</span>}
+                    </span>
+                  )}
+                  {!locked && (attachment.file || attachment.problem) && (
+                    <button
+                      type='button'
+                      className='cms-icon-button'
+                      aria-label={`Remove ${name}`}
+                      title={`Remove ${name}`}
+                      aria-describedby={attachment.problem ? `${id}-${attachment.key}` : undefined}
+                      onClick={() => {
+                        attachments.remove(attachment)
+                        onRemove()
+                      }}
+                    >
+                      <X />
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          <p className='cms-muted'>Attaching uploads to the media library.</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+// The box's field while a message waits for its files, read-only, so what's sent is what Send was pressed on
+const waitingSchema = chatMessageSchema.map((field) => ({ ...field, readonly: true }))
+
 // The box to write in, a core form. Enter sends and Shift+Enter starts a new line. The one button sends, then stops the
 // reply, so focus stays on it. Beside a page, a line above the box names what the page shows, which each message sends
-// as its page, so "this" and "these" mean just what the line says.
-function Composer({ view }: { view?: PageView | null }) {
+// as its page, so "this" and "these" mean just what the line says. Files attached show above the box, and pasting
+// files into it attaches them. A message with files still needs words. One the server didn't take comes back to the
+// box, saying why.
+function Composer({ view, attachments }: { view?: PageView | null; attachments: ReturnType<typeof useAttachments> }) {
   const assistant = useAssistant()
+  const toast = useToast()
   const form = useRef<FormHandle>(null)
   const area = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
+  const attach = useRef<HTMLButtonElement>(null)
   const [values, setValues] = useState<{ text?: string }>({})
+  // Send was pressed while files were still going up, so the message waits for them
+  const [waiting, setWaiting] = useState(false)
+  // A message that waits for its files still goes once the box has gone, as with the dialog closed
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => void (mounted.current = false)
+  }, [])
+  // Focus moves only while it's in the box's area, never from wherever the person has gone while a message waited
+  const holdsFocus = () => !!area.current?.contains(document.activeElement)
+  const focusRefused = () => area.current?.querySelector<HTMLElement>('[data-failed] button')?.focus()
 
   const send = async () => {
     const text = values.text ?? ''
-    if (assistant.replying || !text.trim()) return
+    const sent = attachments.list
+    if (assistant.replying || waiting || (!text.trim() && !sent.length)) return
     if (!form.current?.validate().isValid) return void focusInvalid(area.current, 'sent')
-    setValues({})
-    const report = await assistant.send(text, view?.page ?? {})
-    if (report) {
-      setValues({ text })
-      form.current?.applyReport(report)
-      focusInvalid(area.current, 'sent', report)
+    // A file the upload turned away is removed first, as a failed field is fixed
+    if (sent.some((attachment) => attachment.problem)) return focusRefused()
+    // What goes is what Send was pressed on: these words and files, this page, and the chat open now, wherever the
+    // person is by the time the files are up
+    const to = assistant.hold()
+    const page = view?.page ?? {}
+    setWaiting(true)
+    const settled = await attachments.settle(sent)
+    if (mounted.current) setWaiting(false)
+    const refused = settled.find((attachment) => attachment.problem)
+    if (refused) {
+      // Its row says why, as an alert
+      if (!mounted.current) toast(`Your message wasn't sent, since ${refused.name} couldn't be uploaded.`)
+      else if (holdsFocus()) focusRefused()
+      return
+    }
+    // The draft goes, but for files attached since Send was pressed
+    const keys = new Set(sent.map((attachment) => attachment.key))
+    if (mounted.current) {
+      setValues({})
+      attachments.setList((all) => all.filter((attachment) => !keys.has(attachment.key)))
+      attachments.setNotice('')
+    }
+    const unsent = await assistant.send(
+      text,
+      page,
+      settled.flatMap(({ file }) => (file ? [file] : [])),
+      to,
+    )
+    if (!unsent) return
+    const why = unsent.problem ?? unsent.report?.fields.files?.messages.join(' ')
+    if (!mounted.current) return toast(`Your message wasn't sent${why ? `: ${why}` : '.'}`)
+    // Back in the box, before anything written or attached since
+    setValues((now) => ({ text: now.text?.trim() ? `${text}\n\n${now.text}` : text }))
+    attachments.setList((all) => [...settled, ...all])
+    attachments.setNotice(why ?? '')
+    if (unsent.report) {
+      form.current?.applyReport(unsent.report)
+      if (holdsFocus()) focusInvalid(area.current, 'sent', unsent.report)
     }
   }
 
@@ -801,6 +1019,14 @@ function Composer({ view }: { view?: PageView | null }) {
         event.preventDefault()
         send()
       }}
+      onPaste={(event) => {
+        // Office apps put a picture of what was copied beside its text, which pastes as text as it always did, so only
+        // files without text attach, such as a screenshot, or an image copied from a page, which comes with HTML alone
+        const { files, types } = event.clipboardData
+        if (!files.length || types.includes('text/plain')) return
+        event.preventDefault()
+        attachments.attach([...files])
+      }}
     >
       {view && (
         <p className='cms-composer__about'>
@@ -809,30 +1035,105 @@ function Composer({ view }: { view?: PageView | null }) {
           <span>{view.label}</span>
         </p>
       )}
-      <Form ref={form} schema={chatMessageSchema} values={values} onValuesChange={setValues} />
+      <Attached attachments={attachments} locked={waiting} onRemove={() => attach.current?.focus()} />
+      <p className='cms-visually-hidden' role='status'>
+        {attachments.status}
+      </p>
+      <Form
+        ref={form}
+        schema={waiting ? waitingSchema : chatMessageSchema}
+        values={values}
+        onValuesChange={setValues}
+      />
+      <input
+        ref={picker}
+        type='file'
+        multiple
+        hidden
+        onChange={(event) => {
+          // Copied, since clearing the input empties its list, so choosing the same file again attaches it again
+          attachments.attach([...(event.target.files ?? [])])
+          event.target.value = ''
+        }}
+      />
+      <button
+        ref={attach}
+        type='button'
+        className='cms-icon-button'
+        aria-label='Attach files'
+        title='Attach files'
+        onClick={() => picker.current?.click()}
+      >
+        <Paperclip />
+      </button>
       <button
         type='button'
         className={`iight-button${assistant.replying ? '' : ' iight-button--primary'}`}
-        onClick={assistant.replying ? assistant.stop : send}
+        aria-busy={waiting || undefined}
+        onClick={assistant.replying ? assistant.stop : () => send()}
       >
         {assistant.replying ? <Square /> : <ArrowUp />}
-        {assistant.replying ? 'Stop' : 'Send'}
+        {assistant.replying ? 'Stop' : waiting ? 'Uploading…' : 'Send'}
       </button>
     </div>
   )
 }
 
 // A chat: its messages, the box to write in, and a polite status that says when it's replying and reads each reply
-// once it's done, since text read out as it streams would be noise
-function Conversation({ view }: { view?: PageView | null }) {
+// once it's done, since text read out as it streams would be noise. The message being written starts as draft says,
+// for the reference page.
+function Conversation({ view, draft }: { view?: PageView | null; draft?: Array<Attachment> }) {
   const assistant = useAssistant()
+  const attachments = useAttachments(draft)
+  const chat = useRef<HTMLDivElement>(null)
+  const attach = useRef(attachments.attach)
+  attach.current = attachments.attach
+
+  // Files dropped anywhere on the assistant attach to the message being written: its card, header and all, its dialog,
+  // or on the Chat page the chat, though not on a collapsed card, whose box is hidden. Text dropped in the box drops as
+  // it always did.
+  useEffect(() => {
+    const own = chat.current!
+    const zone =
+      own.closest('dialog') ??
+      own.closest<HTMLElement>('.cms-side__assistant') ??
+      own.closest<HTMLElement>('.cms-assistant') ??
+      own
+    const takes = (event: DragEvent) =>
+      !!event.dataTransfer?.types.includes('Files') && !zone.hasAttribute('data-collapsed')
+    const over = (event: DragEvent) => {
+      if (!takes(event)) return
+      event.preventDefault()
+      zone.setAttribute('data-attaching', '')
+    }
+    // Dragging over a child leaves the zone itself, so only leaving for somewhere outside it counts
+    const leave = (event: DragEvent) => {
+      if (!zone.contains(event.relatedTarget as Node)) zone.removeAttribute('data-attaching')
+    }
+    const drop = (event: DragEvent) => {
+      if (!takes(event)) return
+      event.preventDefault()
+      zone.removeAttribute('data-attaching')
+      attach.current([...event.dataTransfer!.files])
+    }
+    zone.addEventListener('dragover', over)
+    zone.addEventListener('dragleave', leave)
+    zone.addEventListener('drop', drop)
+    return () => {
+      zone.removeEventListener('dragover', over)
+      zone.removeEventListener('dragleave', leave)
+      zone.removeEventListener('drop', drop)
+      zone.removeAttribute('data-attaching')
+    }
+  }, [])
+
   return (
-    <div className='cms-chat'>
+    <div ref={chat} className='cms-chat'>
       <Messages key={assistant.chat?.id ?? 'new'} messages={assistant.messages} />
       <p className='cms-visually-hidden' role='status'>
         {assistant.status}
       </p>
-      <Composer view={view} />
+      <Composer view={view} attachments={attachments} />
     </div>
   )
 }
@@ -936,11 +1237,13 @@ export function AssistantChat({
   view,
   collapsed = false,
   onCollapse,
+  draft,
 }: {
   sheet?: boolean
   view?: PageView | null
   collapsed?: boolean
   onCollapse?: (collapsed: boolean) => void
+  draft?: Array<Attachment>
 }) {
   const assistant = useAssistant()
   return (
@@ -971,7 +1274,7 @@ export function AssistantChat({
           </>
         )}
       </div>
-      <Conversation view={view} />
+      <Conversation view={view} draft={draft} />
     </div>
   )
 }

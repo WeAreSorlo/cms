@@ -969,7 +969,7 @@ a.iight-button {
   }
 }
 
-// The person's own messages, as they wrote them
+// The person's own messages, as they wrote them, under the files they attached
 .cms-chat__mine {
   align-self: flex-end;
   max-width: 85%;
@@ -978,6 +978,18 @@ a.iight-button {
   overflow-wrap: anywhere;
   background: var(--cms-subtle);
   border-radius: var(--iight-size-2);
+
+  > .cms-picked {
+    margin-bottom: var(--iight-size-2);
+  }
+}
+
+// Files dragged over the assistant's card, its dialog or the Chat page's chat, which attach them to the message being
+// written, with the media grid's highlight drawn inside, so the card's edge doesn't cut it off
+[data-attaching] {
+  background: var(--cms-accent-tint);
+  outline: 2px dashed var(--cms-accent-strong);
+  outline-offset: calc(-1 * var(--iight-size-1));
 }
 
 .cms-chat__reply {
@@ -1276,6 +1288,36 @@ a.iight-button {
     gap: var(--iight-size-1);
     align-items: center;
   }
+
+  > .cms-icon-button {
+    flex: none;
+  }
+}
+
+// The files attached to the message being written, on a line of their own above the box to write in, and where they go
+.cms-composer__files {
+  display: flex;
+  flex: 1 0 100%;
+  flex-direction: column;
+  gap: var(--iight-size-1);
+  min-width: 0;
+
+  // About two and a half rows, the rest scrolled to, so the box to write in stays in view in a short card
+  > .cms-picked {
+    max-height: 7rem;
+    overflow-y: auto;
+  }
+
+  > p {
+    margin: 0;
+    font-size: var(--cms-text-sm);
+    line-height: var(--cms-leading-sm);
+  }
+}
+
+// The dialog and the Chat page are as tall as the window, so they show more of the files
+:is(.cms-assistant--sheet, .cms-chat-page) .cms-composer__files > .cms-picked {
+  max-height: 30dvh;
 }
 
 // What "this" means beside a page, on a line of its own above the box to write in
@@ -1965,6 +2007,28 @@ a.iight-button {
       display: none;
     }
   }
+
+  [data-failed] > .cms-picked__icon {
+    color: var(--cms-danger);
+  }
+}
+
+// An icon in a thumbnail's place, such as for a file still going up or one that's been deleted
+.cms-picked__icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+}
+
+// Why an upload was turned away, under its name
+.cms-picked__problem {
+  display: block;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  color: var(--cms-danger);
 }
 
 // A picker's search results, each a button that chooses it

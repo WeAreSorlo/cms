@@ -253,4 +253,15 @@ function App() {
   )
 }
 
+// A file dropped where nothing takes it would open in the admin's place, so it does nothing there instead. Drop zones,
+// such as the media library's and the assistant's, take theirs first, and a file input takes its own.
+for (const type of ['dragover', 'drop'] as const) {
+  window.addEventListener(type, (event) => {
+    const input = event.target instanceof HTMLInputElement && event.target.type === 'file'
+    if (event.defaultPrevented || input || !event.dataTransfer?.types.includes('Files')) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'none'
+  })
+}
+
 createRoot(document.getElementById('root')!).render(<App />)

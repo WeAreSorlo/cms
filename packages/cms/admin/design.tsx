@@ -1,8 +1,8 @@
 import { versionSchema } from '../src/schemas'
 import { ContentType, Entry, GroupsContext, SharedGroup, Status, TypesContext } from './api'
-import { AssistantChat } from './assistant'
+import { AssistantChat, Attachment } from './assistant'
 import { Grid, columnsOf, useRows } from './bulk'
-import { Assistant, AssistantContext, Chat, ChatMessage, Proposal } from './chat'
+import { Assistant, AssistantContext, Chat, ChatFile, ChatMessage, Proposal } from './chat'
 import { compare, compareParent } from './compare'
 import { contrast, pairs } from './contrast'
 import './design.scss'
@@ -993,8 +993,44 @@ const proposalMessages: Array<ChatMessage> = [
   },
 ]
 
-const assistants: Array<{ label: string; assistant: Partial<Assistant> }> = [
+// A file attached to a message, as the chat's server gives it, with its dates
+const attachedFile: ChatFile = {
+  ...sampleFiles[0],
+  createdAt: new Date(sample.createdAt),
+  updatedAt: new Date(sample.createdAt),
+  createdBy: null,
+}
+
+// A message being written, with a file going up, one the media library turned away, and one attached
+const sampleDraft: Array<Attachment> = [
+  { key: 1, name: 'beach.jpg' },
+  {
+    key: 2,
+    name: 'notes.zip',
+    problem: "ZIP files can't be uploaded. Allowed: image/*, video/*, audio/*, application/pdf.",
+  },
+  { key: 3, name: attachedFile.name, file: attachedFile },
+]
+
+const assistants: Array<{ label: string; assistant: Partial<Assistant>; draft?: Array<Attachment> }> = [
   { label: 'A chat', assistant: {} },
+  {
+    label: 'Attached files',
+    assistant: {
+      messages: [
+        { role: 'user', text: 'Set this image as the cover photo for this post', files: [attachedFile, null] },
+        {
+          role: 'assistant',
+          parts: [
+            { type: 'step', text: 'Proposed changes to “Launch day”', failed: false },
+            { type: 'text', text: 'Proposed the first image as its cover photo. The second has been deleted.' },
+          ],
+          notice: null,
+        },
+      ],
+    },
+    draft: sampleDraft,
+  },
   { label: 'Proposed changes', assistant: { messages: proposalMessages } },
   {
     label: 'Replying',
@@ -1050,8 +1086,12 @@ const sampleAssistant = (assistant: Partial<Assistant>, toast: (message: string)
   replying: false,
   status: '',
   open: async () => toast('Opened a chat'),
+  hold: () => ({ chat: sampleChats[0], opened: 0 }),
   send: async () => void toast('Sent'),
   stop: () => toast('Stopped'),
+  // Nothing uploads from here, so an attached file shows as the sample's
+  upload: async (file) => ({ file: { ...attachedFile, name: file.name } }),
+  discard: (file) => toast(`Deleted ${file.name}`),
   rename: async () => undefined,
   remove: async () => undefined,
   me: 'usr_sample',
@@ -1665,10 +1705,12 @@ export default function Design() {
         replies, Send is Stop. Below 64rem it opens from the end of the bottom bar, full screen, headed by the chat's
         name. Beside a page, a line above the box says what “this” means there, which is what each message sends: the
         entry or version open, a list's ticked entries or those its search and filter match, a form, or the file last
-        opened in the media library.
+        opened in the media library. Attach files, a drop anywhere on the chat or a paste into the box attaches files,
+        which upload to the media library as they're attached and show above the box as the media field's rows, and in
+        the person's message once it's sent, where a file deleted since is a muted row.
       </p>
       <ul className='cms-design__panels'>
-        {assistants.map(({ label, assistant }) => (
+        {assistants.map(({ label, assistant, draft }) => (
           <li key={label}>
             <h3>{label}</h3>
             <div className='cms-design__assistant'>
@@ -1678,6 +1720,7 @@ export default function Design() {
                     <AssistantChat
                       view={{ page: {}, label: 'Kubecon 2026, version 4' }}
                       onCollapse={() => toast('Collapsed the assistant')}
+                      draft={draft}
                     />
                   </AssistantContext.Provider>
                 </GroupsContext.Provider>

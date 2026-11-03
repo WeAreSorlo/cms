@@ -84,12 +84,12 @@ const mediaChoices = fieldChoicesOf(mediaFields)
 // A picker for a field that takes some types has nothing to filter by type
 const nameSchema = searchSchema.filter((field) => field.name !== 'type')
 
-const isImage = (media: Media) => media.mime.startsWith('image/')
-const extension = (media: Media) => media.name.split('.').pop()!.toUpperCase()
+const isImage = (media: { mime: string }) => media.mime.startsWith('image/')
+const extension = (media: { name: string }) => media.name.split('.').pop()!.toUpperCase()
 
 // A file's picture, on squares that show where it's transparent, or the kind of file for the rest and for images the
 // browser can't show, such as HEIC outside Safari
-export function Thumbnail({ media }: { media: Media }) {
+export function Thumbnail({ media }: { media: { name: string; mime: string; url: string } }) {
   const [shows, setShows] = useState(isImage(media))
   const Icon = media.mime.startsWith('video/')
     ? FileVideo

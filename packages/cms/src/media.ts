@@ -139,15 +139,28 @@ export const saveMediaDetails = (
   })
 
 // An image as a model takes it: turned upright and scaled to fit 512 pixels, with an SVG drawn at that size, as a PNG
-// where it has transparency and otherwise a JPEG. An animated image gives its first frame.
+// where something in it is transparent and otherwise a JPEG, which is far smaller, an alpha channel that's opaque
+// throughout included. An animated image gives its first frame.
 export async function preview(bytes: Buffer, mime: string) {
   const { width, height, hasAlpha } = await sharp(bytes).metadata()
   // An SVG's size is at 72 dots an inch, so it's drawn at the density that makes it 512 pixels
   const density =
     mime === 'image/svg+xml' && width && height ? Math.min(2400, (72 * 512) / Math.max(width, height)) : undefined
   const image = sharp(bytes, { density }).autoOrient().resize(512, 512, { fit: 'inside', withoutEnlargement: true })
-  const data = await (hasAlpha ? image.png() : image.jpeg({ quality: 80 })).toBuffer()
-  return { data: data.toString('base64'), mimeType: hasAlpha ? 'image/png' : 'image/jpeg' }
+  const drawn = hasAlpha ? await image.png().toBuffer() : undefined
+  const transparent = !!drawn && !(await sharp(drawn).stats()).isOpaque
+  const data = transparent ? drawn! : await (drawn ? sharp(drawn) : image).jpeg({ quality: 80 }).toBuffer()
+  return { data: data.toString('base64'), mimeType: transparent ? 'image/png' : 'image/jpeg' }
+}
+
+// A library image's preview, or undefined when it can't be read, such as a BMP, which view_media and the files attached
+// to a message to the assistant both show the model
+export async function imageOf(drive: DriveManager<Storage['services']>, row: Pick<MediaRow, 'disk' | 'path' | 'mime'>) {
+  try {
+    return await preview(Buffer.from(await drive.use(row.disk).getBytes(row.path)), row.mime)
+  } catch {
+    return undefined
+  }
 }
 
 export async function findMedia(db: Kysely<Database>, id: string) {

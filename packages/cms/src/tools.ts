@@ -14,7 +14,7 @@ import {
   someField,
 } from './fields'
 import { checkForm, saveForm, toForm } from './forms'
-import { detailsOf, findMedia, preview, toAdminMedia } from './media'
+import { detailsOf, findMedia, imageOf, toAdminMedia } from './media'
 import { EntryChange, MediaChange, changedEntry, messagesOf, proposals, sameForm, unchanged } from './proposals'
 import {
   EntryRow,
@@ -872,11 +872,7 @@ export const tools = [
         if (!row) left.push({ id, reason: "There's no file with this id." })
         else if (!row.mime.startsWith('image/')) left.push({ id, name: row.name, reason: "It isn't an image." })
         else {
-          const image = await drive
-            .use(row.disk)
-            .getBytes(row.path)
-            .then((bytes) => preview(Buffer.from(bytes), row.mime))
-            .catch(() => undefined)
+          const image = await imageOf(drive, row)
           if (!image) left.push({ id, name: row.name, reason: "Its image couldn't be read." })
           else shown.push({ file: { id: row.id, name: row.name, alt: row.alt, caption: row.caption }, image })
         }

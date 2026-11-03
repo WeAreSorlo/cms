@@ -528,10 +528,21 @@ const ToastContext = createContext((message: string) => {})
 export const useToast = () => useContext(ToastContext)
 
 // A live region for toasts: the shell's, and one in a dialog that toasts while it stays open. Each lasts 5 seconds,
-// paused while the pointer or focus is on it.
+// paused while the pointer or focus is on it. A toast fired once a dialog's has gone, such as for a message that was
+// still waiting to send when the dialog closed, shows in the toaster around it instead.
 export function Toaster({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Array<{ id: number; message: string }>>([])
-  const toast = useCallback((message: string) => setToasts((shown) => [...shown, { id: Math.random(), message }]), [])
+  const outer = useContext(ToastContext)
+  const shown = useRef(true)
+  useEffect(() => {
+    shown.current = true
+    return () => void (shown.current = false)
+  }, [])
+  const toast = useCallback(
+    (message: string) =>
+      shown.current ? setToasts((all) => [...all, { id: Math.random(), message }]) : outer(message),
+    [outer],
+  )
   const dismiss = useCallback((id: number) => setToasts((shown) => shown.filter((toast) => toast.id !== id)), [])
 
   return (

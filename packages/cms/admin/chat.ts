@@ -1,10 +1,10 @@
-import type { ChatMessage, ReplyNotice } from '../src/chats'
+import type { ChatFile, ChatMessage, ReplyNotice } from '../src/chats'
 import type { Proposal } from '../src/proposals'
-import { api, pathOf } from './api'
+import { api, errorMessage, pathOf } from './api'
 import type { ValidationReport } from 'iight'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
-export type { ChatMessage, Proposal }
+export type { ChatFile, ChatMessage, Proposal }
 export type Reply = Extract<ChatMessage, { role: 'assistant' }>
 
 // A chat someone else wrote, which anyone signed in can read once a version links to it
@@ -54,6 +54,19 @@ export interface Chat {
   updatedAt: string
 }
 
+// The chat open when Send was pressed, which a message sent once its files are up goes to, whatever's open by then
+export interface Held {
+  chat: Chat | null
+  opened: number
+}
+
+// Why a message wasn't sent, for the box to put it back: core's report when the server turned it down, or what went
+// wrong
+export interface Unsent {
+  report?: ValidationReport
+  problem?: string
+}
+
 // The assistant, which the shell keeps across pages, so the Chat page and the panel show the same chat (PLAN.md
 // section 21). A new chat is made when its first message is sent.
 export interface Assistant {
@@ -68,9 +81,17 @@ export interface Assistant {
   // What the assistant's polite status says: that it's replying, then the reply once it's done
   status: string
   open(id: string | null): Promise<void>
-  // Resolves with core's report when the server turns the message down
-  send(text: string, page: object): Promise<ValidationReport | undefined>
+  // The open chat, for a message sent later
+  hold(): Held
+  // Sends a message with the media files attached to it, to the chat held, or else the one open now. Resolves once the
+  // server has stored it, or with why it didn't, having taken the message back out of the chat.
+  send(text: string, page: object, files?: Array<ChatFile>, to?: Held): Promise<Unsent | undefined>
   stop(): void
+  // Uploads a file attached to the message being written to the media library, resolving with it, or with why the
+  // library turned it away
+  upload(file: File): Promise<{ file?: ChatFile; problem?: string }>
+  // Deletes an upload removed from the message before it was sent, unless something has linked to it since
+  discard(file: ChatFile): void
   rename(title: string): Promise<ValidationReport | undefined>
   remove(): Promise<void>
   // Who's signed in, since someone else's chat opens read-only
@@ -194,8 +215,16 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
     setPage({ number: page.number + 1, last: body.pagination.lastPage })
   }
 
-  const send = async (text: string, page: object) => {
-    if (reply.current) return
+  const hold = (): Held => ({ chat, opened: opened.current })
+
+  const send = async (
+    text: string,
+    page: object,
+    files: Array<ChatFile> = [],
+    to = hold(),
+  ): Promise<Unsent | undefined> => {
+    // Such as a message that waited for its files while another box's was answered
+    if (reply.current) return { problem: "This wasn't sent, since the assistant was still replying." }
     const controller = new AbortController()
     reply.current = controller
     setReplying(true)
@@ -203,15 +232,24 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
 
     // The reply as it comes in, shown once a frame while its chat is open
     let answer: Reply | null = { role: 'assistant', parts: [], notice: null }
-    const mine = opened.current
+    const mine = to.opened
     const here = () => opened.current === mine
     const show = () => here() && answer && setMessages((messages) => [...messages.slice(0, -1), answer!])
     let frame = 0
     const later = () => (frame ||= requestAnimationFrame(() => ((frame = 0), show())))
-    setMessages((messages) => [...messages, { role: 'user', text }, answer!])
+    if (here()) {
+      setMessages((messages) => [...messages, { role: 'user', text, ...(files.length > 0 && { files }) }, answer!])
+    }
+    // Once the server has the message, it stays in the chat however its reply ends
+    let stored = false
+    const unsent = (why: Unsent) => {
+      answer = null
+      if (here()) setMessages((messages) => messages.slice(0, -2))
+      return why
+    }
 
     try {
-      let id = chat?.id
+      let id = to.chat?.id
       if (!id) {
         const { body } = await api('POST', '/chats', {})
         id = body.data.id as string
@@ -224,20 +262,21 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
       const response = await fetch(`/api/chats/${id}/messages`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, page }),
+        body: JSON.stringify({ text, page, files: files.map((file) => file.id) }),
         signal: controller.signal,
       })
-      if (response.status === 422) {
-        // Taken back, for the person to fix
-        answer = null
-        if (here()) setMessages((messages) => messages.slice(0, -2))
-        return await response.json()
+      if (response.status === 422) return unsent({ report: await response.json() })
+      if (response.status === 404) {
+        // Such as in another tab, so a new chat opens for it to go to instead
+        const why = unsent({ problem: "This chat has been deleted, so this wasn't sent. Sending it starts a new one." })
+        if (here()) open(null)
+        return why
       }
       if (!response.ok) {
-        const message = (await response.json().catch(() => null))?.message ?? response.statusText
-        answer = { ...answer!, notice: { tone: 'danger', text: message } }
-        return
+        const message = response.status < 500 && (await response.json().catch(() => null))?.message
+        return unsent({ problem: message || "Something went wrong on the server, so this wasn't sent." })
       }
+      stored = true
       for await (const { event, data } of eventsOf(response)) {
         if (!answer) break
         const parts: Reply['parts'] = answer.parts
@@ -256,7 +295,14 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
         }
         later()
       }
-    } catch {
+    } catch (error) {
+      if (!stored && !controller.signal.aborted) {
+        const problem =
+          error instanceof TypeError
+            ? "Couldn't reach the server, so this may not have been sent."
+            : errorMessage(error)
+        return unsent({ problem })
+      }
       answer = answer && {
         ...answer,
         notice: controller.signal.aborted
@@ -268,7 +314,8 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
       reply.current = null
       setReplying(false)
       show()
-      if (answer && here()) setStatus(spoken(answer))
+      // Read out only in its own chat, and gone otherwise, so another chat doesn't still say Replying…
+      setStatus(answer && here() ? spoken(answer) : '')
     }
   }
 
@@ -328,6 +375,15 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
     setDecided((all) => ({ ...all, ...Object.fromEntries(proposals.map((proposal) => [proposal.id, proposal])) }))
   }
 
+  const upload = (file: File) => {
+    const body = new FormData()
+    body.append('file', file)
+    return api('POST', '/media', body).then(
+      ({ status, body }) => (status === 422 ? { problem: body.fields.file.messages.join(' ') } : { file: body.data }),
+      (error) => ({ problem: errorMessage(error) }),
+    )
+  }
+
   const rename = async (title: string) => {
     if (!chat) return
     const { status, body } = await api('PUT', `/chats/${chat.id}`, { title })
@@ -352,8 +408,11 @@ export function useAssistantState(on: boolean, me: string, onTypes?: () => Promi
     replying,
     status,
     open,
+    hold,
     send,
     stop: () => reply.current?.abort(),
+    upload,
+    discard: (file) => void api('DELETE', `/media/${file.id}`).catch(() => {}),
     rename,
     remove,
     me,

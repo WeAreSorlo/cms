@@ -137,6 +137,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_11_02_000021_add_form_first_opened',
     '2026_11_02_000022_add_type_proposals',
     '2026_11_02_000023_create_rebuilds_table',
+    '2026_11_03_000024_add_chat_message_files',
   ])
 
   await migrate(db, migrations)

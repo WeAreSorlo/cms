@@ -63,13 +63,13 @@ export const chatTitleSchema: Array<FieldSchema> = [
   { name: 'title', label: 'Name', type: 'text', required: true, options: { maxLength: 100 } },
 ]
 
-// A message to the admin's assistant, written in the box under its chat and checked by POST /api/chats/:id/messages
 // The most entries a message to the assistant names as "these", past which its model gets only how many
 export const maxNamed = 100
 
 // The most entries one Select all in a list ticks
 export const maxTicked = 10_000
 
+// A message to the admin's assistant, written in the box under its chat
 export const chatMessageSchema: Array<FieldSchema> = [
   {
     name: 'text',
@@ -78,6 +78,16 @@ export const chatMessageSchema: Array<FieldSchema> = [
     required: true,
     options: { maxLength: 20_000, rows: 1, placeholder: 'Ask about the content' },
   },
+]
+
+// The most files one message to the assistant attaches, as many as view_media shows at once
+export const maxAttached = 10
+
+// What POST /api/chats/:id/messages checks: the message, and the media files attached to it, which the admin uploads
+// first, checked as a media field checks its files
+export const chatSendSchema: Array<FieldSchema> = [
+  ...chatMessageSchema,
+  { name: 'files', label: 'Files', type: 'media', options: { maximum: maxAttached } },
 ]
 
 // A media file's details, edited in the admin's media library and checked by PUT /api/media/:id
