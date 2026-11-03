@@ -13,7 +13,7 @@ import type { FieldSchema, InputSchema, ValidationReport } from 'iight'
 import { Kysely, sql } from 'kysely'
 import { isDeepStrictEqual } from 'node:util'
 
-export type AdminEnv = { Variables: { user: { id: string; email: string; name: string } } }
+export type AdminEnv = { Variables: { user: { id: string; email: string; name: string }; origin?: string } }
 
 const slugTaken = 'Another entry here already uses this slug.'
 const liveSlugTaken = 'A published entry here already uses this slug.'

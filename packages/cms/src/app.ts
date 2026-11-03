@@ -20,7 +20,8 @@ import { Hono, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie } from 'hono/cookie'
 import { csrf } from 'hono/csrf'
 import { HTTPException } from 'hono/http-exception'
-import { Kysely } from 'kysely'
+import { logger } from 'hono/logger'
+import { Kysely, sql } from 'kysely'
 import { STATUS_CODES } from 'node:http'
 
 // What every reply under /admin/ carries, in both servers, so no other site can frame the admin and lay its own page
@@ -56,12 +57,14 @@ export interface AppOptions {
   mcp?: boolean | McpOptions
   // The model provider for the admin's assistant and Chat page, which are off without one
   ai?: AiProvider
-  // The site's public address, which emailed links start from, and how it sends email, from iight.config.ts. Invites
-  // and reset links are emailed only with both.
+  // The site's public address, which emailed links and file URLs start from, and how it sends email, from
+  // iight.config.ts. Invites and reset links are emailed only with both.
   url?: string
   mail?: MailOptions
   // The networks of the proxies in front of the CMS, beyond loopback and private ones, from iight.config.ts
   proxies?: Array<string>
+  // Whether to log each request, as the servers do
+  log?: boolean
 }
 
 export function createApp(
@@ -84,6 +87,7 @@ export function createApp(
     url,
     mail,
     proxies,
+    log = false,
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5, maxLinks = 2000 } = delivery ?? {}
@@ -92,10 +96,24 @@ export function createApp(
   // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
   const saver = editor && typeSaver(db, types, groups, editor)
 
+  // A line as each request arrives and one as it's answered, but none for a host's health checks, which come every few
+  // seconds
+  if (log) {
+    const lines = logger()
+    app.use((c, next) => (c.req.path === '/health' ? next() : lines(c, next)))
+  }
+
   // Emailed links start from the site's address, never a request's Host header, which can say anything
   const site = url === undefined ? undefined : URL.canParse(url) ? new URL(url) : undefined
   if (url !== undefined && !/^https?:$/.test(site?.protocol ?? '')) {
     throw new Error("url in iight.config.ts needs to be the admin's address, such as https://cms.example.com.")
+  }
+  // File URLs start from it too, through origin()
+  if (site) {
+    app.use(async (c, next) => {
+      c.set('origin', site.origin)
+      await next()
+    })
   }
   // Whose X-Forwarded-For the form limit, the address a submission records and the people limits believe
   const trusted = proxyList(proxies)
@@ -118,6 +136,17 @@ export function createApp(
   app.use('/api/*', csrf())
 
   app.get('/', (c) => c.redirect('/admin/'))
+
+  // For a host's health checks, with no key or session: up while the database answers
+  app.get('/health', async (c) => {
+    try {
+      await sql`select 1`.execute(db)
+      return c.json({ status: 'ok' })
+    } catch (error) {
+      console.error("The health check couldn't reach the database:", error)
+      return c.json({ message: "The database can't be reached." }, 503)
+    }
+  })
 
   // The built admin. It routes by the URL's hash, so its page at /admin/ is the only page the browser asks for.
   if (admin) {

@@ -8,10 +8,10 @@
   ],
   "scripts": {
     "db": "docker compose up -d --wait",
-    "dev": "npm run dev --workspace playground",
-    "build": "npm run build --workspace @iight/cms",
+    "dev": "npm exec --workspace @iight/sdk --workspace @iight/cms -- tsup && npm run dev --workspace playground",
+    "build": "npm run build --workspace @iight/sdk && npm run build --workspace @iight/cms",
     "test": "npm test --workspace @iight/cms",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm exec --workspace @iight/sdk --workspace @iight/cms -- tsup && npm run typecheck --workspaces --if-present",
     "format": "prettier packages playground --check",
     "format:fix": "prettier packages playground --write"
   },

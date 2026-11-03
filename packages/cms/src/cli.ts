@@ -15,7 +15,7 @@ import { loadSchema } from './types'
 import type { FieldSchema } from 'iight'
 import { Kysely } from 'kysely'
 import { existsSync } from 'node:fs'
-import { createServer } from 'node:http'
+import { type Server, createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Writable } from 'node:stream'
@@ -159,7 +159,6 @@ async function check(db: Kysely<Database>) {
 async function dev(db: Kysely<Database>) {
   // Loaded here so the other commands start quickly
   const { getRequestListener } = await import('@hono/node-server')
-  const vite = await import('vite')
 
   // shortcut: types load once, and again after each change in the type editor, so restart after editing a file by hand
   const { types, groups } = await loadProjectSchema()
@@ -167,10 +166,16 @@ async function dev(db: Kysely<Database>) {
 
   const port = Number(process.env.PORT) || 3000
   const server = createServer()
-  const admin = await vite.createServer({
-    configFile: fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url)),
-    server: { middlewareMode: true, hmr: { server } },
-  })
+  // Vite serves the admin from its source, which only the CMS's own workspace has. A site's is the built one.
+  const viteConfig = fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url))
+  const vite = existsSync(viteConfig)
+    ? await (
+        await import('vite')
+      ).createServer({
+        configFile: viteConfig,
+        server: { middlewareMode: true, hmr: { server } },
+      })
+    : undefined
   const app = createApp(db, types, {
     siteMigrations: dirs.migrations,
     finishLinks: true,
@@ -186,35 +191,52 @@ async function dev(db: Kysely<Database>) {
     url: config.url,
     mail: config.mail,
     proxies: config.proxies,
+    admin: vite ? undefined : builtAdmin(),
+    log: true,
   })
   const api = getRequestListener(app.fetch)
 
   // Hands events on to automations, in this process
-  createWorker(db, types, { mail: config.mail, automations: config.automations, webhooks: config.webhooks }).start()
+  const worker = createWorker(db, types, {
+    mail: config.mail,
+    automations: config.automations,
+    webhooks: config.webhooks,
+  })
+  const working = worker.start()
 
-  // Vite serves the admin under /admin, and Hono everything else
+  // Vite serves the admin under /admin, where it runs, and Hono everything else
   server.on('request', (req, res) => {
-    if (!req.url?.startsWith('/admin')) return api(req, res)
+    if (!vite || !req.url?.startsWith('/admin')) return api(req, res)
     for (const [name, value] of Object.entries(adminHeaders)) res.setHeader(name, value)
-    admin.middlewares(req, res)
+    vite.middlewares(req, res)
   })
   // Only this machine, unless HOST names another address, such as 0.0.0.0 in a container. Not localhost, which Node can
   // bind to ::1 alone, refusing 127.0.0.1. An empty HOST, as a .env can leave it, names none.
   server.listen(port, process.env.HOST || '127.0.0.1', () =>
     console.log(`The admin is running at http://localhost:${port}/admin/`),
   )
+  stopOnSignals(db, server, worker, working, vite)
 }
 
-// The production server: the admin as npm run build wrote it, and types that change only through git
-async function start(db: Kysely<Database>) {
-  const { serve } = await import('@hono/node-server')
+// The admin as npm run build wrote it, which a packed CMS carries
+function builtAdmin() {
   const admin = fileURLToPath(new URL('../admin/dist', import.meta.url))
   if (!existsSync(join(admin, 'index.html'))) {
     console.error("The admin hasn't been built. Run npm run build in @iight/cms first.")
     process.exit(1)
   }
+  return admin
+}
+
+// The production server: the admin as npm run build wrote it, and types that change only through git
+async function start(db: Kysely<Database>) {
+  const { serve } = await import('@hono/node-server')
+  const admin = builtAdmin()
 
   const { types, groups } = await loadProjectSchema()
+  if (config.url === undefined) {
+    console.warn("Set url in iight.config.ts, so file URLs and emailed links don't come from requests' Host headers.")
+  }
   // No editor, so the type editor is read-only, and the Migrations page lists migrations without running them
   const app = createApp(db, types, {
     siteMigrations: resolve('migrations'),
@@ -231,16 +253,64 @@ async function start(db: Kysely<Database>) {
     url: config.url,
     mail: config.mail,
     proxies: config.proxies,
+    log: true,
   })
 
   // Hands events on to automations, in this process
-  createWorker(db, types, { mail: config.mail, automations: config.automations, webhooks: config.webhooks }).start()
+  const worker = createWorker(db, types, {
+    mail: config.mail,
+    automations: config.automations,
+    webhooks: config.webhooks,
+  })
+  const working = worker.start()
 
-  // Every interface, unless HOST names one, such as 127.0.0.1 behind a proxy on the same machine
+  // Every interface, as a container needs, unless HOST names one, such as 127.0.0.1 behind a proxy on the same
+  // machine. An empty HOST names none.
   const port = Number(process.env.PORT) || 3000
-  serve({ fetch: app.fetch, port, hostname: process.env.HOST }, () =>
+  // serve makes an HTTP/1 server, since it isn't given HTTP/2's createServer
+  const server = serve({ fetch: app.fetch, port, hostname: process.env.HOST || undefined }, () =>
     console.log(`iight is running on port ${port}, with the admin at /admin/`),
-  )
+  ) as Server
+  stopOnSignals(db, server, worker, working)
+}
+
+// Stops on SIGTERM, as hosts stop a container, or SIGINT, as Ctrl-C does: no new connections, the worker's run
+// finished, such as a webhook it's waiting for, what's still open after 5 seconds ended, such as a chat's streaming
+// reply, which then stops as when its person leaves, and the database closed. A second signal exits at once.
+function stopOnSignals(
+  db: Kysely<Database>,
+  server: Server,
+  worker: { stop: () => void },
+  working: Promise<void>,
+  vite?: { close: () => Promise<void> },
+) {
+  let stoppedAt: number | undefined
+  const stop = async () => {
+    // npm passes Ctrl-C on to the command it runs, which the terminal has sent it too, so one press arrives two or three
+    // times at once. Only a signal a second later is a second one.
+    if (stoppedAt !== undefined) {
+      if (Date.now() - stoppedAt > 1000) process.exit(1)
+      return
+    }
+    stoppedAt = Date.now()
+    console.log('Stopping…')
+    const closed = new Promise((resolve) => server.close(resolve))
+    let cut = false
+    const cutting = setTimeout(() => {
+      cut = true
+      server.closeAllConnections()
+    }, 5000)
+    worker.stop()
+    await Promise.all([closed, working, vite?.close()])
+    clearTimeout(cutting)
+    // shortcut: a second for what cut requests do as they end, such as a chat storing the reply it had written, before
+    // the database closes. Wait for those requests themselves if a second turns out to be short.
+    if (cut) await new Promise((resolve) => setTimeout(resolve, 1000))
+    await db.destroy()
+    console.log('Stopped.')
+  }
+  process.on('SIGTERM', stop)
+  process.on('SIGINT', stop)
 }
 
 async function makeUser(db: Kysely<Database>) {

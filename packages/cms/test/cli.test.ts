@@ -195,3 +195,35 @@ test("dev listens on 127.0.0.1 unless HOST names another address, and other site
     await rm(dir, { recursive: true })
   }
 }, 60_000)
+
+test('dev stops cleanly on SIGTERM, as start does when a host stops its container, and on one Ctrl-C through npm', async () => {
+  await setUp()
+  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await mkdir(join(dir, 'schema/types'), { recursive: true })
+
+  try {
+    // npm passes Ctrl-C on to what it runs, which the terminal has sent it too, so one press arrives two or three times
+    for (const signals of [['SIGTERM'], ['SIGINT', 'SIGINT', 'SIGINT']] as const) {
+      const { HOST, ...env } = process.env
+      const child = spawn(process.execPath, [bin, 'dev'], { cwd: dir, env: { ...env, PORT: String(await freePort()) } })
+      let stdout = ''
+      child.stdout.on('data', (data) => (stdout += data))
+      await new Promise((resolve, reject) => {
+        child.stdout.on('data', () => stdout.includes('The admin is running') && resolve(undefined))
+        child.once('exit', (code) => reject(new Error(`iight dev stopped with ${code}`)))
+      })
+
+      const exited = new Promise((resolve) => child.once('exit', resolve))
+      for (const signal of signals) {
+        child.kill(signal)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      expect(await exited, signals.join(', ')).toBe(0)
+      expect(stdout).toContain('Stopping…\nStopped.\n')
+    }
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)

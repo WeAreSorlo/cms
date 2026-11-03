@@ -12,21 +12,25 @@ An open-source, schema-driven CMS built on iight core. `PLAN.md` holds the archi
 
 ## Getting started
 
-You need Node 22.12 or later, and Docker.
+You need Node 22.18 or later, which runs a site's TypeScript itself, and Docker. Node 24 is what the site image uses.
 
 ```bash
 npm install
+npm run build       # the SDK and the CMS into their dist folders, and the admin into admin/dist
 npm run db          # Postgres 17 on localhost:5432
 cd playground
 npx iight migrate
 npx iight make:user
 npx iight make:api-key --types   # a key for the delivery API that can pull types
-npm run dev         # the admin is at http://localhost:3000/admin/
+cd ..
+npm run dev         # builds the server code again, then runs iight dev: the admin is at http://localhost:3000/admin/
 ```
 
 `npm run db` also creates an `iight_test` database for the tests, but only when it first creates the Postgres volume.
 
-In `iight dev`, `/admin/#/design` shows the admin's design system: its tokens, their contrast in the current theme, and every core input. `DESIGN.md` has the plan.
+The packages point at their `dist` folders, as a site gets them, so the playground runs what's built. `npm run dev` in the workspace builds the SDK's and the CMS's server code first, with tsup, so restart it after changing either. The admin is the exception: in this workspace `iight dev` serves it from its source through Vite, which reloads it as you edit.
+
+In this workspace's `iight dev`, `/admin/#/design` shows the admin's design system: its tokens, their contrast in the current theme, and every core input. `DESIGN.md` has the plan. Sites, whose admin is the built one, don't have the page.
 
 ## The iight CLI
 
@@ -45,7 +49,175 @@ Run it from a site project, where it reads `iight.config.ts`, and before that th
 | `iight user:password <email>` | Sets someone's password, asked for hidden, and signs them out everywhere, for a site whose only person forgot theirs and that sends no email                                       |
 | `iight make:api-key`          | Creates a key for the delivery API, shown just once. `--preview`, `--types` and `--submit` give it those [permissions](#api-keys)                                                  |
 
-`iight dev` listens on 127.0.0.1 alone, so only this machine reaches it, unless `HOST` names another address, such as `HOST=0.0.0.0 npx iight dev` for a phone on the same network or a container's port. An empty `HOST`, as a `.env` can leave it, counts as none. `iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine. Both send every reply under `/admin/` with `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`, so no other site can frame the admin and lay its own page over its buttons. `iight start` serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin.
+`iight dev` listens on 127.0.0.1 alone, so only this machine reaches it, unless `HOST` names another address, such as `HOST=0.0.0.0 npx iight dev` for a phone on the same network or a container's port. An empty `HOST`, as a `.env` can leave it, counts as none. `iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine, so a container needs no `HOST`. Both send every reply under `/admin/` with `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`, so no other site can frame the admin and lay its own page over its buttons. `iight start` serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin, and a site's `iight dev` serves that built admin too, since only this workspace has its source.
+
+Both servers log a line as each request arrives and one as it's answered, such as `--> GET /v1/entries/blog?page=2 200 12ms`, but none for [`/health`](#deploying), and errors go to stderr with stack traces that name the CMS's TypeScript source. On SIGTERM, as a host stops a container, or SIGINT, as Ctrl-C does, they stop taking connections, let the automations worker finish the run it's on, such as a webhook waiting for its reply, end whatever is still open after 5 seconds, such as a chat's streaming reply, which then stops as it does when its person leaves, give what they cut a second to finish, such as that chat storing the reply it had written, close the database and exit 0. npm passes Ctrl-C on to the command it runs, which the terminal has sent it too, so a signal within a second of the first counts as the same one, and a later one exits at once. `iight start` warns when [`url`](#people) isn't set. Every command but `iight types` stops on a Node older than 22.18, which can't run `iight.config.ts`.
+
+## Starting a site
+
+Until the name is settled, nothing is on npm, so a site installs three packed tarballs from its own repo: core, `@iight/cms` and `@iight/sdk`. They're the files `npm publish` will upload, and any host or Docker build installs them with no token or registry.
+
+1. Pack them into the new site's `vendor/` folder, in core and then in this workspace. Each package's `prepack` builds it first, and `npm pack` needs the folder to exist.
+
+   ```bash
+   mkdir -p ~/Sites/example/vendor
+   npm pack --pack-destination ~/Sites/example/vendor
+   ```
+
+   ```bash
+   npm pack --workspace @iight/sdk --workspace @iight/cms --pack-destination ~/Sites/example/vendor
+   ```
+
+2. Give the site a `package.json` that installs them, with `overrides` pointing the CMS at the site's own core and SDK. `$iight` means the version the site itself depends on.
+
+   ```json
+   {
+     "name": "example",
+     "private": true,
+     "type": "module",
+     "scripts": {
+       "dev": "iight dev",
+       "start": "iight start",
+       "migrate": "iight migrate"
+     },
+     "dependencies": {
+       "@iight/cms": "file:vendor/iight-cms-0.1.0.tgz",
+       "@iight/sdk": "file:vendor/iight-sdk-0.1.0.tgz",
+       "iight": "file:vendor/iight-0.1.0.tgz",
+       "flydrive": "^2.2.0"
+     },
+     "overrides": {
+       "iight": "$iight",
+       "@iight/sdk": "$@iight/sdk"
+     },
+     "devDependencies": {
+       "@types/node": "^24.0.0",
+       "typescript": "^5.9.3"
+     }
+   }
+   ```
+
+3. Add an `.npmrc`, so a lookup of an `@iight` package that slips through goes to an address that doesn't exist, rather than to npm, where anyone could publish one:
+
+   ```
+   @iight:registry=https://registry.invalid/
+   ```
+
+4. Add an `iight.config.ts` like the playground's, with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `iight start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
+
+   ```json
+   {
+     "compilerOptions": {
+       "target": "ES2022",
+       "module": "NodeNext",
+       "strict": true,
+       "noEmit": true,
+       "skipLibCheck": true,
+       "allowImportingTsExtensions": true,
+       "erasableSyntaxOnly": true,
+       "verbatimModuleSyntax": true,
+       "types": ["node"]
+     },
+     "include": ["iight.config.ts", "migrations", "src"]
+   }
+   ```
+
+5. Then:
+
+   ```bash
+   npm install
+   npx iight migrate
+   npx iight make:user
+   npm run dev          # the admin is at http://localhost:3000/admin/
+   ```
+
+`schema/types` and `migrations` can start missing. Commit `vendor/`, `package.json` and `package-lock.json`.
+
+- **Node runs the site's TypeScript,** `iight.config.ts` and `migrations/*.ts`, by stripping its types. So types come in with `import type`, as in the migrations `make:migration` writes, relative imports name the file, as in `./mail.ts`, and enums and namespaces can't be used. The `tsconfig.json` above flags each.
+- **To update the CMS,** pack new versions into `vendor/`, delete the old tarballs, change the three version numbers in `package.json`, run `npm install`, and commit the three together. A tarball packed again with new contents under the same version fails `npm ci`'s integrity check, so every pack takes a new version.
+- **Scripts and deploys run the local command,** as `npm run migrate` or `node_modules/.bin/iight migrate`, rather than `npx iight migrate`. Where a project has no `iight` installed, `npx` looks the name up on npm, and outside a terminal it installs and runs what it finds without asking.
+- **npm's audit** sends each package's name and version to npm's audit service on every `npm install`, the tarballs' included. That publishes nothing, and the image's build passes `--no-audit`.
+
+## Deploying
+
+A site deploys as an image of its own, built from its repo, by `docker build` or by a host that builds Dockerfiles. Its `Dockerfile`:
+
+```dockerfile
+FROM node:24-slim
+WORKDIR /site
+ENV NODE_ENV=production NO_COLOR=1
+
+# The packages first, so a change to the site's types doesn't reinstall them
+COPY package.json package-lock.json .npmrc ./
+COPY vendor vendor
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY . .
+
+# The local disk's folder, which a volume keeps
+RUN mkdir -p storage && chown node:node storage
+USER node
+EXPOSE 3000
+# The command itself rather than npm, so SIGTERM reaches it
+CMD ["node_modules/.bin/iight", "start"]
+```
+
+and its `.dockerignore`:
+
+```
+node_modules
+.env*
+*.env
+storage
+.git
+```
+
+- **The image installs the tarballs from `vendor/`** with `npm ci`, exactly as `package-lock.json` records them. `node:24-slim` is Debian, so sharp uses its glibc build, which a lockfile lists even when it's made on a Mac. On an Apple Silicon Mac, `docker build --platform linux/amd64` builds for an x64 host.
+- **It holds no secrets.** `.env` files, and env files such as `production.env`, stay out of it, and `iight.config.ts` reads the environment each time the server starts. The site's files belong to root, read-only to the server, which writes only to `storage`.
+- **The server is the image's command,** rather than `npm start`, so it gets the host's SIGTERM and stops [as the CLI does](#the-iight-cli). `NO_COLOR` keeps colours out of the request log.
+- **Migrations run once per deploy,** before the new version takes traffic, from the same image and environment, such as in Fly's `release_command`, Render's pre-deploy command or a Kubernetes Job:
+
+  ```bash
+  docker run --rm --env-file production.env example node_modules/.bin/iight migrate
+  ```
+
+  It exits 1 when a waiting migration has a TODO or one fails, which stops the deploy. A run stopped partway keeps the migrations it finished, and the next one carries on. Two at once are safe, since the second stops on the migration's unique name, but that fails its deploy.
+
+- **`GET /health`** needs no key or session. It replies `200 {"status":"ok"}` while the database answers, and otherwise `503 {"message":"The database can't be reached."}`, logging why.
+- **A database that restarts** ends the CMS's connections to it, which the CMS logs, one line for each, as `A database connection ended: …`, and replaces as it needs them. A transaction that held one fails, and a run of the worker's waits to be tried again.
+- **Media** can stay on the local disk, as the playground's do, for one instance, with a volume at `/site/storage`. The image makes that folder the server's, so a new Docker volume starts writable, but a host's own volume can arrive owned by root and need a `chown`. More than one instance, or a host without volumes, needs a bucket, through FlyDrive's S3 driver, for which the site installs `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`. The bucket can stay private, since the CMS streams every file through `/media/<id>/<name>`. Cloudflare R2 also needs `supportsACL: false`. Each file's row records its disk, so a site moving to a bucket keeps both disks set up until its files have moved.
+
+  ```ts
+  import { S3Driver } from 'flydrive/drivers/s3'
+
+  // in defineConfig
+  storage: {
+    default: 's3',
+    services: {
+      s3: () =>
+        new S3Driver({
+          credentials: { accessKeyId: process.env.S3_KEY!, secretAccessKey: process.env.S3_SECRET! },
+          region: process.env.S3_REGION!,
+          endpoint: process.env.S3_ENDPOINT,
+          bucket: process.env.S3_BUCKET!,
+          visibility: 'private',
+        }),
+    },
+  },
+  ```
+
+What a host provides:
+
+| What                                           | Why                                                                                                                                                                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Postgres, 17 as the tests use                  | `DATABASE_URL`, with any TLS settings as pg reads them                                                                                                                                                          |
+| HTTPS in front, sending `X-Forwarded-Proto`    | The session cookie is `Secure` only when it says `https`                                                                                                                                                        |
+| Environment variables for settings and secrets | `DATABASE_URL`, `APP_URL` for `url`, mail and bucket credentials, `ANTHROPIC_API_KEY` with `ai`, and `PORT` if the host picks one. Leave `HOST` unset                                                           |
+| A volume at `/site/storage`, or a bucket       | Media                                                                                                                                                                                                           |
+| A release step                                 | `iight migrate` before each version takes traffic                                                                                                                                                               |
+| A health check                                 | `GET /health`                                                                                                                                                                                                   |
+| A stop grace of 40 seconds                     | So a webhook the worker is waiting for, 30 seconds at most, finishes. With less, the host's kill cuts it, its transaction rolls back, and it runs again later. Docker gives 10 seconds, Kubernetes 30 and Fly 5 |
+| One instance, unless media is in a bucket      | The forms rate limit is also counted in each process                                                                                                                                                            |
+| With a CDN in front, its networks in `proxies` | So the limits see each visitor rather than the CDN, as [Behind a proxy](#behind-a-proxy) says                                                                                                                   |
 
 ## Content types
 
@@ -271,7 +443,7 @@ In `iight dev`, the page's panel has Run, which is `iight migrate`:
 - **One run goes at a time.** A second Run, from another tab or person, is refused while one goes, and follows it instead. An `npx iight migrate` beside it fails on the migration the other ran first, which it rolls back.
 - **Check entries**, once nothing waits, lists what `iight migrate --check` lists, each entry linking to its editor.
 
-Under `iight start` the page lists what waits without running it, since there are no roles yet and migrations belong to each deploy, as a release step that runs `npx iight migrate`. The admin never rolls back: `npx iight migrate:rollback` does, and undoing a type change for good also means putting back its file, the snapshot and the migration with git. The assistant and MCP have no tool for any of it. A new database still needs `npx iight migrate` and `npx iight make:user`, since nobody can sign in before the CMS's first migrations run.
+Under `iight start` the page lists what waits without running it, since there are no roles yet and migrations belong to each deploy, as a release step that runs `node_modules/.bin/iight migrate`, as [Deploying](#deploying) has it. The admin never rolls back: `npx iight migrate:rollback` does, and undoing a type change for good also means putting back its file, the snapshot and the migration with git. The assistant and MCP have no tool for any of it. A new database still needs `npx iight migrate` and `npx iight make:user`, since nobody can sign in before the CMS's first migrations run.
 
 ## Media
 
@@ -451,7 +623,7 @@ export default defineConfig({
 })
 ```
 
-`url` is the admin's public address. Links in emails start from it, never from a request's Host header, which anyone can set, so a forged one can't send someone's reset link to another site. Invites and reset links are emailed only with both `url` and [`mail`](#runs-and-retries) set. Without them, the admin shows each link once, to copy and pass on. `url` takes an `http://` or `https://` address, and `iight dev` and `iight start` won't start with anything else. The playground's follows the port it runs on.
+`url` is the admin's public address. Links in emails start from it, never from a request's Host header, which anyone can set, so a forged one can't send someone's reset link to another site. Invites and reset links are emailed only with both `url` and [`mail`](#runs-and-retries) set. Without them, the admin shows each link once, to copy and pass on. `url` takes an `http://` or `https://` address, and `iight dev` and `iight start` won't start with anything else. The playground's follows the port it runs on. File URLs start from it too, whatever Host or `X-Forwarded-Proto` a request sends, and `iight start` warns when it isn't set.
 
 - **The list** shows everyone who can sign in, by name, with when each last used the admin, written at most once a minute, and when they joined, then the invites waiting. Removed users, in its panel's footer, lists those removed, latest first.
 - **Inviting** gives a link that works once, for 7 days. The page shows it once, with Copy, since only its hash is kept, and emails it too where the site sends email, saying whether it went. Inviting an address that has an invite already makes a new link and stops the old one, which is what an invite's New link does, and Delete revokes one. An address with an account can't be invited. The link opens a page like sign-in's, where the person chooses their name and a password of at least 8 characters, then is signed in, with the email they were invited at.
@@ -482,7 +654,7 @@ An entry keeps its field values in `values`. `uri` is a hierarchical page's path
 }
 ```
 
-A media file has the `url` that serves it, on the address the request came to, which is `https` behind a proxy that sends `X-Forwarded-Proto: https`. `width` and `height` are null for files that aren't images, and `alt` and `caption` are null until they're written.
+A media file has the `url` that serves it, on [`url`](#people)'s address, or where that isn't set, on the address the request came to, which is `https` behind a proxy that sends `X-Forwarded-Proto: https`. `width` and `height` are null for files that aren't images, and `alt` and `caption` are null until they're written.
 
 ```json
 {
@@ -516,7 +688,7 @@ export default defineConfig({
 - **A CDN in front**, such as Cloudflare's proxy, connects from public addresses, so list its networks. Otherwise everyone coming through one of its addresses shares that address's limits, and submissions record the CDN's address.
 - **The servers won't start** with an entry that isn't an address or a network.
 - **A host that publishes no addresses**, such as Vercel or Netlify in front as a rewrite, can only be listed as every address, `['0.0.0.0/0', '::/0']`, which we advise against. Whoever connects then names the visitor, in the header's last hop, so it's safe only if nothing reaches the CMS except through your proxies. The servers warn when they start with an entry that holds every address.
-- **`X-Forwarded-Proto`** is believed from anyone, for the session cookie's `Secure` flag and media files' URLs.
+- **`X-Forwarded-Proto`** is believed from anyone, for the session cookie's `Secure` flag, and for media files' URLs where `url` isn't set.
 
 ### The admin API
 
@@ -998,7 +1170,7 @@ await cms.form('contact_us').submit({ name: 'Ada', email: 'ada@example.com' })
 
 The `token` is optional, since submitting needs none, but entries do. A site's own server sends a key with the `submit` permission when it submits for its visitors, so they aren't rate limited as one IP address.
 
-`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and a key with the `types` permission from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Each shared group's values get a type of their own, such as `GroupSeo`, and `GroupSeoResolved<Depth>`, every field with its links resolved, when it holds relationship or media fields. The types that use it refer to them, so one component can take a group's values from every type that has it. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `npx iight types pull --check` fails when the file is out of date. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
+`npx iight types pull` writes `src/iight-types.d.ts` from `GET /types`, reading the CMS's address from `IIGHT_URL` and a key with the `types` permission from `IIGHT_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Each shared group's values get a type of their own, such as `GroupSeo`, and `GroupSeoResolved<Depth>`, every field with its links resolved, when it holds relationship or media fields. The types that use it refer to them, so one component can take a group's values from every type that has it. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `node_modules/.bin/iight types pull --check` fails when the file is out of date, and runs the frontend's own `iight` rather than whatever `npx` might find on npm. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
 
 A project with both packages, such as the playground, gets the CMS's `iight` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx iight make:api-key --types`:
 
@@ -1011,7 +1183,7 @@ npm run frontend   # runs src/frontend.ts, a typed script
 
 ## Working on core at the same time
 
-Core is linked from `../core` with a `file:` dependency, and its package points at `dist/`. Keep its build running while you change it:
+Core is linked from `../core` with a `file:` dependency, and its package points at `dist/`, as the SDK's and the CMS's do. Keep its build running while you change it:
 
 ```bash
 cd ../core
@@ -1022,4 +1194,4 @@ The admin's Vite config dedupes `react`, `react-dom`, `react-i18next` and `i18ne
 
 ## Checks
 
-`npm test` runs against the `iight_test` database, so start Postgres first. It also typechecks the `*.test-d.ts` files, which show the SDK rejecting wrong field names and values. There's also `npm run typecheck` for every package, and `npm run format` (or `format:fix`).
+`npm test` runs against the `iight_test` database, so start Postgres first. It builds the SDK and the CMS's server code first, since the CLI's tests run the built `iight` command and the SDK's tests import the built SDK, and like the CLI it needs Node 22.18 or later. It also typechecks the `*.test-d.ts` files, which show the SDK rejecting wrong field names and values. There's also `npm run typecheck` for every package, and `npm run format` (or `format:fix`).

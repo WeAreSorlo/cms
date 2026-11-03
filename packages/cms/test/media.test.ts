@@ -425,6 +425,28 @@ test('the delivery API lists media with their URLs and dimensions', async () => 
   expect((await proxied.json()).data.url).toBe(`https://localhost/media/${media.id}/logo.png`)
 })
 
+test('with url set, file URLs start from it, whatever Host or X-Forwarded-Proto a request sends', async () => {
+  await db.deleteFrom('events').execute()
+  const site = createApp(db, types, { storage, url: 'http://cms.example.com/admin/' })
+  const { body } = await upload(await image('png'), 'logo.png', site)
+  const url = `http://cms.example.com/media/${body.data.id}/logo.png`
+  expect(body.data.url).toBe(url)
+
+  // The event automations get has it too, and so do the delivery API's replies to a forged Host, and to a proxy saying
+  // https, which would otherwise turn the URL to https
+  const event = await db
+    .selectFrom('events')
+    .select('data')
+    .where('name', '=', 'media.created')
+    .executeTakeFirstOrThrow()
+  expect(event.data).toMatchObject({ media: { url } })
+  const key = await createApiKey(db, 'Website')
+  const forged = await site.request(`http://evil.example/v1/media/${body.data.id}`, {
+    headers: { authorization: `Bearer ${key}`, 'x-forwarded-proto': 'https' },
+  })
+  expect((await forged.json()).data.url).toBe(url)
+})
+
 test("the admin's dev server serves no files from the workspace around it, such as a site's uploads", async () => {
   // As iight dev runs it, with its cache in the temporary folder
   const vite = await import('vite')

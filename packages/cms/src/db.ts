@@ -297,7 +297,21 @@ export interface Database {
 }
 
 export function createDb(url: string) {
-  return new Kysely<Database>({ dialect: new PostgresDialect({ pool: new Pool({ connectionString: url }) }) })
+  const pool = new Pool({ connectionString: url })
+  // Postgres ends its connections when it stops or restarts, and an error event no one listens for would end the
+  // process, whether the connection is idle in the pool or held by a transaction, which the pool doesn't listen to. The
+  // pool drops the connection, the next query opens a new one, and a transaction that held it fails. Only the first
+  // error is logged, since a held connection reports its socket closing after it.
+  pool.on('connect', (client) => {
+    let logged = false
+    client.on('error', (error) => {
+      if (!logged) console.error(`A database connection ended: ${error.message}`)
+      logged = true
+    })
+  })
+  // An idle connection's error comes here too, once the client's own listener has logged it
+  pool.on('error', () => {})
+  return new Kysely<Database>({ dialect: new PostgresDialect({ pool }) })
 }
 
 // Every row's ID. A UUIDv7 (RFC 9562) starts with a millisecond timestamp, so IDs sort by creation time.

@@ -71,8 +71,11 @@ const formatSize = (bytes: number) =>
 // site, such as an SVG or XML file, is served in a sandbox that runs no scripts.
 const viewable = /^(image\/(?!svg\+xml)|video\/|audio\/|application\/pdf)/
 
-// The CMS's address as its client sees it, https behind a proxy that says so, as the session cookie assumes
+// The address file URLs start from: url in iight.config.ts, which createApp sets for each request, or else the CMS's
+// address as its client sees it, https behind a proxy that says so, as the session cookie assumes
 export function origin(c: Context) {
+  const site: string | undefined = c.get('origin')
+  if (site) return site
   const url = new URL(c.req.url)
   if (c.req.header('x-forwarded-proto') === 'https') url.protocol = 'https:'
   return url.origin

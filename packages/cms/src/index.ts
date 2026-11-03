@@ -5,8 +5,8 @@ export interface Config {
     // A Postgres connection string
     url: string
   }
-  // The admin's public address, such as https://cms.example.com, which links in emails start from, since a request's
-  // Host header can say anything. Invites and reset links are emailed only with this and mail set.
+  // The admin's public address, such as https://cms.example.com, which links in emails and file URLs start from, since a
+  // request's Host header can say anything. Invites and reset links are emailed only with this and mail set.
   url?: string
   // The proxies in front of the CMS whose X-Forwarded-For is believed, as addresses and networks such as a CDN's
   // 173.245.48.0/20, for the form limit, the address a submission records and the limits on signing in. Loopback and

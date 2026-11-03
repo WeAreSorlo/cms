@@ -304,9 +304,12 @@ export function createClient<Preview extends boolean = false>({
   }
 
   return {
-    // A query for a content type's entries, such as cms.entries('blog')
-    entries: <T extends keyof Registered & string>(type: T) =>
-      new EntriesQuery<Extract<Registered[T], Entry>, never, DefaultDepth, Preview>((params) => {
+    // A query for a content type's entries, such as cms.entries('blog'). Its type is written out so the SDK's built
+    // types keep Registered[T], which a site's pulled types fill in, rather than what it was when the SDK was built.
+    entries: <T extends keyof Registered & string>(
+      type: T,
+    ): EntriesQuery<Extract<Registered[T], Entry>, never, DefaultDepth, Preview> =>
+      new EntriesQuery((params) => {
         if (preview) params.set('status', 'draft')
         return request(`/v1/entries/${encodeURIComponent(type)}?${params}`)
       }),

@@ -312,19 +312,37 @@ export function createWorker(
       return true
     })
 
-  // Dispatches and delivers for as long as the process runs, resting for a second when there's nothing to do, and for
-  // ten after an error, such as the database being down or not migrated yet
+  let stopping = false
+  let wake = () => {}
+
+  // Dispatches and delivers until stopped, resting for a second when there's nothing to do, and for ten after an error,
+  // such as the database being down or not migrated yet. It resolves once stopped.
   const start = async () => {
-    for (;;) {
+    while (!stopping) {
       const rest = await dispatch()
         .then(async (events) => ((await deliver()) || events > 0 ? 0 : 1000))
         .catch((error) => {
           console.error(error)
           return 10_000
         })
-      if (rest) await new Promise((resolve) => setTimeout(resolve, rest))
+      if (rest && !stopping) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, rest)
+          wake = () => {
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+      }
     }
   }
 
-  return { dispatch, deliver, start }
+  // Stops start once the pass it's on is done, so a run it's delivering, such as a webhook it's waiting for, finishes
+  // and is logged
+  const stop = () => {
+    stopping = true
+    wake()
+  }
+
+  return { dispatch, deliver, start, stop }
 }

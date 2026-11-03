@@ -14,7 +14,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
+import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
 const root = await mkdtemp(join(tmpdir(), 'iight-automations-'))
 const disk = (location: string) => ({
@@ -660,4 +660,32 @@ test('automations are checked, saved, listed and deleted through the admin API',
 
   const signedOut = await app.request('/api/automations')
   expect(signedOut.status).toBe(401)
+})
+
+test('a worker stops once the run it is delivering is done, and at once while it rests', async () => {
+  await createAutomation({ actions: [webhook()] })
+  expect((await submit(valid)).status).toBe(201)
+  let answer = () => {}
+  held = new Promise((resolve) => (answer = resolve))
+
+  // Stopped while a webhook waits for its reply, it finishes that run first
+  const delivering = createWorker(db, types, options)
+  let stopped = false
+  const working = delivering.start().then(() => (stopped = true))
+  await vi.waitFor(() => expect(received).toHaveLength(1))
+  delivering.stop()
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(stopped).toBe(false)
+  answer()
+  await working
+  expect((await runs()).map((run) => run.status)).toEqual(['succeeded'])
+
+  // With nothing to do, it doesn't wait out its rest
+  const resting = createWorker(db, types, options)
+  const rested = resting.start()
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  const asked = Date.now()
+  resting.stop()
+  await rested
+  expect(Date.now() - asked).toBeLessThan(500)
 })

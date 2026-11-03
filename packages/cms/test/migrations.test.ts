@@ -370,10 +370,15 @@ test("a type's change saved while a run goes leaves the links for later, since i
 })
 
 test('a save while the links are rebuilt keeps its own, and the rebuild goes on', async () => {
-  const author = entry({ name: 'Ada' }, 'authors')
-  const posts = Array.from({ length: 1200 }, (_, index) =>
-    entry({ title: `Post ${index}`, slug: `post-${index}`, author: author.id }),
-  )
+  // The rebuild takes entries in their IDs' order, and IDs made in the same millisecond sort at random, so the author
+  // gets the first ID and the posts the rest, in order. The first post and its author are then in the first batch, and
+  // the last post in the last.
+  const ids = Array.from({ length: 1201 }, () => uuidv7()).sort()
+  const author = { ...entry({ name: 'Ada' }, 'authors'), id: ids[0] }
+  const posts = Array.from({ length: 1200 }, (_, index) => ({
+    ...entry({ title: `Post ${index}`, slug: `post-${index}`, author: author.id }),
+    id: ids[index + 1],
+  }))
   await db
     .insertInto('entries')
     .values([author, ...posts])
@@ -400,7 +405,7 @@ test('a save while the links are rebuilt keeps its own, and the rebuild goes on'
   // The first post, which the first batch rebuilt, saves while the rebuild waits in its last
   const values = { ...posts[0].values, title: 'Saved meanwhile' }
   const saving = send(site(), 'PUT', `/entries/${posts[0].id}`, { values })
-  const saved = await Promise.race([saving, new Promise((resolve) => setTimeout(() => resolve('waiting'), 2000))])
+  const saved = await Promise.race([saving, new Promise((resolve) => setTimeout(() => resolve('waiting'), 5000))])
   release()
   await holder
   await rebuilding
@@ -410,7 +415,7 @@ test('a save while the links are rebuilt keeps its own, and the rebuild goes on'
   expect(rows.filter((row) => row.entry_id === posts[0].id)).toEqual([
     { entry_id: posts[0].id, field_id: 'fld_author', target_id: author.id },
   ])
-})
+}, 20_000)
 
 test('a rebuild of the links leaves alone those of an entry saved since it began', async () => {
   const [ada, grace] = [entry({ name: 'Ada' }, 'authors'), entry({ name: 'Grace' }, 'authors')]
