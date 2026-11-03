@@ -83,13 +83,19 @@ pre {
   border-radius: var(--iight-size-2);
   box-shadow: var(--cms-shadow-1);
 
-  h1 {
-    margin: 0;
-  }
-
+  h1,
+  p,
   .cms-notice {
     margin: 0;
   }
+}
+
+// Links under a card's button, such as Forgot your password?
+.cms-sign-in__links {
+  margin: 0;
+  font-size: var(--cms-text-sm);
+  line-height: var(--cms-leading-sm);
+  text-align: center;
 }
 
 /* Lucide's icons, centred on the text beside them */
@@ -207,15 +213,23 @@ pre {
   display: flex;
   align-items: center;
   gap: var(--iight-size-1);
-  padding: var(--iight-size-2) var(--iight-size-2) var(--iight-size-2) var(--iight-size-3);
+  padding: var(--iight-size-2);
   border-top: var(--iight-size-px) solid var(--cms-rule);
+}
 
-  p {
-    flex: 1;
-    margin: 0;
-    color: var(--cms-muted);
-    overflow-wrap: anywhere;
-  }
+// Signed in as …, which opens your account, marked as the nav marks its current item. It shares the row with three
+// buttons, so it keeps its sides narrow.
+.cms-nav .cms-nav__account {
+  flex: 1;
+  min-width: 0;
+  padding-inline: var(--iight-size-1);
+  overflow-wrap: anywhere;
+}
+
+// A link that's an icon button, such as MCP tokens, keeps its square, rather than a nav item's padding
+.cms-nav .cms-icon-button {
+  box-sizing: border-box;
+  padding: 0;
 }
 
 .cms-nav__theme {
@@ -579,6 +593,14 @@ a.iight-button {
   display: flex;
   flex-wrap: wrap;
   gap: var(--iight-size-1);
+}
+
+// A table row's own actions, such as an invite's New link and Delete
+.cms-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--iight-size-2);
 }
 
 .cms-badge--accent {

@@ -237,8 +237,17 @@ export function KeyPage({ id }: { id: string }) {
   return apiKey ? <KeyEditor apiKey={apiKey} token={token} /> : <Loading />
 }
 
-// A new key, or a personal token, which the server keeps only the hash of, so it's shown just this once
-export function NewToken({ name, token, noun = 'key' }: { name: string; token: string; noun?: 'key' | 'token' }) {
+// A new key, a personal token, or an invite's or reset's link, which the server keeps only the hash of, so it's shown
+// just this once
+export function NewToken({
+  name,
+  token,
+  noun = 'key',
+}: {
+  name: string
+  token: string
+  noun?: 'key' | 'token' | 'link'
+}) {
   const field = useRef<HTMLInputElement>(null)
   const note = useId()
   const [problem, setProblem] = useState('')
@@ -268,7 +277,7 @@ export function NewToken({ name, token, noun = 'key' }: { name: string; token: s
       <input
         ref={field}
         className='embed'
-        aria-label={`${noun === 'key' ? 'Key' : 'Token'} for ${name}`}
+        aria-label={`${noun[0].toUpperCase()}${noun.slice(1)} for ${name}`}
         aria-describedby={note}
         readOnly
         value={token}

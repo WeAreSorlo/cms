@@ -319,36 +319,79 @@ const isProxy = (address: string) =>
 // networks, taking the last address it doesn't run itself.
 // shortcut: a proxy on a public address, such as a CDN's, counts as the sender; add a setting for proxies when a site
 // needs one
-function clientIp(c: Context) {
+export function clientIp(c: Context) {
   const socket = (c.env as Partial<HttpBindings> | undefined)?.incoming?.socket
-  let address = socket?.remoteAddress?.replace(/^::ffff:(?=\d+\.)/, '')
-  if (!address) return null
+  if (!socket?.remoteAddress) return null
+  let address = unmapped(socket.remoteAddress)
   const forwarded = (c.req.header('x-forwarded-for') ?? '').split(',').map((hop) => hop.trim())
   for (const hop of forwarded.filter(Boolean).reverse()) {
     if (!isProxy(address)) break
-    address = hop
+    address = unmapped(hop)
   }
   return address
 }
 
-// Counts each address's posts in a window of time, returning the seconds it has to wait once it's over the limit
+// An IPv4 address that an IPv6 socket or proxy wrote as ::ffff:1.2.3.4, as itself
+const unmapped = (address: string) => address.replace(/^::ffff:(?=\d+\.)/i, '')
+
+// An IPv6 address's eight 16-bit groups, an IPv4 address written at its end counting as two
+function groupsOf(address: string) {
+  const parts = (text?: string) =>
+    (text ? text.split(':') : []).flatMap((group) => {
+      if (!group.includes('.')) return [parseInt(group, 16)]
+      const [a, b, c, d] = group.split('.').map(Number)
+      return [(a << 8) | b, (c << 8) | d]
+    })
+  const [head, tail] = address.split('%')[0].split('::')
+  const left = parts(head)
+  const right = parts(tail)
+  return tail === undefined ? left : [...left, ...Array(8 - left.length - right.length).fill(0), ...right]
+}
+
+// An address as the limits count it: an IPv6 address by its /64, the usual allocation for one machine or home, which
+// would otherwise give 2^64 fresh budgets, and an IPv4 address written as IPv6, in any form, as the IPv4 address
+// (PLAN.md section 16)
+export function limitKey(address: string | null) {
+  if (!address || isIP(address) !== 6) return address ?? ''
+  const groups = groupsOf(address)
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    return [groups[6] >> 8, groups[6] & 255, groups[7] >> 8, groups[7] & 255].join('.')
+  }
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.toString(16))
+    .join(':')}::/64`
+}
+
+// Counts what each key does in a window of time, such as an address's posts, giving the seconds it has to wait once
+// it's over the limit
 // shortcut: the counts live in this process, so each process behind a load balancer keeps its own; keep them in the
 // database when a site runs several
-function rateLimiter(posts: number, window: number) {
+export function rateLimiter(limit: number, window: number) {
   const counts = new Map<string, { count: number; resetsAt: number }>()
   let sweepAt = Date.now() + window
 
-  return (address: string) => {
+  // The key's count in the window it's in, if it has one
+  const current = (key: string) => {
     const now = Date.now()
     if (now >= sweepAt) {
       for (const [key, { resetsAt }] of counts) if (resetsAt <= now) counts.delete(key)
       sweepAt = now + window
     }
+    const count = counts.get(key)
+    return count && count.resetsAt > now ? count : undefined
+  }
+  const secondsLeft = (count: { resetsAt: number }) => Math.ceil((count.resetsAt - Date.now()) / 1000)
 
-    let count = counts.get(address)
-    if (!count || count.resetsAt <= now) counts.set(address, (count = { count: 0, resetsAt: now + window }))
-    count.count++
-    return count.count > posts ? Math.ceil((count.resetsAt - now) / 1000) : 0
+  return {
+    // Counts one, giving the seconds to wait once that's over the limit
+    hit(key: string) {
+      let count = current(key)
+      if (!count) counts.set(key, (count = { count: 0, resetsAt: Date.now() + window }))
+      count.count++
+      return count.count > limit ? secondsLeft(count) : 0
+    },
+    clear: (key: string) => void counts.delete(key),
   }
 }
 
@@ -368,7 +411,7 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
   if (!Number.isInteger(posts) || posts < 1 || !(minutes > 0)) {
     throw new Error('forms.rateLimit in iight.config.ts needs a whole number of posts from 1, and minutes above 0.')
   }
-  const wait = rateLimiter(posts, minutes * 60 * 1000)
+  const limit = rateLimiter(posts, minutes * 60 * 1000)
   const app = new Hono()
 
   // Any site's JavaScript can call them, unless iight.config.ts names the sites that can
@@ -390,7 +433,7 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
     async (c) => {
       // A site's own server sends a key with the submit scope, and posts for all its visitors
       const ip = clientIp(c)
-      const seconds = (await keyOf(db, c))?.scopes.includes('submit') ? 0 : wait(ip ?? '')
+      const seconds = (await keyOf(db, c))?.scopes.includes('submit') ? 0 : limit.hit(limitKey(ip))
       if (seconds) {
         c.header('retry-after', String(seconds))
         const message = 'Too many submissions. Wait a few minutes, then send it again.'

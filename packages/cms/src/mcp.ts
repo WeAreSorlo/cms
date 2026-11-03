@@ -9,6 +9,7 @@ import { hashToken } from './passwords'
 import { tokenSchema, tokenScopes, tokenScopesField } from './schemas'
 import { callTool, instructions, tools } from './tools'
 import type { ContentType } from './types'
+import { maker } from './users'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
 import { Hono } from 'hono'
@@ -73,11 +74,18 @@ export function tokenRoutes(db: Kysely<Database>, publish = false) {
     // A prefix of its own, so neither people nor secret scanners take it for an API key's iight_
     const token = `iightpat_${randomBytes(32).toString('base64url')}`
     const scopes = scopesOf(values.scopes)
-    const row = await db
-      .insertInto('personal_tokens')
-      .values({ id: uuidv7(), user_id: c.var.user.id, name: values.name, token_hash: hashToken(token), scopes })
-      .returning(columns)
-      .executeTakeFirstOrThrow()
+    // Made with the person's row locked, as a removal locks it, so one racing their removal is revoked with the rest or
+    // never made
+    const row = await db.transaction().execute(
+      async (trx) =>
+        (await maker(trx, c.var.user.id)) &&
+        trx
+          .insertInto('personal_tokens')
+          .values({ id: uuidv7(), user_id: c.var.user.id, name: values.name, token_hash: hashToken(token), scopes })
+          .returning(columns)
+          .executeTakeFirstOrThrow(),
+    )
+    if (!row) return c.json({ message: 'Unauthenticated.' }, 401)
     return c.json({ data: { ...toToken(row), token } }, 201)
   })
 

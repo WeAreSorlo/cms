@@ -1,4 +1,3 @@
-import { signInSchema } from '../src/schemas'
 import './admin.scss'
 import { ContentType, GroupsContext, SharedGroup, TypesContext, api, pathOf } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
@@ -13,12 +12,22 @@ import { Shell } from './shell'
 import './theme.scss'
 import { TokenForm, TokenList, TokenPage } from './tokens'
 import { TypeEditor, TypeList } from './types'
-import { Notice, focusInvalid } from './ui'
+import {
+  AccountPage,
+  ForgotPage,
+  InvitePage,
+  JoinPage,
+  RemovedUsers,
+  ResetPage,
+  SignIn,
+  SignedIn,
+  UserList,
+  UserPage,
+} from './users'
 import { VersionPage } from './versions'
-import Form, { FormHandle } from 'iight'
 import 'iight/styles/base.scss'
 import 'iight/styles/layout.scss'
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
 // The design system's reference page, at #/design. Only iight dev has it, so the built admin leaves it out.
@@ -27,75 +36,10 @@ const Design = import.meta.env.DEV ? lazy(() => import('./design')) : undefined
 // The Chat page, in the assistant's own chunk
 const ChatPage = lazy(() => import('./assistant').then((module) => ({ default: module.ChatPage })))
 
-interface User {
-  id: string
-  email: string
-  name: string
-}
-
-function SignIn({ onSignIn }: { onSignIn: (user: User) => void }) {
-  const form = useRef<FormHandle>(null)
-  // Around the form, for finding the fields that stop it
-  const area = useRef<HTMLDivElement>(null)
-  const [values, setValues] = useState({})
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    document.title = 'Sign in · iight'
-  }, [])
-
-  // Moves focus to the first field to fix, once the form has shown its messages
-  const showInvalid = () => focusInvalid(area.current)
-
-  // The button stays enabled while it signs in, so it keeps focus, and a second go is ignored here instead
-  const submit = async () => {
-    if (submitting) return
-    if (!form.current?.validate().isValid) return showInvalid()
-    setSubmitting(true)
-    setError('')
-
-    try {
-      const response = await fetch('/api/session', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(values),
-      })
-
-      if (response.ok) onSignIn((await response.json()).data)
-      else if (response.status === 422) {
-        form.current?.applyReport(await response.json())
-        showInvalid()
-      } else throw new Error(response.statusText)
-    } catch {
-      setError("Couldn't sign in. Try again in a moment.")
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    // Core's form has no submit button, so Enter in a field submits from here
-    <main
-      className='cms-sign-in'
-      onKeyDown={(event) => event.key === 'Enter' && event.target instanceof HTMLInputElement && submit()}
-    >
-      <p className='cms-sign-in__mark'>iight</p>
-      <div className='cms-sign-in__card' ref={area}>
-        <h1>Sign in</h1>
-        {error && <Notice tone='danger'>{error}</Notice>}
-        <Form ref={form} schema={signInSchema} onValuesChange={setValues} />
-        <button type='button' className='iight-button iight-button--primary' aria-busy={submitting} onClick={submit}>
-          {submitting ? 'Signing in…' : 'Sign in'}
-        </button>
-      </div>
-    </main>
-  )
-}
-
 // The page for the URL's hash, such as #/types/blog, #/types/blog/bulk/<id>,<id>, #/entries/<id>,
 // #/entries/<id>/versions/<number>, #/media, #/forms/<id>/inbox, #/automations/<id>/runs, #/migrations, #/keys/<id>,
-// #/tokens/<id> with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog and #/groups/seo in the type
-// editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
+// #/users/<id>, #/account, #/tokens/<id> with MCP on, #/chat?id=<id> with the assistant on, or #/schema/blog and
+// #/groups/seo in the type editor. A list's search and filters follow its path, as in #/types/blog?search=lamp.
 function Page({
   hash,
   types,
@@ -103,7 +47,10 @@ function Page({
   editable,
   mcp,
   ai,
+  mail,
+  me,
   reloadTypes,
+  onUser,
 }: {
   hash: string
   types: Map<string, ContentType>
@@ -112,7 +59,13 @@ function Page({
   // Whether /mcp is on, with whether tokens can be given Publish changes
   mcp: false | { publish: boolean }
   ai: boolean
+  // Whether the site emails invites and reset links
+  mail: boolean
+  // Who's signed in
+  me: string
   reloadTypes: () => Promise<Map<string, ContentType>>
+  // Their name or email changed on their account page
+  onUser: (user: SignedIn) => void
 }) {
   const path = pathOf(hash)
   const query = hash.slice(path.length + 1)
@@ -158,6 +111,11 @@ function Page({
   if (section === 'keys' && name === 'new') return <KeyEditor key='new' />
   if (section === 'keys' && name) return <KeyPage key={name} id={name} />
   if (section === 'keys') return <KeyList />
+  if (section === 'users' && name === 'invite') return <InvitePage key={query} query={query} mail={mail} />
+  if (section === 'users' && name === 'removed') return <RemovedUsers />
+  if (section === 'users' && name) return <UserPage key={name} id={name} me={me} mcp={!!mcp} />
+  if (section === 'users') return <UserList me={me} />
+  if (section === 'account') return <AccountPage onUser={onUser} mcp={!!mcp} />
   if (mcp && section === 'tokens' && name === 'new') return <TokenForm key='new' publish={mcp.publish} />
   if (mcp && section === 'tokens' && name) return <TokenPage key={name} id={name} publish={mcp.publish} />
   if (mcp && section === 'tokens') return <TokenList publish={mcp.publish} />
@@ -177,7 +135,7 @@ function Page({
 
 function App() {
   // Undefined until we know whether a session exists
-  const [user, setUser] = useState<null | User>()
+  const [user, setUser] = useState<null | SignedIn>()
   const [types, setTypes] = useState<Map<string, ContentType>>()
   const [groups, setGroups] = useState(new Map<string, SharedGroup>())
   const [editable, setEditable] = useState(false)
@@ -185,6 +143,8 @@ function App() {
   const [mcp, setMcp] = useState<false | { publish: boolean }>(false)
   // Whether the assistant is on, and with it the Chat page
   const [ai, setAi] = useState(false)
+  // Whether the site emails invites and reset links
+  const [mail, setMail] = useState(false)
 
   // The one copy of the URL's hash, so the shell and the page see each change in the same render
   const [hash, setHash] = useState(location.hash)
@@ -209,6 +169,7 @@ function App() {
     setEditable(body.editable)
     setMcp(body.mcp)
     setAi(body.ai)
+    setMail(body.mail)
     return loaded
   }, [])
 
@@ -221,8 +182,23 @@ function App() {
     setUser(null)
   }
 
+  // Signing in opens the admin where it was, and joining and resetting open it, or after a reset the account it
+  // changed. The page that had focus goes, so the shell takes it.
+  const [arriving, setArriving] = useState(false)
+  const signedInTo = (page?: string) => (signedIn: SignedIn) => {
+    setArriving(true)
+    setUser(signedIn)
+    if (page) location.hash = page
+  }
+
+  // The pages for an invite's or a reset's link, and for asking for one, show with a session or without one
+  const [access, token] = pathOf(hash).replace(/^#\/?/, '').split('/')
+  if (access === 'invite' && token) return <JoinPage key={token} token={token} onSignIn={signedInTo('#/')} />
+  if (access === 'reset' && token) return <ResetPage key={token} token={token} onSignIn={signedInTo('#/account')} />
+  if (access === 'forgot') return <ForgotPage />
+
   if (user === undefined) return null
-  if (user === null) return <SignIn onSignIn={setUser} />
+  if (user === null) return <SignIn onSignIn={signedInTo()} />
   if (!types) return null
 
   // Around the shell too, since the assistant in its column shows proposed changes by the types' fields
@@ -238,6 +214,7 @@ function App() {
           ai={ai}
           onSignOut={signOut}
           onTypes={reloadTypes}
+          arriving={arriving}
         >
           <Page
             hash={hash}
@@ -246,7 +223,10 @@ function App() {
             editable={editable}
             mcp={mcp}
             ai={ai}
+            mail={mail}
+            me={user.id}
             reloadTypes={reloadTypes}
+            onUser={setUser}
           />
         </Shell>
       </GroupsContext.Provider>

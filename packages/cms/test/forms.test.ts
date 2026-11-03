@@ -367,7 +367,9 @@ test('takes the address a proxy on a private network forwarded for, and no one e
   const forwarded = { 'x-forwarded-for': '192.0.2.9, 198.51.100.9, 10.0.0.2' }
   await submit('contact', valid, forwarded, '::ffff:10.0.0.1')
   await submit('contact', valid, forwarded, '203.0.113.200')
-  expect((await submissions()).map((row) => row.ip)).toEqual(['198.51.100.9', '203.0.113.200'])
+  // An IPv4 address a proxy wrote as IPv6 is kept as itself, as the socket's is
+  await submit('contact', valid, { 'x-forwarded-for': '192.0.2.9, ::ffff:198.51.100.10, ::ffff:10.0.0.2' }, '10.0.0.1')
+  expect((await submissions()).map((row) => row.ip)).toEqual(['198.51.100.9', '203.0.113.200', '198.51.100.10'])
 })
 
 test('the embed HTML posts every field it shows to the form, by its ID', async () => {

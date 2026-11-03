@@ -401,14 +401,14 @@ export function typeRoutes(
   types: Map<string, ContentType>,
   groups = new Map<string, SharedGroup>(),
   saver?: TypeSaver,
-  // Whether /mcp, with whether tokens can publish, and the assistant are on, which the admin reads here with editable,
-  // since the shell waits for this reply
-  { mcp = false, ai = false }: { mcp?: false | { publish: boolean }; ai?: boolean } = {},
+  // Whether /mcp, with whether tokens can publish, and the assistant are on, and whether the site emails invites and
+  // reset links, which the admin reads here with editable, since the shell waits for this reply
+  { mcp = false, ai = false, mail = false }: { mcp?: false | { publish: boolean }; ai?: boolean; mail?: boolean } = {},
 ) {
   const app = new Hono<AdminEnv>()
 
   app.get('/types', (c) =>
-    c.json({ data: [...types.values()], groups: [...groups.values()], editable: !!saver, mcp, ai }),
+    c.json({ data: [...types.values()], groups: [...groups.values()], editable: !!saver, mcp, ai, mail }),
   )
 
   const editable =

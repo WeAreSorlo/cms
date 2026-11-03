@@ -13,6 +13,43 @@ export const userSchema: Array<FieldSchema> = [
   { name: 'password', label: 'Password', type: 'password', required: true, options: { minLength: 8 } },
 ]
 
+// The address to invite, on the admin's Users page and checked by POST /api/invites. Forgot your password? asks for an
+// address the same way, checked by POST /api/session/forgot.
+export const inviteSchema: Array<FieldSchema> = [{ name: 'email', label: 'Email', type: 'email', required: true }]
+
+// What someone invited chooses for themselves, on the invite's page and checked by POST /api/session/invite
+export const joinSchema: Array<FieldSchema> = userSchema.filter((field) => field.name !== 'email')
+
+// A new password, on a reset link's page and checked by POST /api/session/reset, and asked for by iight user:password
+export const resetSchema: Array<FieldSchema> = [
+  { name: 'password', label: 'New password', type: 'password', required: true, options: { minLength: 8 } },
+]
+
+// Your own name, email and password, on the admin's account page and checked by PUT /api/account, built with the email
+// you have, since your current password shows, and is needed, once the email differs from it or a new password is given
+export const accountSchema = (email: string): Array<FieldSchema> => [
+  { name: 'name', label: 'Name', type: 'text', required: true },
+  { name: 'email', label: 'Email', type: 'email', required: true },
+  {
+    name: 'newPassword',
+    label: 'New password',
+    type: 'password',
+    instructions: 'Leave it empty to keep your password. A new one signs you out everywhere else.',
+    options: { minLength: 8 },
+  },
+  {
+    name: 'password',
+    label: 'Current password',
+    type: 'password',
+    required: true,
+    instructions: 'Needed to change your email or your password.',
+    conditions: [
+      { rules: [{ field: 'email', operator: 'notEquals', value: email }] },
+      { rules: [{ field: 'newPassword', operator: 'notEmpty' }] },
+    ],
+  },
+]
+
 // What a key can do besides reading live content and media (PLAN.md section 16), each a flag of iight make:api-key
 export const apiKeyScopes = [
   { value: 'preview', label: 'Preview: read drafts, with status=draft' },

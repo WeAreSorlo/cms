@@ -1,33 +1,27 @@
-import type { DeliveryOptions, FormOptions, McpOptions, MediaOptions, Storage, VersionOptions } from '.'
+import type { DeliveryOptions, FormOptions, MailOptions, McpOptions, MediaOptions, Storage, VersionOptions } from '.'
 import type { AiProvider } from './ai'
 import { automationRoutes } from './automations'
 import { chatRoutes } from './chats'
 import { type ContentMigrationFile, loadContentMigrations } from './content'
-import { inputs, pickValues, validateServerValues } from './core'
-import { Database, uuidv7 } from './db'
+import { Database } from './db'
 import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
 import { formRoutes, publicFormRoutes } from './forms'
 import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
-import { hashToken, verifyPassword } from './passwords'
+import { hashToken } from './passwords'
 import { migrationRoutes } from './runMigrations'
-import { signInSchema } from './schemas'
 import { EditorDirs, typeRoutes, typeSaver } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
 import { typesFile } from './typescript'
+import { markActive, peopleLimits, sessionCookie, sessionRoutes, userRoutes } from './users'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, MiddlewareHandler } from 'hono'
-import { bodyLimit } from 'hono/body-limit'
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import { deleteCookie, getCookie } from 'hono/cookie'
 import { csrf } from 'hono/csrf'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely } from 'kysely'
-import { randomBytes } from 'node:crypto'
 import { STATUS_CODES } from 'node:http'
-
-const sessionCookie = 'iight_session'
-const sessionLength = 30 * 24 * 60 * 60 * 1000
 
 // What the server uses from the site project, besides its types
 export interface AppOptions {
@@ -58,6 +52,10 @@ export interface AppOptions {
   mcp?: boolean | McpOptions
   // The model provider for the admin's assistant and Chat page, which are off without one
   ai?: AiProvider
+  // The site's public address, which emailed links start from, and how it sends email, from iight.config.ts. Invites
+  // and reset links are emailed only with both.
+  url?: string
+  mail?: MailOptions
 }
 
 export function createApp(
@@ -77,6 +75,8 @@ export function createApp(
     admin,
     mcp = false,
     ai,
+    url,
+    mail,
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
@@ -84,6 +84,14 @@ export function createApp(
   const app = new Hono<AdminEnv>()
   // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
   const saver = editor && typeSaver(db, types, groups, editor)
+
+  // Emailed links start from the site's address, never a request's Host header, which can say anything
+  const site = url === undefined ? undefined : URL.canParse(url) ? new URL(url) : undefined
+  if (url !== undefined && !/^https?:$/.test(site?.protocol ?? '')) {
+    throw new Error("url in iight.config.ts needs to be the admin's address, such as https://cms.example.com.")
+  }
+  // The limits sign-in and your account's current password share
+  const people = { url: site?.origin, mail, limits: peopleLimits() }
 
   // Every error except a failed validation replies { message }, as Laravel does
   app.notFound((c) => c.json({ message: 'Not Found' }, 404))
@@ -112,60 +120,26 @@ export function createApp(
     app.use('/admin/*', serveStatic({ root: admin, rewriteRequestPath: (path) => path.slice('/admin'.length) }))
   }
 
-  // Sign in. Anyone can post here, so the body is limited before it's read.
-  const signInLimit = bodyLimit({
-    maxSize: 64 * 1024,
-    onError: (c) => c.json({ message: 'The request is too large.' }, 413),
-  })
-  app.post('/api/session', signInLimit, async (c) => {
-    const values = pickValues(signInSchema, await c.req.json().catch(() => ({})), inputs)
-    const report = await validateServerValues(signInSchema, values, inputs)
-    if (!report.isValid) return c.json(report, 422)
+  // Sign in, join with an invite, and ask for and use a reset link, which need no session (PLAN.md section 5)
+  app.route('/api', sessionRoutes(db, people))
 
-    const user = await db
-      .selectFrom('users')
-      .selectAll()
-      .where('email', '=', values.email.toLowerCase())
-      .executeTakeFirst()
-
-    const passwordMatches = await verifyPassword(values.password, user?.password_hash)
-    if (!user || !passwordMatches) {
-      const fields = {
-        ...report.fields,
-        email: { isValid: false, messages: ['These credentials do not match our records.'] },
-      }
-      return c.json({ isValid: false, fields }, 422)
-    }
-
-    const token = randomBytes(32).toString('base64url')
-    const expires = new Date(Date.now() + sessionLength)
-    await db.deleteFrom('sessions').where('expires_at', '<=', new Date()).execute()
-    await db
-      .insertInto('sessions')
-      .values({ id: uuidv7(), user_id: user.id, token_hash: hashToken(token), expires_at: expires })
-      .execute()
-
-    setCookie(c, sessionCookie, token, {
-      httpOnly: true,
-      sameSite: 'Lax',
-      path: '/',
-      expires,
-      secure: new URL(c.req.url).protocol === 'https:' || c.req.header('x-forwarded-proto') === 'https',
-    })
-
-    return c.json({ data: { id: user.id, email: user.email, name: user.name } })
-  })
-
-  // The user whose session cookie came with the request
-  const sessionUser = async (token: string | undefined) =>
-    token &&
-    (await db
-      .selectFrom('sessions')
-      .innerJoin('users', 'users.id', 'sessions.user_id')
-      .select(['users.id', 'users.email', 'users.name'])
-      .where('sessions.token_hash', '=', hashToken(token))
-      .where('sessions.expires_at', '>', new Date())
-      .executeTakeFirst())
+  // The user whose session cookie came with the request, marked as using the admin. Someone removed has no sessions
+  // left, since a removal deletes them and no session starts while one runs. It reads nothing the migration adding
+  // removal makes, so people can sign in to run it from the Migrations page.
+  const sessionUser = async (token: string | undefined) => {
+    const user =
+      token &&
+      (await db
+        .selectFrom('sessions')
+        .innerJoin('users', 'users.id', 'sessions.user_id')
+        .select(['users.id', 'users.email', 'users.name'])
+        .where('sessions.token_hash', '=', hashToken(token))
+        .where('sessions.expires_at', '>', new Date())
+        .executeTakeFirst())
+    // Only a record of when they were last here, which never fails a request, as it would while its migration waits
+    if (user) await markActive(db, user.id).catch(() => {})
+    return user
+  }
 
   // The signed-in user
   app.get('/api/session', async (c) => {
@@ -198,9 +172,15 @@ export function createApp(
   app.use('/api/automations/*', signedIn)
   app.use('/api/keys/*', signedIn)
   app.use('/api/migrations/*', signedIn)
+  app.use('/api/users/*', signedIn)
+  app.use('/api/invites/*', signedIn)
+  app.use('/api/account/*', signedIn)
   if (mcp) app.use('/api/tokens/*', signedIn)
   if (ai) app.use('/api/chats/*', signedIn)
-  app.route('/api', typeRoutes(types, groups, saver, { mcp: !!mcp && { publish }, ai: !!ai }))
+  app.route(
+    '/api',
+    typeRoutes(types, groups, saver, { mcp: !!mcp && { publish }, ai: !!ai, mail: !!(people.url && mail) }),
+  )
   app.route('/api', entryRoutes(db, types, migrations, versions))
   // Migrations run from the admin only where the type editor is, in iight dev (PLAN.md section 6)
   app.route(
@@ -210,6 +190,7 @@ export function createApp(
   app.route('/api', formRoutes(db))
   app.route('/api', automationRoutes(db, types))
   app.route('/api', keyRoutes(db))
+  app.route('/api', userRoutes(db, people))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
   // AI clients read the site's content as a person, with a token that person made (PLAN.md section 21)

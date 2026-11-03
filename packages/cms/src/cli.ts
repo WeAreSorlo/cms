@@ -10,7 +10,7 @@ import { makeMigration, notesOf } from './makeMigration'
 import { loadMigrations, migrationsDir, ranMigrations, readMigrations, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
 import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
-import { apiKeySchema, apiKeyScopes, userSchema } from './schemas'
+import { apiKeySchema, apiKeyScopes, resetSchema, userSchema } from './schemas'
 import { loadSchema } from './types'
 import type { FieldSchema } from 'iight'
 import { Kysely } from 'kysely'
@@ -106,6 +106,7 @@ const commands: Record<string, Command> = {
     },
   },
   'make:user': { description: 'Create an admin user', run: makeUser },
+  'user:password': { description: "Set someone's password, signing them out everywhere", run: setPassword },
   'make:api-key': {
     description: 'Create a key for the delivery API, and with --preview, --types or --submit, one that can do more',
     run: makeApiKey,
@@ -182,6 +183,8 @@ async function dev(db: Kysely<Database>) {
     versions: config.versions,
     mcp: config.mcp,
     ai: config.ai && anthropic(config.ai),
+    url: config.url,
+    mail: config.mail,
   })
   const api = getRequestListener(app.fetch)
 
@@ -216,6 +219,8 @@ async function start(db: Kysely<Database>) {
     versions: config.versions,
     mcp: config.mcp,
     ai: config.ai && anthropic(config.ai),
+    url: config.url,
+    mail: config.mail,
   })
 
   // Hands events on to automations, in this process
@@ -240,8 +245,13 @@ async function makeUser(db: Kysely<Database>) {
   if (!(await validates(userSchema, values))) return
 
   const email = values.email.toLowerCase()
-  if (await db.selectFrom('users').select('id').where('email', '=', email).executeTakeFirst()) {
-    console.error(`${email} already has an account.`)
+  const existing = await db.selectFrom('users').select('removed_at').where('email', '=', email).executeTakeFirst()
+  if (existing) {
+    console.error(
+      existing.removed_at
+        ? `${email} was removed. Invite them again from the admin's Users page, so their history stays theirs.`
+        : `${email} already has an account.`,
+    )
     process.exitCode = 1
     return
   }
@@ -251,6 +261,52 @@ async function makeUser(db: Kysely<Database>) {
     .values({ id: uuidv7(), name: values.name, email, password_hash: await hashPassword(values.password) })
     .execute()
   console.log(`Created ${email}, who can now sign in at /admin/.`)
+}
+
+// The way back in for a site whose only person forgot their password and that sends no email (PLAN.md section 5).
+// Someone removed comes back by invite instead.
+async function setPassword(db: Kysely<Database>, [given = '']: Array<string>) {
+  const email = given.trim().toLowerCase()
+  const user = email
+    ? await db.selectFrom('users').select(['id', 'removed_at']).where('email', '=', email).executeTakeFirst()
+    : undefined
+  if (!user || user.removed_at) {
+    console.error(
+      !email
+        ? 'Give the email of the account, as in iight user:password ada@example.com.'
+        : user
+          ? `${email} was removed. Invite them again from the admin's Users page.`
+          : `${email} has no account.`,
+    )
+    process.exitCode = 1
+    return
+  }
+
+  const prompt = createPrompt()
+  const values = { password: await prompt.ask('New password: ', true) }
+  prompt.close()
+  if (!(await validates(resetSchema, values))) return
+
+  // Only someone still there, since a removal during the prompt blanked their password
+  const passwordHash = await hashPassword(values.password)
+  const changed = await db.transaction().execute(async (trx) => {
+    const { numUpdatedRows } = await trx
+      .updateTable('users')
+      .set({ password_hash: passwordHash, updated_at: new Date() })
+      .where('id', '=', user.id)
+      .where('removed_at', 'is', null)
+      .executeTakeFirstOrThrow()
+    if (!numUpdatedRows) return false
+    await trx.deleteFrom('sessions').where('user_id', '=', user.id).execute()
+    await trx.deleteFrom('password_resets').where('user_id', '=', user.id).execute()
+    return true
+  })
+  if (!changed) {
+    console.error(`${email} was removed meanwhile, so nothing changed. Invite them again from the admin's Users page.`)
+    process.exitCode = 1
+    return
+  }
+  console.log(`Set a new password for ${email}, and signed them out everywhere.`)
 }
 
 // A preview key reads drafts, so it belongs on a server, such as the one behind a site's preview mode

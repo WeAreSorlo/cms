@@ -1,15 +1,83 @@
-import { url } from './database'
+import { hashToken, verifyPassword } from '../src/passwords'
+import { db, url } from './database'
+import { setUp } from './fixtures'
 import { execFile } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
-import { expect, test } from 'vitest'
+import { afterAll, expect, test } from 'vitest'
 
 // The iight CLI, run from a site project as a site runs it
 
 const bin = fileURLToPath(new URL('../bin/iight.js', import.meta.url))
+
+afterAll(() => db.destroy())
+
+// A site project on the test database, which a command runs in, given what's typed into it, or with typed as a
+// function, once it first asks something
+async function inSite(args: Array<string>, typed: string | (() => Promise<string>) = '') {
+  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  try {
+    const run = promisify(execFile)(process.execPath, [bin, ...args], { cwd: dir })
+    if (typeof typed === 'string') run.child.stdin?.end(typed)
+    else run.child.stdout?.once('data', async () => run.child.stdin?.end(await typed()))
+    return await run
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}
+
+test('user:password sets a new password, signing them out everywhere, and refuses someone removed', async () => {
+  const { userId } = await setUp()
+  await db
+    .insertInto('password_resets')
+    .values({ user_id: userId, token_hash: hashToken('link'), expires_at: new Date(Date.now() + 60_000) })
+    .execute()
+
+  const { stdout } = await inSite(['user:password', 'Ada@Example.com'], 'a new password\n')
+  expect(stdout).toBe('New password: \nSet a new password for ada@example.com, and signed them out everywhere.\n')
+  const ada = await db.selectFrom('users').select('password_hash').where('id', '=', userId).executeTakeFirstOrThrow()
+  expect(await verifyPassword('a new password', ada.password_hash)).toBe(true)
+  expect(await db.selectFrom('sessions').where('user_id', '=', userId).execute()).toEqual([])
+  expect(await db.selectFrom('password_resets').where('user_id', '=', userId).execute()).toEqual([])
+
+  // A password too short is refused, as make:user refuses one
+  await expect(inSite(['user:password', 'ada@example.com'], 'short\n')).rejects.toMatchObject({
+    code: 1,
+    stderr: 'New password: This field requires a minimum of 8 character(s).\n',
+  })
+  await expect(inSite(['user:password', 'nobody@example.com'])).rejects.toMatchObject({
+    code: 1,
+    stderr: 'nobody@example.com has no account.\n',
+  })
+
+  // Removed while it asks, it changes nothing, leaving their password blank
+  const removing = async () => {
+    await db.updateTable('users').set({ removed_at: new Date(), password_hash: '' }).execute()
+    return 'a new password\n'
+  }
+  await expect(inSite(['user:password', 'ada@example.com'], removing)).rejects.toMatchObject({
+    code: 1,
+    stderr:
+      "ada@example.com was removed meanwhile, so nothing changed. Invite them again from the admin's Users page.\n",
+  })
+  const blank = await db.selectFrom('users').select('password_hash').where('id', '=', userId).executeTakeFirstOrThrow()
+  expect(blank.password_hash).toBe('')
+
+  await expect(inSite(['user:password', 'ada@example.com'])).rejects.toMatchObject({
+    code: 1,
+    stderr: "ada@example.com was removed. Invite them again from the admin's Users page.\n",
+  })
+  await expect(inSite(['make:user'], 'Ada\nada@example.com\ncorrect horse\n')).rejects.toMatchObject({
+    code: 1,
+    stderr:
+      "ada@example.com was removed. Invite them again from the admin's Users page, so their history stays theirs.\n",
+  })
+}, 60_000)
 
 test(".env sets what the environment doesn't, before iight.config.ts loads", async () => {
   // A site project whose config prints what it sees, with a command that needs no database

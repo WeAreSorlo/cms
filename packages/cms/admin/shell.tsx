@@ -15,6 +15,7 @@ import {
   Plug,
   Sparkles,
   SunMoon,
+  Users,
   Workflow,
   X,
 } from 'lucide-react'
@@ -164,11 +165,13 @@ export function Shell({
   ai,
   onSignOut,
   onTypes,
+  arriving = false,
   children,
 }: {
   hash: string
   types: Map<string, ContentType>
   user: { id: string; name: string }
+  // Whether someone has just signed in, joined or reset their password, whose page went with the focus it had
   // Whether the type editor is on, as in iight dev, where migrations run from the admin
   editable: boolean
   // Whether /mcp is on, so the user's row links to their MCP tokens
@@ -178,6 +181,7 @@ export function Shell({
   onSignOut: () => void
   // Loads the types again, once the assistant's Apply has changed one
   onTypes?: () => Promise<unknown>
+  arriving?: boolean
   children: ReactNode
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -220,8 +224,8 @@ export function Shell({
     heading.focus()
   }
 
-  // Set when the page changes, until the new page's heading has taken focus
-  const pending = useRef(false)
+  // Set when the page changes, or as someone arrives, until the new page's heading has taken focus
+  const pending = useRef(arriving)
   const update = () => {
     const heading = main.current?.querySelector('h1')
     document.title = heading?.textContent ? `${heading.textContent} · iight` : 'iight'
@@ -231,8 +235,10 @@ export function Shell({
     }
   }
 
-  // Pages that load before showing their heading take focus when it arrives
+  // Pages that load before showing their heading take focus when it arrives. Someone arriving starts on the page, until
+  // then, or for good on a page with no heading.
   useEffect(() => {
+    if (arriving) main.current?.focus()
     const observer = new MutationObserver(update)
     observer.observe(main.current!, { childList: true, subtree: true, characterData: true })
     return () => observer.disconnect()
@@ -267,6 +273,7 @@ export function Shell({
       { section: 'groups', label: 'Shared groups', icon: <Component /> },
       { section: 'migrations', label: 'Migrations', icon: <DatabaseZap /> },
       { section: 'keys', label: 'API keys', icon: <KeyRound /> },
+      { section: 'users', label: 'Users', icon: <Users /> },
     ],
   ]
 
@@ -318,7 +325,9 @@ export function Shell({
             ))}
           </div>
           <div className='cms-nav__user'>
-            <p>Signed in as {user.name}</p>
+            <a className='cms-nav__account' href='#/account' aria-current={section === 'account' ? 'page' : undefined}>
+              Signed in as {user.name}
+            </a>
             {mcp && (
               <a
                 className='cms-icon-button'

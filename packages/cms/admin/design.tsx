@@ -41,6 +41,7 @@ import {
   useListQuery,
   useToast,
 } from './ui'
+import { AccountPanel, Invite, InvitesTable, PeopleTable, Person, PersonPanel } from './users'
 import { ChangeList, JsonChanges } from './versions'
 import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Plus, Sheet, Trash2 } from 'lucide-react'
@@ -84,6 +85,56 @@ const sampleFiles: Array<Media> = [
     height: null,
     alt: 'Terms',
     url: '',
+  },
+]
+
+// People: you, someone Levi invited, someone who has never signed in, and someone removed, whom an invite brings back
+const samplePerson = { lastActiveAt: null, invitedBy: null, removedAt: null, removedBy: null }
+const samplePeople: Array<Person> = [
+  {
+    ...samplePerson,
+    id: 'usr_ada',
+    name: 'Ada Lovelace',
+    email: 'ada@example.com',
+    createdAt: '2026-10-28T09:00:00Z',
+    lastActiveAt: '2026-11-03T13:58:00Z',
+  },
+  {
+    ...samplePerson,
+    id: 'usr_alex',
+    name: 'Alex Kim',
+    email: 'alex@example.com',
+    createdAt: '2026-11-01T10:00:00Z',
+    lastActiveAt: '2026-11-02T16:20:00Z',
+    invitedBy: { id: 'usr_ada', name: 'Ada Lovelace' },
+  },
+  { ...samplePerson, id: 'usr_bo', name: 'Bo Chen', email: 'bo@example.com', createdAt: '2026-11-02T11:00:00Z' },
+]
+const removedPerson: Person = {
+  ...samplePerson,
+  id: 'usr_sam',
+  name: 'Sam Lee',
+  email: 'sam@example.com',
+  createdAt: '2026-10-29T09:00:00Z',
+  removedAt: '2026-11-01T10:00:00Z',
+  removedBy: { id: 'usr_ada', name: 'Ada Lovelace' },
+}
+const sampleInvites: Array<Invite> = [
+  {
+    id: 'inv_jo',
+    email: 'jo@example.com',
+    invitedBy: { id: 'usr_ada', name: 'Ada Lovelace' },
+    createdAt: '2026-11-03T14:00:00Z',
+    expiresAt: '2026-11-10T14:00:00Z',
+    restores: null,
+  },
+  {
+    id: 'inv_sam',
+    email: 'sam@example.com',
+    invitedBy: null,
+    createdAt: '2026-10-20T09:00:00Z',
+    expiresAt: '2026-10-27T09:00:00Z',
+    restores: { id: 'usr_sam', name: 'Sam Lee', removedAt: '2026-11-01T10:00:00Z' },
   },
 ]
 
@@ -1739,6 +1790,41 @@ export default function Design() {
           </li>
         ))}
       </ul>
+
+      <h2>Users</h2>
+      <p>
+        The Users page lists everyone who can sign in, with you marked, then the invites waiting, each with New link and
+        Delete, an expired one marked so, and one for a removed person's address saying who it brings back. Someone's
+        page has Make a reset link, which shows a link once as a new key shows, and Remove, which asks first, or once
+        they're removed, Invite again. Your account's panel has Save, then your other sessions with Sign out everywhere
+        else.
+      </p>
+      <PeopleTable people={samplePeople} me='usr_ada' />
+      <InvitesTable invites={sampleInvites} onDelete={(invite) => toast(`Deleted the invite for ${invite.email}`)} />
+      <PanelSlot.Provider value={null}>
+        <ul className='cms-design__panels'>
+          <li>
+            <h3>Someone's page</h3>
+            <PersonPanel
+              person={samplePeople[1]}
+              onReset={() => toast('Shows a reset link once')}
+              onRemove={() => toast('Asks before removing Alex Kim')}
+            />
+          </li>
+          <li>
+            <h3>Someone removed</h3>
+            <PersonPanel person={removedPerson} onReset={() => {}} onRemove={() => {}} />
+          </li>
+          <li>
+            <h3>Your account</h3>
+            <AccountPanel
+              account={{ ...samplePeople[0], otherSessions: 2 }}
+              onSave={() => toast('Saved')}
+              onSignOut={() => toast('Signed out everywhere else')}
+            />
+          </li>
+        </ul>
+      </PanelSlot.Provider>
 
       <h2>Empty, loading and pages</h2>
       <EmptyState

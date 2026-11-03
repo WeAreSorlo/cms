@@ -13,6 +13,12 @@ test("finds the nav item a page's URL belongs to", () => {
   expect(sectionOf('#/groups/seo')).toBe('groups')
   expect(sectionOf('#/media')).toBe('media')
   expect(sectionOf('#/keys/new')).toBe('keys')
+  expect(sectionOf('#/users/invite?email=sam%40example.com')).toBe('users')
+  expect(sectionOf('#/users/removed')).toBe('users')
+  // Your account is no nav item, but its link in the user's row marks it
+  expect(sectionOf('#/account')).toBe('account')
+  // The pages for an invite's or a reset's link come before the shell
+  expect(sectionOf('#/invite/abc')).toBeUndefined()
 
   // An entry's page names its type once it loads
   expect(sectionOf('#/entries/01a182d3')).toBeUndefined()

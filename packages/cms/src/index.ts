@@ -5,6 +5,9 @@ export interface Config {
     // A Postgres connection string
     url: string
   }
+  // The admin's public address, such as https://cms.example.com, which links in emails start from, since a request's
+  // Host header can say anything. Invites and reset links are emailed only with this and mail set.
+  url?: string
   // Where uploaded media is stored: FlyDrive's DriveManager options, whose services are the disks
   storage: Storage
   media?: MediaOptions

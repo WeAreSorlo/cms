@@ -8,6 +8,7 @@ import { Delivered, deliveredEntries, listEntries, listMedia, parseMediaQuery, p
 import { parseWith, resolveLinks } from './relations'
 import { apiKeySchema, apiKeyScopes } from './schemas'
 import type { ContentType } from './types'
+import { maker } from './users'
 import { Context, Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, sql } from 'kysely'
@@ -127,8 +128,12 @@ export function keyRoutes(db: Kysely<Database>) {
   app.post('/keys', async (c) => {
     const { report, key } = await read(c)
     if (!key) return c.json(report, 422)
-    const { id, token } = await makeKey(db, key.name, key.scopes, c.var.user.id)
-    return c.json({ data: { ...(await find(id)), token } }, 201)
+    // Keys outlive their maker's removal, but someone being removed can't make another meanwhile
+    const made = await db
+      .transaction()
+      .execute(async (trx) => (await maker(trx, c.var.user.id)) && makeKey(trx, key.name, key.scopes, c.var.user.id))
+    if (!made) return c.json({ message: 'Unauthenticated.' }, 401)
+    return c.json({ data: { ...(await find(made.id)), token: made.token } }, 201)
   })
 
   app.put('/keys/:id', async (c) => {

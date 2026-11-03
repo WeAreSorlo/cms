@@ -12,9 +12,35 @@ export interface Database {
     id: string
     email: string
     name: string
+    // Blank once they're removed, so sign-in fails for them as for an unknown email
     password_hash: string
     created_at: Generated<Date>
     updated_at: Generated<Date>
+    // When they last used the admin, written at most once a minute
+    last_active_at: Date | null
+    // Null for people iight make:user made
+    invited_by: string | null
+    // Removing someone keeps their row, so everything that points at them keeps their name (PLAN.md section 5)
+    removed_at: Date | null
+    removed_by: string | null
+  }
+  // The invites waiting to be accepted, one for each address, whose link a new invite replaces
+  invites: {
+    id: string
+    email: string
+    token_hash: string
+    invited_by: string | null
+    expires_at: Date
+    created_at: Generated<Date>
+  }
+  // Each person's link to choose a new password, from Forgot your password? or a colleague, which a new one replaces
+  password_resets: {
+    user_id: string
+    token_hash: string
+    // Who made it for them, so removing that person deletes it, or null for one sent by email
+    made_by: string | null
+    expires_at: Date
+    created_at: Generated<Date>
   }
   sessions: {
     id: string

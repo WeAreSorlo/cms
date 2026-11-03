@@ -140,6 +140,8 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_11_03_000024_add_chat_message_files',
     '2026_11_03_000025_add_published_via',
     '2026_11_03_000026_add_entry_take_downs',
+    '2026_11_03_000027_add_people',
+    '2026_11_03_000028_add_reset_makers',
   ])
 
   await migrate(db, migrations)
@@ -155,8 +157,10 @@ test("the CMS's own migrations run forward and back", async () => {
     'events',
     'form_versions',
     'forms',
+    'invites',
     'media',
     'migrations',
+    'password_resets',
     'personal_tokens',
     'proposals',
     'published_entries',
@@ -406,6 +410,48 @@ test("the migration for content types' proposals keeps every proposal's target, 
   expect(columns?.find((column) => column.name === 'target_id')?.dataType).toBe('uuid')
   expect(columns?.map((column) => column.name)).not.toContain('wrote')
   expect(await db.selectFrom('proposals').select('target_id').execute()).toEqual([{ target_id: entry }])
+})
+
+test('the migrations for managing people roll back, leaving someone removed unable to sign in', async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const people = '2026_11_03_000027_add_people'
+  const makers = '2026_11_03_000028_add_reset_makers'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < people)))
+  await migrate(db, migrations)
+
+  const id = uuidv7()
+  const removed = { removed_at: new Date(), password_hash: '' }
+  await db
+    .insertInto('users')
+    .values({ id, name: 'Sam', email: 'sam@example.com', ...removed })
+    .execute()
+  await db
+    .insertInto('invites')
+    .values({ id: uuidv7(), email: 'jo@example.com', token_hash: 'x', expires_at: new Date() })
+    .execute()
+  // A colleague's link records who made it
+  const maker = uuidv7()
+  await db.insertInto('users').values({ id: maker, name: 'Bo', email: 'bo@example.com', password_hash: 'x' }).execute()
+  await db
+    .insertInto('password_resets')
+    .values({ user_id: id, token_hash: 'y', made_by: maker, expires_at: new Date() })
+    .execute()
+
+  expect(await rollback(db, migrations)).toEqual([makers, people])
+  const names = (await db.introspection.getTables()).map((table) => table.name)
+  expect(names).not.toContain('invites')
+  expect(names).not.toContain('password_resets')
+  const columns = (await db.introspection.getTables()).find((table) => table.name === 'users')?.columns
+  expect(columns?.map((column) => column.name)).toEqual([
+    'id',
+    'email',
+    'name',
+    'password_hash',
+    'created_at',
+    'updated_at',
+  ])
+  const row = await db.selectFrom('users').select('password_hash').where('id', '=', id).executeTakeFirstOrThrow()
+  expect(row.password_hash).toBe('')
 })
 
 test('the migration that records take-downs marks every entry that was live and is no longer', async () => {
