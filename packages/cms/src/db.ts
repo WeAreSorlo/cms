@@ -38,6 +38,9 @@ export interface Database {
     created_at: Generated<Date>
     updated_at: Generated<Date>
     archived_at: Date | null
+    // When a person last took it off the live site, which only a person's publish clears, and a token never publishes
+    // it while it's set (PLAN.md section 21). In no reply.
+    taken_down_at: Date | null
   }
   entry_versions: {
     entry_id: string
@@ -56,6 +59,9 @@ export interface Database {
     // The assistant's chat or the MCP token it was saved through, kept after the chat is deleted (PLAN.md section 21)
     chat_id: string | null
     token_id: string | null
+    // The chat or token its last publish came through, which published_at and published_by go with
+    published_chat_id: string | null
+    published_token_id: string | null
   }
   // Each published entry's live copy, which the delivery API serves (PLAN.md section 17)
   published_entries: {

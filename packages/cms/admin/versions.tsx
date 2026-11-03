@@ -32,8 +32,9 @@ export const kinds = {
 // Such as Launch copy, or Version 3 for a version with no name
 export const nameOf = (version: Version) => version.name ?? `Version ${version.number}`
 
-// Who saved a version or published it, and when
-const byAt = (user: Version['createdBy'], at: string) => `${user?.name ?? 'Deleted user'} · ${shortDate(at)}`
+// Who last published a version, and through which MCP token or with the assistant, and when
+const publishedBy = (version: Version) =>
+  `${version.publishedBy?.name ?? 'Deleted user'}${viaText(version.publishedVia)} · ${shortDate(version.publishedAt!)}`
 
 // Who saved a version, and through which MCP token or with the assistant, and when
 const savedBy = (version: Version) =>
@@ -433,7 +434,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
         {drafts && version.publishedAt && (
           <section>
             <h2>Last published</h2>
-            <p>{byAt(version.publishedBy, version.publishedAt)}</p>
+            <p>{publishedBy(version)}</p>
           </section>
         )}
         {!archived && nameStart && (

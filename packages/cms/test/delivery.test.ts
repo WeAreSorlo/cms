@@ -14,7 +14,7 @@ const ids: Record<string, string> = {}
 // API serves
 const insert = async (name: string, type: string, values: Record<string, any>, columns: object = {}) => {
   ids[name] = uuidv7()
-  const { archived_at, created_by, updated_by, ...row } = await db
+  const { archived_at, created_by, updated_by, taken_down_at, ...row } = await db
     .insertInto('entries')
     .values({ id: ids[name], type, values, slug: values.slug, ...columns })
     .returningAll()

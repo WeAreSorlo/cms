@@ -73,17 +73,22 @@ test("creates and edits entries with the type's fields, saving a version each ti
     createdBy: userId,
     updatedBy: userId,
     status: 'draft',
+    version: 1,
     publishedVersion: null,
   })
 
   const edited = await send('PUT', `/entries/${entry.id}`, { values: { title: 'Hello again', slug: 'hello-again' } })
   expect(edited.status).toBe(200)
-  expect(edited.body.data).toMatchObject({ slug: 'hello-again', values: { title: 'Hello again', slug: 'hello-again' } })
+  expect(edited.body.data).toMatchObject({
+    slug: 'hello-again',
+    values: { title: 'Hello again', slug: 'hello-again' },
+    version: 2,
+  })
   expect((await send('GET', `/entries/${entry.id}`)).body.data.slug).toBe('hello-again')
 
   const versions = await send('GET', `/entries/${entry.id}/versions`)
   const saved = { name: null, createdBy: { id: userId, name: 'Ada' }, createdAt: expect.any(String) }
-  const unpublished = { publishedAt: null, publishedBy: null, via: null }
+  const unpublished = { publishedAt: null, publishedBy: null, via: null, publishedVia: null }
   expect(versions.body.data).toEqual([
     { number: 2, ...saved, ...unpublished },
     { number: 1, ...saved, ...unpublished },

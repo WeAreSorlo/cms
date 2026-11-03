@@ -75,15 +75,21 @@ async function followUri(trx: Kysely<Database>, table: 'entries' | 'published_en
   return rows
 }
 
-// Takes entries off the live site, with the live pages under them
+// Takes entries off the live site, with the live pages under them, marking each as taken down by a person, since only
+// people unpublish and archive. Marking them locks them as a save locks an entry, before their live copies go, so a
+// publish under way finishes first, and one waiting behind this finds the mark.
+// shortcut: a page published under one of them at that same moment goes down with it unmarked, until this takes the
+// type's publish lock too
 async function unpublish(trx: Kysely<Database>, ids: Array<string>) {
   if (!ids.length) return
-  const { rows } = await sql<{ id: string }>`
+  const live = sql`
     with recursive live as (
       select id from published_entries where id = any(${ids}::uuid[])
       union
       select page.id from published_entries page join live on page.parent_id = live.id
-    )
+    )`
+  await sql`${live} update entries set taken_down_at = now() from live where entries.id = live.id`.execute(trx)
+  const { rows } = await sql<{ id: string }>`${live}
     delete from published_entries using live where published_entries.id = live.id returning published_entries.id
   `.execute(trx)
   await addEntryEvents(trx, 'entry.unpublished', rows)
@@ -122,7 +128,14 @@ async function restore(trx: Kysely<Database>, row: { id: string; parent_id: stri
 
 // Makes what was just saved the entry's live copy, and has the live pages under it follow its live uri, which comes
 // from its live parents' slugs. A page goes live only under a live parent that isn't under it on the live site.
-async function goLive(trx: Kysely<Database>, type: ContentType, row: EntryRow, version: number, user: string) {
+async function goLive(
+  trx: Kysely<Database>,
+  type: ContentType,
+  row: EntryRow,
+  version: number,
+  user: string,
+  via?: Via,
+) {
   let uri = row.uri
   if (type.structure === 'hierarchical') {
     // One publish of the type at a time, so two can't each put a page under the other
@@ -164,13 +177,27 @@ async function goLive(trx: Kysely<Database>, type: ContentType, row: EntryRow, v
     .values({ id: row.id, ...live })
     .onConflict((oc) => oc.column('id').doUpdateSet(live))
     .execute()
-  // So each version records the last time it went live
+  // So each version records the last time it went live, and how
   await trx
     .updateTable('entry_versions')
-    .set({ published_at: sql`now()`, published_by: user })
+    .set({
+      published_at: sql`now()`,
+      published_by: user,
+      published_chat_id: via?.chat ?? null,
+      published_token_id: via?.token ?? null,
+    })
     .where('entry_id', '=', row.id)
     .where('number', '=', version)
     .execute()
+  // A person's publish ends a person's take-down, and a token's never does
+  if (!via?.token) {
+    await trx
+      .updateTable('entries')
+      .set({ taken_down_at: null })
+      .where('id', '=', row.id)
+      .where('taken_down_at', 'is not', null)
+      .execute()
+  }
 
   const moved = type.structure === 'hierarchical' ? await followUri(trx, 'published_entries', row.id) : []
   await addEntryEvents(trx, 'entry.published', [row, ...moved])
@@ -184,10 +211,15 @@ export async function findEntry(db: Kysely<Database>, types: Map<string, Content
   return { row, type }
 }
 
+// The assistant's chat or the MCP token behind a save or a publish, with the chat's title or the token's name, or no
+// name once the chat is deleted
+const viaOf = (chat: string | null, title: string | null, token: string | null, name: string | null) =>
+  chat ? { kind: 'chat' as const, id: chat, name: title } : token ? { kind: 'token' as const, id: token, name } : null
+
 // An entry's versions, newest first, or the one with the given number: its name, who saved it and when, and when it
 // last went live and who published it then. Only saves and publishes record a user, so a version with none was saved
-// or published by a user deleted since. via is the assistant's chat or the MCP token it was saved through, with the
-// chat's title or the token's name, or no name once the chat is deleted.
+// or published by a user deleted since. via is the assistant's chat or the MCP token it was saved through, and
+// publishedVia the one its last publish came through.
 export async function listVersions(db: Kysely<Database>, id: string, number?: number) {
   const rows = await db
     .selectFrom('entry_versions')
@@ -195,6 +227,8 @@ export async function listVersions(db: Kysely<Database>, id: string, number?: nu
     .leftJoin('users as publisher', 'publisher.id', 'entry_versions.published_by')
     .leftJoin('chats', 'chats.id', 'entry_versions.chat_id')
     .leftJoin('personal_tokens as token', 'token.id', 'entry_versions.token_id')
+    .leftJoin('chats as published_chat', 'published_chat.id', 'entry_versions.published_chat_id')
+    .leftJoin('personal_tokens as published_token', 'published_token.id', 'entry_versions.published_token_id')
     .select([
       'number',
       'entry_versions.name',
@@ -202,8 +236,12 @@ export async function listVersions(db: Kysely<Database>, id: string, number?: nu
       'entry_versions.published_at',
       'entry_versions.chat_id',
       'entry_versions.token_id',
+      'entry_versions.published_chat_id',
+      'entry_versions.published_token_id',
       'chats.title as chat_title',
       'token.name as token_name',
+      'published_chat.title as published_chat_title',
+      'published_token.name as published_token_name',
       'saver.id as saver_id',
       'saver.name as saver_name',
       'publisher.id as publisher_id',
@@ -220,11 +258,13 @@ export async function listVersions(db: Kysely<Database>, id: string, number?: nu
     createdAt: version.created_at,
     publishedAt: version.published_at,
     publishedBy: version.publisher_id ? { id: version.publisher_id, name: version.publisher_name } : null,
-    via: version.chat_id
-      ? { kind: 'chat' as const, id: version.chat_id, name: version.chat_title }
-      : version.token_id
-        ? { kind: 'token' as const, id: version.token_id, name: version.token_name }
-        : null,
+    via: viaOf(version.chat_id, version.chat_title, version.token_id, version.token_name),
+    publishedVia: viaOf(
+      version.published_chat_id,
+      version.published_chat_title,
+      version.published_token_id,
+      version.published_token_name,
+    ),
   }))
 }
 
@@ -280,6 +320,9 @@ export interface SaveOptions {
   pendingForms?: Array<string>
   // Runs every check and write, then takes them all back, for checking a proposal
   dryRun?: boolean
+  // Runs in the save's transaction once an existing entry is locked, before anything is written, such as to check
+  // it's still as it was read
+  before?: (trx: Kysely<Database>, existing: EntryRow) => Promise<void>
   // Runs in the save's transaction once it's written, with the version it wrote, or the current one when nothing
   // changed, such as to claim the proposal it applies
   during?: (trx: Kysely<Database>, version: number) => Promise<void>
@@ -417,7 +460,7 @@ export function entrySaver(
     publish: boolean,
     sent: (saved?: EntryRow) => { values: unknown; parentId: string | null },
     id?: string,
-    { via, newId, pendingForms, dryRun, during }: SaveOptions = {},
+    { via, newId, pendingForms, dryRun, before, during }: SaveOptions = {},
   ): Promise<
     | { id: string; version: number; report?: undefined }
     | { id?: undefined; version?: undefined; report: ValidationReport }
@@ -437,6 +480,7 @@ export function entrySaver(
             : undefined
         if (id !== undefined && existing?.type !== type.name) throw new HTTPException(404)
         if (existing?.archived_at) throw new HTTPException(409, { message: archived })
+        if (existing) await before?.(trx, existing)
 
         const { values: posted, parentId } = sent(existing)
         const parent = parentId === null ? undefined : await checkParent(trx, type, parentId, existing?.id)
@@ -463,7 +507,7 @@ export function entrySaver(
           isDeepStrictEqual(JSON.parse(JSON.stringify(values)), existing.values)
         ) {
           if (publish && (status.published_version ?? 0) < status.version) {
-            await goLive(trx, type, existing, status.version, user)
+            await goLive(trx, type, existing, status.version, user, via)
           }
           return done(trx, { id: existing.id, version: status.version })
         }
@@ -524,7 +568,7 @@ export function entrySaver(
           await addEntryEvents(trx, 'entry.updated', await followUri(trx, 'entries', row.id))
         }
 
-        if (publish) await goLive(trx, type, row, number, user)
+        if (publish) await goLive(trx, type, row, number, user, via)
 
         // The newest versions up to the cap, so the current one stays, besides the named ones and the live one. The
         // name is checked again on each row as it's deleted, so a version named meanwhile stays.

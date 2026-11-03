@@ -88,8 +88,8 @@ const sampleFiles: Array<Media> = [
 ]
 
 // Seven versions, newest first, a day apart, one of them saved by a user deleted since. Version 5, the live one in the
-// changed entry's panels, is named and went live an hour after it was saved, and so did version 3, by someone since
-// deleted. Version 7 was saved through an MCP token, and version 6 with the assistant.
+// changed entry's panels, is named and went live through an MCP token an hour after it was saved, and so did version
+// 3, by someone since deleted. Version 7 was saved through an MCP token, and version 6 with the assistant.
 const sampleVersions: Array<Version> = [7, 6, 5, 4, 3, 2, 1].map((number) => ({
   number,
   name: { 5: 'Launch copy', 3: 'Before the rebrand' }[number] ?? null,
@@ -103,6 +103,7 @@ const sampleVersions: Array<Version> = [7, 6, 5, 4, 3, 2, 1].map((number) => ({
       : number === 6
         ? { kind: 'chat' as const, id: 'chat-1', name: 'Fix the typos in the launch post' }
         : null,
+  publishedVia: number === 5 ? { kind: 'token' as const, id: 'tok_sample', name: 'Claude Desktop' } : null,
 }))
 
 // Two versions of a post for the comparison: a text and a box changed, a long text reworded, a field in a group, a

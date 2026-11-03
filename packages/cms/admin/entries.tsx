@@ -718,6 +718,8 @@ export interface Version {
   // The assistant's chat or the MCP token it was saved through, with the chat's title, null once it's deleted, or the
   // token's name
   via: { kind: 'chat' | 'token'; id: string; name: string | null } | null
+  // The one its last publish came through, or null for a publish in the editor
+  publishedVia: Version['via']
 }
 
 // How a version was saved besides who saved it, such as through Claude Desktop, or with the assistant
@@ -766,7 +768,8 @@ export function Versions({
               </div>
               {drafts && version.publishedAt && (
                 <div className='cms-versions__by'>
-                  Published by {version.publishedBy?.name ?? 'Deleted user'} · {shortDate(version.publishedAt, false)}
+                  Published by {version.publishedBy?.name ?? 'Deleted user'}
+                  {viaText(version.publishedVia)} · {shortDate(version.publishedAt, false)}
                 </div>
               )}
             </div>

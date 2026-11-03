@@ -1,4 +1,4 @@
-import type { DeliveryOptions, FormOptions, MediaOptions, Storage, VersionOptions } from '.'
+import type { DeliveryOptions, FormOptions, McpOptions, MediaOptions, Storage, VersionOptions } from '.'
 import type { AiProvider } from './ai'
 import { automationRoutes } from './automations'
 import { chatRoutes } from './chats'
@@ -54,8 +54,8 @@ export interface AppOptions {
   versions?: VersionOptions
   // The built admin's folder, which iight start serves at /admin/. iight dev serves the admin with Vite instead.
   admin?: string
-  // Whether /mcp and the admin's MCP tokens page are on
-  mcp?: boolean
+  // Whether /mcp and the admin's MCP tokens page are on, and with publish, whether tokens can be given Publish changes
+  mcp?: boolean | McpOptions
   // The model provider for the admin's assistant and Chat page, which are off without one
   ai?: AiProvider
 }
@@ -80,6 +80,7 @@ export function createApp(
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5 } = delivery ?? {}
+  const publish = typeof mcp === 'object' && mcp.publish === true
   const app = new Hono<AdminEnv>()
   // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
   const saver = editor && typeSaver(db, types, groups, editor)
@@ -199,7 +200,7 @@ export function createApp(
   app.use('/api/migrations/*', signedIn)
   if (mcp) app.use('/api/tokens/*', signedIn)
   if (ai) app.use('/api/chats/*', signedIn)
-  app.route('/api', typeRoutes(types, groups, saver, { mcp, ai: !!ai }))
+  app.route('/api', typeRoutes(types, groups, saver, { mcp: !!mcp && { publish }, ai: !!ai }))
   app.route('/api', entryRoutes(db, types, migrations, versions))
   // Migrations run from the admin only where the type editor is, in iight dev (PLAN.md section 6)
   app.route(
@@ -213,8 +214,8 @@ export function createApp(
 
   // AI clients read the site's content as a person, with a token that person made (PLAN.md section 21)
   if (mcp) {
-    app.route('/api', tokenRoutes(db))
-    app.route('/', mcpRoutes(db, types, migrations, versions, storage))
+    app.route('/api', tokenRoutes(db, publish))
+    app.route('/', mcpRoutes(db, types, migrations, versions, storage, publish))
   }
 
   // The admin's assistant reads the same way, with the site's own model (PLAN.md section 21)

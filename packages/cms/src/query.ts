@@ -71,6 +71,8 @@ export const toAdminEntry = (row: StatusRow) => ({
   createdBy: row.created_by,
   updatedBy: row.updated_by,
   status: !row.published_version ? 'draft' : row.version! > row.published_version ? 'changed' : 'published',
+  // Its newest version's number, null before its first save, which a publish through a token gives back
+  version: row.version,
   publishedVersion: row.published_version,
 })
 

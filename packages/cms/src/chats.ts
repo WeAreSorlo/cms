@@ -146,8 +146,8 @@ const specOf = (tool: Tool) => {
 }
 
 // The tools offered with the type editor on, or without it, in tools.ts's order, which never changes in a process, so
-// they cache
-const offeredTools = (editable: boolean) => tools.filter((tool) => editable || !tool.editorOnly)
+// they cache. None publishes, since here only the person's Apply and publish does.
+const offeredTools = (editable: boolean) => tools.filter((tool) => !tool.publishes && (editable || !tool.editorOnly))
 
 // The tools as the provider is given them without the type editor, as outside iight dev
 export const toolSpecs = offeredTools(false).map(specOf)

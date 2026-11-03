@@ -18,10 +18,17 @@ export interface Config {
   versions?: VersionOptions
   // Turns on /mcp, where AI clients such as Claude Code read the site's content as a person, with a token from the
   // admin's MCP tokens page. Off if not given.
-  mcp?: boolean
+  mcp?: boolean | McpOptions
   // Turns on the admin's assistant and its Chat page, which read the site's content with a model from this provider,
   // billed to its account. Off if not given.
   ai?: AiOptions
+}
+
+// What MCP tokens can be given besides reading and Save drafts (PLAN.md section 21)
+export interface McpOptions {
+  // Lets people give their tokens Publish changes, so their AI clients' changes go live on the site at once, with no
+  // one reviewing them in the admin. Off if not given.
+  publish?: boolean
 }
 
 // The model the admin's assistant uses

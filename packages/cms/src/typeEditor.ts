@@ -401,9 +401,9 @@ export function typeRoutes(
   types: Map<string, ContentType>,
   groups = new Map<string, SharedGroup>(),
   saver?: TypeSaver,
-  // Whether /mcp and the assistant are on, which the admin reads here with editable, since the shell waits for this
-  // reply
-  { mcp = false, ai = false } = {},
+  // Whether /mcp, with whether tokens can publish, and the assistant are on, which the admin reads here with editable,
+  // since the shell waits for this reply
+  { mcp = false, ai = false }: { mcp?: false | { publish: boolean }; ai?: boolean } = {},
 ) {
   const app = new Hono<AdminEnv>()
 

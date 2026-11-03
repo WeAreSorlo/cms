@@ -85,7 +85,7 @@ test('publishing copies the draft to the live site, which keeps it as the draft 
     publishedVersion: 2,
     values: { title: 'Hello world' },
   })
-  const { archivedAt, createdBy, updatedBy, status, publishedVersion, ...delivered } = published
+  const { archivedAt, createdBy, updatedBy, status, version, publishedVersion, ...delivered } = published
   expect((await deliver(`/entries/blog/${draft.id}`)).body.data).toEqual(delivered)
 
   // A draft save leaves the live copy as it was, its updatedAt included

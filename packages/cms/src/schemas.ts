@@ -34,11 +34,31 @@ export const apiKeySchema: Array<FieldSchema> = [
   },
 ]
 
-// What a personal token can do besides reading (PLAN.md section 21)
-export const tokenScopes = [{ value: 'drafts', label: 'Save drafts' }]
+// What a personal token can do besides reading (PLAN.md section 21). Publish changes comes with Save drafts, and only
+// where the site's config lets tokens publish.
+export const tokenScopes = [
+  { value: 'drafts', label: 'Save drafts' },
+  { value: 'publish', label: 'Publish changes' },
+]
+
+// A personal token's permissions, asked for when it's made and on its page after, with Publish changes only where the
+// site allows it
+export const tokenScopesField = (publish: boolean): FieldSchema => ({
+  name: 'scopes',
+  label: 'Permissions',
+  type: 'checkbox',
+  instructions:
+    "Every token reads the site's content as you. Save drafts also saves changes to entries as drafts, and makes " +
+    'new forms that take no submissions until someone opens them. ' +
+    (publish
+      ? 'Publish changes also puts changes on the live site, and includes Save drafts. Neither unpublishes, archives ' +
+        'or deletes anything.'
+      : 'It never publishes, archives or deletes anything.'),
+  options: { choices: publish ? tokenScopes : tokenScopes.filter(({ value }) => value !== 'publish') },
+})
 
 // A personal token's name and permissions, asked for on the admin's MCP tokens page, whose routes check them
-export const tokenSchema: Array<FieldSchema> = [
+export const tokenSchema = (publish: boolean): Array<FieldSchema> => [
   {
     name: 'name',
     label: 'Name',
@@ -47,15 +67,7 @@ export const tokenSchema: Array<FieldSchema> = [
     instructions: 'Such as the client and the computer it runs on, so you know which token to revoke.',
     options: { maxLength: 100, placeholder: 'Claude Code on my laptop' },
   },
-  {
-    name: 'scopes',
-    label: 'Permissions',
-    type: 'checkbox',
-    instructions:
-      "Every token reads the site's content as you. Save drafts also saves changes to entries as drafts, and makes " +
-      'new forms that take no submissions until someone opens them. It never publishes, archives or deletes anything.',
-    options: { choices: tokenScopes },
-  },
+  tokenScopesField(publish),
 ]
 
 // A chat's name, edited on the admin's Chat page and checked by PUT /api/chats/:id

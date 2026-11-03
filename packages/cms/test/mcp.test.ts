@@ -75,7 +75,8 @@ test("without mcp in the config there's no /mcp, no tokens and no flag for the a
   expect(await (await off.request('/mcp', { method: 'POST' })).json()).toEqual({ message: 'Not Found' })
   expect(await admin('GET', '/tokens', undefined, cookie, off)).toEqual({ status: 404, body: { message: 'Not Found' } })
   expect((await admin('GET', '/types', undefined, cookie, off)).body.mcp).toBe(false)
-  expect((await admin('GET', '/types')).body.mcp).toBe(true)
+  // On, with whether tokens can be given Publish changes
+  expect((await admin('GET', '/types')).body.mcp).toEqual({ publish: false })
 })
 
 test('each person makes, lists and revokes their own tokens, and only the reply that makes one holds it', async () => {

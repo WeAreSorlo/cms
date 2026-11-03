@@ -217,6 +217,7 @@ test('a version can be named, renamed and have its name cleared', async () => {
         publishedAt: null,
         publishedBy: null,
         via: null,
+        publishedVia: null,
       },
     },
   })

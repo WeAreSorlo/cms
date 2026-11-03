@@ -6,7 +6,7 @@ import { bearerOf, markUsed } from './delivery'
 import type { AdminEnv } from './entries'
 import { origin } from './media'
 import { hashToken } from './passwords'
-import { tokenSchema, tokenScopes } from './schemas'
+import { tokenSchema, tokenScopes, tokenScopesField } from './schemas'
 import { callTool, instructions, tools } from './tools'
 import type { ContentType } from './types'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -18,8 +18,8 @@ import { randomBytes } from 'node:crypto'
 import { createRequire } from 'node:module'
 
 // The MCP server at /mcp, where AI clients such as Claude Code, Cursor and VS Code read the site's content through the
-// CMS's tools, and with Save drafts change it, with the personal tokens people make on the admin's MCP tokens page
-// (PLAN.md section 21)
+// CMS's tools, with Save drafts change it, and with Publish changes publish it, with the personal tokens people make on
+// the admin's MCP tokens page (PLAN.md section 21)
 
 const { version } = createRequire(import.meta.url)('../package.json')
 
@@ -40,10 +40,16 @@ const toToken = (row: {
 
 const columns = ['id', 'name', 'scopes', 'created_at', 'last_used_at'] as const
 
+// The scopes a token is saved with: those sent, in order, where Publish changes brings Save drafts with it
+const scopesOf = (sent: Array<string> = []) =>
+  tokenScopes
+    .map(({ value }) => value)
+    .filter((scope) => sent.includes(scope) || (scope === 'drafts' && sent.includes('publish')))
+
 // The admin's MCP tokens page, where each person manages their own tokens. Someone else's token replies as one that
 // doesn't exist does. Revoking a token marks it revoked, so it's refused from then on, and the versions saved through
-// it keep its name.
-export function tokenRoutes(db: Kysely<Database>) {
+// it keep its name. Publish changes is on offer only where the site allows it.
+export function tokenRoutes(db: Kysely<Database>, publish = false) {
   const app = new Hono<AdminEnv>()
 
   app.get('/tokens', async (c) => {
@@ -59,19 +65,42 @@ export function tokenRoutes(db: Kysely<Database>) {
   })
 
   app.post('/tokens', async (c) => {
-    const values = pickValues(tokenSchema, (await c.req.json().catch(() => null)) ?? {}, inputs)
-    const report = await validateServerValues(tokenSchema, values, inputs)
+    const schema = tokenSchema(publish)
+    const values = pickValues(schema, (await c.req.json().catch(() => null)) ?? {}, inputs)
+    const report = await validateServerValues(schema, values, inputs)
     if (!report.isValid) return c.json(report, 422)
 
     // A prefix of its own, so neither people nor secret scanners take it for an API key's iight_
     const token = `iightpat_${randomBytes(32).toString('base64url')}`
-    const scopes = tokenScopes.map(({ value }) => value).filter((scope) => values.scopes?.includes(scope))
+    const scopes = scopesOf(values.scopes)
     const row = await db
       .insertInto('personal_tokens')
       .values({ id: uuidv7(), user_id: c.var.user.id, name: values.name, token_hash: hashToken(token), scopes })
       .returning(columns)
       .executeTakeFirstOrThrow()
     return c.json({ data: { ...toToken(row), token } }, 201)
+  })
+
+  // Change a token's permissions. Its name stays, since the versions saved and published through it show its name.
+  app.put('/tokens/:id', async (c) => {
+    const schema = [tokenScopesField(publish)]
+    const values = pickValues(schema, (await c.req.json().catch(() => null)) ?? {}, inputs)
+    const report = await validateServerValues(schema, values, inputs)
+    if (!report.isValid) return c.json(report, 422)
+
+    const id = c.req.param('id')
+    const row =
+      isUuid(id) &&
+      (await db
+        .updateTable('personal_tokens')
+        .set({ scopes: scopesOf(values.scopes) })
+        .where('id', '=', id)
+        .where('user_id', '=', c.var.user.id)
+        .where('revoked_at', 'is', null)
+        .returning(columns)
+        .executeTakeFirst())
+    if (!row) throw new HTTPException(404)
+    return c.json({ data: toToken(row) })
   })
 
   app.delete('/tokens/:id', async (c) => {
@@ -95,7 +124,8 @@ export function tokenRoutes(db: Kysely<Database>) {
 // The MCP server, over Streamable HTTP. It's stateless: each request gets a server and a transport of its own, which
 // reply with JSON, so nothing is kept between requests and any process can answer. The tools never send anything
 // unprompted, so there's no stream to open, and only POST is taken. A token with Save drafts also gets the write
-// tools, which save as soon as they're called, since the client's own approval prompt is the check.
+// tools, which save as soon as they're called, since the client's own approval prompt is the check, and one with
+// Publish changes, where the site allows it, the tools that publish.
 // No Origin check, which the spec asks of servers against DNS rebinding: every request needs a token, which a page on
 // another site has no way to send.
 export function mcpRoutes(
@@ -104,6 +134,7 @@ export function mcpRoutes(
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
   versions?: VersionOptions,
   storage?: Storage,
+  publish = false,
 ) {
   const app = new Hono()
 
@@ -134,6 +165,8 @@ export function mcpRoutes(
 
     const { token, scopes, ...user } = found
     const writes = scopes.includes('drafts')
+    // Only while the site allows it, so turning it off stops every token publishing at once
+    const publishes = writes && publish && scopes.includes('publish')
     const context = {
       db,
       types,
@@ -142,20 +175,25 @@ export function mcpRoutes(
       origin: origin(c),
       versions,
       storage,
-      ...(writes && { writes: { token } }),
+      ...(writes && { writes: { token, ...(publishes && { publish: true }) } }),
     }
-    const server = new McpServer({ name: 'iight', version }, { instructions: instructions(writes) })
+    const access = publishes ? 'publish' : writes ? 'drafts' : 'read'
+    const server = new McpServer({ name: 'iight', version }, { instructions: instructions(access) })
     // A file's details change on the site once applied, which over MCP has no one to apply them
-    for (const tool of tools.filter((tool) => !tool.assistantOnly && (writes || !tool.changes))) {
+    const offered = tools.filter(
+      (tool) => !tool.assistantOnly && (writes || !tool.changes) && (publishes || !tool.publishes),
+    )
+    for (const tool of offered) {
       const config = {
         description: tool.description,
         inputSchema: tool.input,
+        // What publishes leaves the CMS at once, for the live site, the delivery API and automations
         annotations: tool.changes
           ? {
               readOnlyHint: false,
               destructiveHint: tool.changes.destructive,
               idempotentHint: tool.changes.idempotent,
-              openWorldHint: false,
+              openWorldHint: !!tool.publishes,
             }
           : { readOnlyHint: true, openWorldHint: false },
       }

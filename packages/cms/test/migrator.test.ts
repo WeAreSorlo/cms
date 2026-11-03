@@ -138,6 +138,8 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_11_02_000022_add_type_proposals',
     '2026_11_02_000023_create_rebuilds_table',
     '2026_11_03_000024_add_chat_message_files',
+    '2026_11_03_000025_add_published_via',
+    '2026_11_03_000026_add_entry_take_downs',
   ])
 
   await migrate(db, migrations)
@@ -404,4 +406,42 @@ test("the migration for content types' proposals keeps every proposal's target, 
   expect(columns?.find((column) => column.name === 'target_id')?.dataType).toBe('uuid')
   expect(columns?.map((column) => column.name)).not.toContain('wrote')
   expect(await db.selectFrom('proposals').select('target_id').execute()).toEqual([{ target_id: entry }])
+})
+
+test('the migration that records take-downs marks every entry that was live and is no longer', async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const takeDowns = '2026_11_03_000026_add_entry_take_downs'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < takeDowns)))
+
+  // Live, taken down after it was live, and never live
+  const entry = (slug: string) => ({ id: uuidv7(), type: 'blog', values: {}, slug })
+  const [live, down, draft] = [entry('live'), entry('down'), entry('draft')]
+  await db.insertInto('entries').values([live, down, draft]).execute()
+  const version = (of: { id: string }, published: boolean) => ({
+    entry_id: of.id,
+    number: 1,
+    values: {},
+    published_at: published ? new Date() : null,
+  })
+  await db
+    .insertInto('entry_versions')
+    .values([version(live, true), version(down, true), version(draft, false)])
+    .execute()
+  const now = new Date()
+  await db
+    .insertInto('published_entries')
+    .values({ id: live.id, type: 'blog', values: {}, slug: 'live', created_at: now, updated_at: now, version: 1 })
+    .execute()
+
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name <= takeDowns)))
+  const marks = await db.selectFrom('entries').select(['slug', 'taken_down_at']).orderBy('slug').execute()
+  expect(marks).toEqual([
+    { slug: 'down', taken_down_at: expect.any(Date) },
+    { slug: 'draft', taken_down_at: null },
+    { slug: 'live', taken_down_at: null },
+  ])
+
+  expect(await rollback(db, migrations)).toEqual([takeDowns])
+  const columns = (await db.introspection.getTables()).find((table) => table.name === 'entries')?.columns
+  expect(columns?.map((column) => column.name)).not.toContain('taken_down_at')
 })

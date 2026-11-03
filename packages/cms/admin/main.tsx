@@ -109,7 +109,8 @@ function Page({
   types: Map<string, ContentType>
   groups: Map<string, SharedGroup>
   editable: boolean
-  mcp: boolean
+  // Whether /mcp is on, with whether tokens can be given Publish changes
+  mcp: false | { publish: boolean }
   ai: boolean
   reloadTypes: () => Promise<Map<string, ContentType>>
 }) {
@@ -157,9 +158,9 @@ function Page({
   if (section === 'keys' && name === 'new') return <KeyEditor key='new' />
   if (section === 'keys' && name) return <KeyPage key={name} id={name} />
   if (section === 'keys') return <KeyList />
-  if (mcp && section === 'tokens' && name === 'new') return <TokenForm key='new' />
-  if (mcp && section === 'tokens' && name) return <TokenPage key={name} id={name} />
-  if (mcp && section === 'tokens') return <TokenList />
+  if (mcp && section === 'tokens' && name === 'new') return <TokenForm key='new' publish={mcp.publish} />
+  if (mcp && section === 'tokens' && name) return <TokenPage key={name} id={name} publish={mcp.publish} />
+  if (mcp && section === 'tokens') return <TokenList publish={mcp.publish} />
   if (section === 'entries' && name && action === 'versions' && ids) {
     return <VersionPage key={hash} id={name} number={Number(ids)} types={types} />
   }
@@ -180,8 +181,8 @@ function App() {
   const [types, setTypes] = useState<Map<string, ContentType>>()
   const [groups, setGroups] = useState(new Map<string, SharedGroup>())
   const [editable, setEditable] = useState(false)
-  // Whether /mcp is on, and with it the MCP tokens page
-  const [mcp, setMcp] = useState(false)
+  // Whether /mcp is on, and with it the MCP tokens page, and whether tokens can be given Publish changes
+  const [mcp, setMcp] = useState<false | { publish: boolean }>(false)
   // Whether the assistant is on, and with it the Chat page
   const [ai, setAi] = useState(false)
 
@@ -233,7 +234,7 @@ function App() {
           types={types}
           user={user}
           editable={editable}
-          mcp={mcp}
+          mcp={!!mcp}
           ai={ai}
           onSignOut={signOut}
           onTypes={reloadTypes}

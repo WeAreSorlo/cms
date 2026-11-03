@@ -233,7 +233,10 @@ test('a token without Save drafts only reads, and one with it saves drafts as it
 
   const writing = await connect(app, writer.token)
   const listed = (await writing.listTools()).tools
-  expect(listed.map((tool) => tool.name)).toEqual(tools.filter((tool) => !tool.assistantOnly).map((tool) => tool.name))
+  // The write tools, and none that publishes, which needs Publish changes
+  expect(listed.map((tool) => tool.name)).toEqual(
+    tools.filter((tool) => !tool.assistantOnly && !tool.publishes).map((tool) => tool.name),
+  )
   expect(listed.find((tool) => tool.name === 'create_entry')!.annotations).toEqual({
     readOnlyHint: false,
     destructiveHint: false,
@@ -505,8 +508,10 @@ test('find and replace proposes each entry it changes, exactly as written, and A
     .values({ id: token, user_id: userId, name: 'Cursor', token_hash: hashToken(token), scopes: ['drafts'] })
     .execute()
   const saved = await asToken(token, 'replace_text', { find: 'Private preview', replace: 'Public beta' })
-  expect(saved.data).toEqual([{ id: capital, title: 'Public beta questions', replaced: 1 }])
-  expect((await versionsOf(capital)).at(-1)).toMatchObject({ token_id: token })
+  // With the version each save wrote, which a token with Publish changes publishes with
+  const written = (await versionsOf(capital)).at(-1)!
+  expect(written).toMatchObject({ token_id: token })
+  expect(saved.data).toEqual([{ id: capital, title: 'Public beta questions', replaced: 1, version: written.number }])
   expect((await asToken(token, 'replace_text', { find: 'nowhere', replace: 'somewhere' })).note).toBe(
     "No entry's text holds “nowhere” exactly as written.\n\n" +
       'Left out Notices, which have no drafts, so their saves go live at once.',
@@ -588,6 +593,11 @@ test('Apply and publish makes the whole draft live as the editor publishes it, a
   const live = await db.selectFrom('published_entries').selectAll().where('id', '=', id).executeTakeFirstOrThrow()
   expect(live).toMatchObject({ version: 3, values: expect.objectContaining({ title: 'Edited, not live', views: 7 }) })
   expect((await versionsOf(id))[2]).toMatchObject({ number: 3, chat_id: chat, published_by: userId })
+  // The publish says it came with the assistant, as the save does
+  expect((await admin(app, 'GET', `/entries/${id}/versions`)).body.data[0]).toMatchObject({
+    via: { kind: 'chat', id: chat },
+    publishedVia: { kind: 'chat', id: chat },
+  })
 
   await ask(app, chat, 'Thanks')
   expect(requests.at(-1)!.messages.at(-1)!.content[0].text).toContain(
