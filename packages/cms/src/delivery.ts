@@ -10,6 +10,7 @@ import { apiKeySchema, apiKeyScopes } from './schemas'
 import type { ContentType } from './types'
 import { maker } from './users'
 import { Context, Hono, MiddlewareHandler } from 'hono'
+import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, sql } from 'kysely'
 import { randomBytes } from 'node:crypto'
@@ -161,11 +162,14 @@ type DeliveryEnv = { Variables: { draft: boolean } }
 export function deliveryRoutes(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
-  delivery: Required<DeliveryOptions>,
+  delivery: DeliveryOptions & { depth: number; maxDepth: number; maxLinks: number },
 ) {
-  const { depth, maxDepth } = delivery
+  const { depth, maxDepth, maxLinks, origins } = delivery
   if (![depth, maxDepth].every(Number.isInteger) || depth < 1 || depth > maxDepth) {
     throw new Error('delivery in iight.config.ts needs a whole number depth from 1 to its maxDepth.')
+  }
+  if (maxLinks !== Infinity && !(Number.isInteger(maxLinks) && maxLinks >= 1)) {
+    throw new Error('delivery.maxLinks in iight.config.ts needs a whole number from 1, or Infinity for no limit.')
   }
 
   const app = new Hono<DeliveryEnv>()
@@ -190,7 +194,12 @@ export function deliveryRoutes(
     await next()
   }
 
-  // The public form routes share /v1, so the check names these routes' paths
+  // Any site's JavaScript can read them, unless iight.config.ts names the sites that can. Ahead of the key, as a browser
+  // asks first without one. Keys go in a header, never a cookie, so a site gets nothing a visitor's session could give.
+  const crossSite = cors({ origin: origins ?? '*', allowMethods: ['GET'] })
+  // The public form routes share /v1, so these name their paths
+  app.use('/entries/*', crossSite)
+  app.use('/media/*', crossSite)
   app.use('/entries/*', key)
   app.use('/media/*', key)
 
@@ -203,7 +212,9 @@ export function deliveryRoutes(
   // Entries as the delivery API returns them, with the links resolved that the request's with names
   const withLinks = (c: Context<DeliveryEnv>, resolving: ReturnType<typeof parseWith>, rows: Array<Delivered>) => {
     const found = rows.map(toEntry)
-    return resolving ? resolveLinks(db, types, origin(c), found, resolving.names, resolving.depth, c.var.draft) : found
+    return resolving
+      ? resolveLinks(db, types, origin(c), found, resolving.names, resolving.depth, maxLinks, c.var.draft)
+      : found
   }
 
   // One entry, replied as { data }, or a 404. Only top-level entries have unique slugs.

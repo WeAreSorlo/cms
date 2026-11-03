@@ -1,9 +1,10 @@
 import { hashToken, verifyPassword } from '../src/passwords'
 import { db, url } from './database'
 import { setUp } from './fixtures'
-import { execFile } from 'node:child_process'
+import { ChildProcess, execFile, spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { AddressInfo, createServer } from 'node:net'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -130,3 +131,67 @@ test('migrate refuses a waiting migration with a TODO left, running nothing', as
     await rm(dir, { recursive: true })
   }
 }, 30_000)
+
+// A port nothing listens on yet
+const freePort = () =>
+  new Promise<number>((resolve) => {
+    const server = createServer().listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as AddressInfo
+      server.close(() => resolve(port))
+    })
+  })
+
+test("dev listens on 127.0.0.1 unless HOST names another address, and other sites can't frame its admin", async () => {
+  await setUp()
+  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await mkdir(join(dir, 'schema/types'), { recursive: true })
+  await mkdir(join(dir, 'migrations'), { recursive: true })
+  const running: Array<ChildProcess> = []
+
+  // iight dev on a free port, with HOST or without, once it says where the admin is
+  const dev = async (host?: string) => {
+    const port = await freePort()
+    const { HOST, ...env } = process.env
+    const child = spawn(process.execPath, [bin, 'dev'], { cwd: dir, env: { ...env, PORT: String(port), HOST: host } })
+    running.push(child)
+    await new Promise((resolve, reject) => {
+      child.stdout.on('data', (data) => String(data).includes('The admin is running') && resolve(undefined))
+      child.once('exit', (code) => reject(new Error(`iight dev stopped with ${code}`)))
+    })
+    return port
+  }
+
+  // The admin page's status and frame headers at an address, or refused when nothing listens there
+  const admin = async (address: string, port: number) => {
+    try {
+      const { status, headers } = await fetch(`http://${address}:${port}/admin/`)
+      return `${status}, ${headers.get('x-frame-options')}, ${headers.get('content-security-policy')}`
+    } catch {
+      return 'refused'
+    }
+  }
+
+  // This machine's address on its network, if it has one, which a server on every address would answer at
+  const lan = Object.values(networkInterfaces())
+    .flat()
+    .find((info) => info?.family === 'IPv4' && !info.internal)?.address
+
+  try {
+    // Without HOST, or with the empty one a .env can leave
+    for (const host of [undefined, '']) {
+      const local = await dev(host)
+      expect(await admin('127.0.0.1', local)).toBe("200, DENY, frame-ancestors 'none'")
+      expect(await admin('[::1]', local)).toBe('refused')
+      if (lan) expect(await admin(lan, local)).toBe('refused')
+    }
+
+    const ipv6 = await dev('::1')
+    expect(await admin('[::1]', ipv6)).toBe("200, DENY, frame-ancestors 'none'")
+    expect(await admin('127.0.0.1', ipv6)).toBe('refused')
+  } finally {
+    for (const child of running) child.kill()
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)

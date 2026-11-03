@@ -6,7 +6,7 @@ import { type ContentMigrationFile, loadContentMigrations } from './content'
 import { Database } from './db'
 import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
 import { AdminEnv, entryRoutes } from './entries'
-import { formRoutes, publicFormRoutes } from './forms'
+import { formRoutes, proxyList, publicFormRoutes } from './forms'
 import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
 import { hashToken } from './passwords'
@@ -22,6 +22,10 @@ import { csrf } from 'hono/csrf'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely } from 'kysely'
 import { STATUS_CODES } from 'node:http'
+
+// What every reply under /admin/ carries, in both servers, so no other site can frame the admin and lay its own page
+// over the admin's buttons. X-Frame-Options is for browsers that don't know frame-ancestors.
+export const adminHeaders = { 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" }
 
 // What the server uses from the site project, besides its types
 export interface AppOptions {
@@ -56,6 +60,8 @@ export interface AppOptions {
   // and reset links are emailed only with both.
   url?: string
   mail?: MailOptions
+  // The networks of the proxies in front of the CMS, beyond loopback and private ones, from iight.config.ts
+  proxies?: Array<string>
 }
 
 export function createApp(
@@ -77,9 +83,10 @@ export function createApp(
     ai,
     url,
     mail,
+    proxies,
   }: AppOptions = {},
 ) {
-  const { depth = 2, maxDepth = 5 } = delivery ?? {}
+  const { depth = 2, maxDepth = 5, maxLinks = 2000 } = delivery ?? {}
   const publish = typeof mcp === 'object' && mcp.publish === true
   const app = new Hono<AdminEnv>()
   // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
@@ -90,8 +97,10 @@ export function createApp(
   if (url !== undefined && !/^https?:$/.test(site?.protocol ?? '')) {
     throw new Error("url in iight.config.ts needs to be the admin's address, such as https://cms.example.com.")
   }
+  // Whose X-Forwarded-For the form limit, the address a submission records and the people limits believe
+  const trusted = proxyList(proxies)
   // The limits sign-in and your account's current password share
-  const people = { url: site?.origin, mail, limits: peopleLimits() }
+  const people = { url: site?.origin, mail, limits: peopleLimits(), proxies: trusted }
 
   // Every error except a failed validation replies { message }, as Laravel does
   app.notFound((c) => c.json({ message: 'Not Found' }, 404))
@@ -115,6 +124,7 @@ export function createApp(
     // Each build names new files in the page, so browsers check for a new page every time
     app.use('/admin/*', async (c, next) => {
       await next()
+      for (const [name, value] of Object.entries(adminHeaders)) c.header(name, value)
       if (c.res.headers.get('content-type')?.startsWith('text/html')) c.header('Cache-Control', 'no-cache')
     })
     app.use('/admin/*', serveStatic({ root: admin, rewriteRequestPath: (path) => path.slice('/admin'.length) }))
@@ -202,8 +212,8 @@ export function createApp(
   // The admin's assistant reads the same way, with the site's own model (PLAN.md section 21)
   if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage, saver))
 
-  app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth }))
-  app.route('/v1', publicFormRoutes(db, forms))
+  app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth, maxLinks, origins: delivery?.origins }))
+  app.route('/v1', publicFormRoutes(db, forms, trusted))
 
   // What the delivery API returns and the forms take, as TypeScript, for `npx iight types pull`, to keys with the types
   // scope. Made for each request, since the type editor can change the types, and the admin the forms.

@@ -8,6 +8,10 @@ export interface Config {
   // The admin's public address, such as https://cms.example.com, which links in emails start from, since a request's
   // Host header can say anything. Invites and reset links are emailed only with this and mail set.
   url?: string
+  // The proxies in front of the CMS whose X-Forwarded-For is believed, as addresses and networks such as a CDN's
+  // 173.245.48.0/20, for the form limit, the address a submission records and the limits on signing in. Loopback and
+  // private networks always are.
+  proxies?: Array<string>
   // Where uploaded media is stored: FlyDrive's DriveManager options, whose services are the disks
   storage: Storage
   media?: MediaOptions
@@ -68,6 +72,12 @@ export interface DeliveryOptions {
   depth?: number
   // The most levels a request can ask for, 5 if not given. Each level can multiply the entries a reply holds.
   maxDepth?: number
+  // The sites whose JavaScript can read /v1/entries and /v1/media, such as https://example.com. Any site can if not
+  // given. A key in a site's pages is public anyway, and servers aren't browsers, so this never stops them.
+  origins?: Array<string>
+  // The most linked entries and files one reply can hold, counting each place it shows one, 2,000 if not given.
+  // Infinity lifts it, which we advise against: a few entries that link to each other can make a reply of gigabytes.
+  maxLinks?: number
 }
 
 // Who can use the public form routes, and how often
@@ -75,9 +85,12 @@ export interface FormOptions {
   // The sites whose JavaScript can call them, such as https://example.com. Any site can if not given. Plain HTML form
   // posts and servers aren't browsers' JavaScript, so this never stops them.
   origins?: Array<string>
-  // How many posts an IP address can make in a number of minutes, 10 in 10 if not given. Requests that send a
-  // delivery API key, as a site's own server can, aren't limited.
+  // How many posts an IP address can make in a number of minutes, 10 in 10 if not given. Requests that send an API key
+  // with the submit scope, as a site's own server can, aren't limited.
   rateLimit?: { posts?: number; minutes?: number }
+  // The most list items one post can hold in all, at any depth, 1,000 if not given, replying 413 past it. Infinity lifts
+  // it, which we advise against: anyone can post, and core checks every item of a list with no maximum.
+  maxItems?: number
 }
 
 // Sends email with the site's own library or service

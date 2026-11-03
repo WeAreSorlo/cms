@@ -1,4 +1,5 @@
 import type { FormOptions } from '.'
+import { networkList } from './actions'
 import { flattenValidationReport, inputs, isEmptyValue, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { keyOf } from './delivery'
@@ -299,36 +300,58 @@ function labelOf(fields: Array<FieldSchema>, path: string): string {
   return field.label ?? field.name
 }
 
-// The networks a proxy in front of the CMS connects from, such as a load balancer's private network
-const proxies = new BlockList()
+// Loopback and private networks, such as a load balancer's, whose proxies' X-Forwarded-For is always believed
+const privateNetworks = new BlockList()
 for (const [network, prefix] of [
   ['127.0.0.0', 8],
   ['10.0.0.0', 8],
   ['172.16.0.0', 12],
   ['192.168.0.0', 16],
 ] as const) {
-  proxies.addSubnet(network, prefix, 'ipv4')
+  privateNetworks.addSubnet(network, prefix, 'ipv4')
 }
-proxies.addAddress('::1', 'ipv6')
-proxies.addSubnet('fc00::', 7, 'ipv6')
+privateNetworks.addAddress('::1', 'ipv6')
+privateNetworks.addSubnet('fc00::', 7, 'ipv6')
 
-const isProxy = (address: string) =>
-  isIP(address) !== 0 && proxies.check(address, isIP(address) === 4 ? 'ipv4' : 'ipv6')
+// The networks iight.config.ts's proxies lists, such as a CDN's, whose X-Forwarded-For is believed for one hop. One that
+// holds every address believes whoever connects, which a site behind a host that publishes no addresses may choose, so
+// it's taken with a warning.
+export function proxyList(proxies: Array<string> = []) {
+  const { list, wide } = networkList('proxies', proxies, '173.245.48.0/20')
+  for (const { network } of wide) {
+    console.warn(
+      `proxies in iight.config.ts has ${network}, which holds every address, so whoever connects can name any address ` +
+        'in X-Forwarded-For. List it only if nothing reaches the CMS except through your proxies.',
+    )
+  }
+  return list
+}
 
-// The address a request came from. Anyone can send X-Forwarded-For, so it's only believed from a proxy on one of those
-// networks, taking the last address it doesn't run itself.
-// shortcut: a proxy on a public address, such as a CDN's, counts as the sender; add a setting for proxies when a site
-// needs one
-export function clientIp(c: Context) {
+const within = (list: BlockList, address: string) =>
+  isIP(address) !== 0 && list.check(address, isIP(address) === 4 ? 'ipv4' : 'ipv6')
+
+// The address a request came from. Anyone can send X-Forwarded-For, so it's read from the right, past every proxy on a
+// private network, then past one in proxyList at most: the hop that one names is the visitor, even if it's in a listed
+// network too, since a CDN's customers can connect from its networks, as Cloudflare's Workers do.
+export function clientIp(c: Context, proxies: BlockList) {
   const socket = (c.env as Partial<HttpBindings> | undefined)?.incoming?.socket
   if (!socket?.remoteAddress) return null
   let address = unmapped(socket.remoteAddress)
   const forwarded = (c.req.header('x-forwarded-for') ?? '').split(',').map((hop) => hop.trim())
   for (const hop of forwarded.filter(Boolean).reverse()) {
-    if (!isProxy(address)) break
-    address = unmapped(hop)
+    const isPrivate = within(privateNetworks, address)
+    if (!isPrivate && !within(proxies, address)) break
+    address = addressOf(hop)
+    if (!isPrivate) break
   }
   return address
+}
+
+// A forwarded hop's address, without the port some proxies write after it, as Azure's Application Gateway writes
+// 203.0.113.9:51234 or [2001:db8::9]:443
+function addressOf(hop: string) {
+  const bracketed = hop.match(/^\[(.+)\](?::\d+)?$/)
+  return unmapped(bracketed ? bracketed[1] : hop.replace(/^(\d+\.\d+\.\d+\.\d+):\d+$/, '$1'))
 }
 
 // An IPv4 address that an IPv6 socket or proxy wrote as ::ffff:1.2.3.4, as itself
@@ -395,6 +418,20 @@ export function rateLimiter(limit: number, window: number) {
   }
 }
 
+// How many list items a post's values hold in all, at any depth, such as a repeater's items and the boxes ticked in
+// each, counting only until there are more than most. It doesn't recurse, so a post nested deep can't overflow the stack.
+function itemsIn(values: unknown, most: number) {
+  let items = 0
+  const pending = [values]
+  while (pending.length && items <= most) {
+    const value = pending.pop()
+    if (typeof value !== 'object' || value === null) continue
+    if (Array.isArray(value)) items += value.length
+    if (items <= most) for (const child of Object.values(value)) pending.push(child)
+  }
+  return items
+}
+
 // JSON for JSON requests, and otherwise a page, since a plain HTML form's post puts its reply in the browser
 function reply(c: Context, status: ContentfulStatusCode, json: object, title: string, body: string) {
   if (/json/.test(`${c.req.header('content-type')} ${c.req.header('accept')}`)) return c.json(json, status)
@@ -405,11 +442,21 @@ function reply(c: Context, status: ContentfulStatusCode, json: object, title: st
   return c.html(page(title, `${body}\n    ${back}`), status, headers)
 }
 
+const tooLarge = (c: Context) =>
+  reply(c, 413, { message: 'The submission is too large.' }, 'Too large', '<p>The submission is too large.</p>')
+
 // The public routes, under /v1, that serve a form's fields and take its submissions, with no key needed
-export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {} }: FormOptions = {}) {
+export function publicFormRoutes(
+  db: Kysely<Database>,
+  { origins, rateLimit = {}, maxItems = 1000 }: FormOptions = {},
+  proxies: BlockList,
+) {
   const { posts = 10, minutes = 10 } = rateLimit
   if (!Number.isInteger(posts) || posts < 1 || !(minutes > 0)) {
     throw new Error('forms.rateLimit in iight.config.ts needs a whole number of posts from 1, and minutes above 0.')
+  }
+  if (maxItems !== Infinity && !(Number.isInteger(maxItems) && maxItems >= 1)) {
+    throw new Error('forms.maxItems in iight.config.ts needs a whole number from 1, or Infinity for no limit.')
   }
   const limit = rateLimiter(posts, minutes * 60 * 1000)
   const app = new Hono()
@@ -425,14 +472,10 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
   app.post(
     '/forms/:form',
     // Far more than a form's text needs, so a post can't fill the memory
-    bodyLimit({
-      maxSize: 1024 * 1024,
-      onError: (c) =>
-        reply(c, 413, { message: 'The submission is too large.' }, 'Too large', '<p>The submission is too large.</p>'),
-    }),
+    bodyLimit({ maxSize: 1024 * 1024, onError: tooLarge }),
     async (c) => {
       // A site's own server sends a key with the submit scope, and posts for all its visitors
-      const ip = clientIp(c)
+      const ip = clientIp(c, proxies)
       const seconds = (await keyOf(db, c))?.scopes.includes('submit') ? 0 : limit.hit(limitKey(ip))
       if (seconds) {
         c.header('retry-after', String(seconds))
@@ -456,6 +499,8 @@ export function publicFormRoutes(db: Kysely<Database>, { origins, rateLimit = {}
         const data = await c.req.formData().catch(() => new FormData())
         posted = { ...postedValues(form.fields, data), [honeypot]: data.get(honeypot) }
       }
+      // Its list items count as sent, before pickValues builds any, since core checks every one
+      if (itemsIn(posted, maxItems) > maxItems) return tooLarge(c)
 
       const values = pickValues(form.fields, posted, inputs)
       const report = await validateServerValues(form.fields, values, inputs)

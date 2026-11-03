@@ -202,33 +202,41 @@ for (const [network, prefix] of [
 
 const family = (address: string) => (isIP(address) === 4 ? 'ipv4' : 'ipv6')
 
-// Whether a webhook may connect to an address: any public one, and the internal ones in webhooks.allowNetworks, such
-// as 10.0.0.0/8 or 127.0.0.1
-export function webhookNetworks(allowNetworks: Array<string> = []) {
-  const allowed = new BlockList()
-  for (const network of allowNetworks) {
+// The addresses and networks a setting in iight.config.ts lists, such as 10.0.0.0/8 or 127.0.0.1, as a BlockList,
+// refusing any entry that's neither, with the entries that hold every IPv4 address. BlockList checks IPv4 addresses as
+// ::ffff:<address> too, so an IPv6 network as wide as ::ffff:0:0/96 holds every one of them, as 0.0.0.0/0 does.
+export function networkList(setting: string, networks: Array<string>, example: string) {
+  const list = new BlockList()
+  const wide: Array<{ network: string; version: number }> = []
+  for (const network of networks) {
     const [address, prefix, ...rest] = network.split('/')
     const version = isIP(address)
     const valid = version && !rest.length && (prefix === undefined || /^\d{1,3}$/.test(prefix))
     if (!valid || Number(prefix ?? 0) > (version === 4 ? 32 : 128)) {
       throw new Error(
-        `webhooks.allowNetworks in iight.config.ts has ${network}, which isn't an address or a network such as 10.0.0.0/8.`,
+        `${setting} in iight.config.ts has ${network}, which isn't an address or a network such as ${example}.`,
       )
     }
-    if (prefix === undefined) allowed.addAddress(address, family(address))
-    else allowed.addSubnet(address, Number(prefix), family(address))
-
-    // BlockList checks IPv4 addresses as ::ffff:<address> too, so an IPv6 network as wide as ::ffff:0:0/96 holds every
-    // one of them, internal ones too
-    if (version === 6 && Number(prefix) <= 96) {
-      const covered = new BlockList()
-      covered.addSubnet(address, Number(prefix), 'ipv6')
-      if (covered.check('::ffff:0:0', 'ipv6')) {
-        throw new Error(
-          `webhooks.allowNetworks in iight.config.ts has ${network}, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.`,
-        )
-      }
+    const entry = new BlockList()
+    for (const blocks of [list, entry]) {
+      if (prefix === undefined) blocks.addAddress(address, family(address))
+      else blocks.addSubnet(address, Number(prefix), family(address))
     }
+    if (entry.check('0.0.0.0', 'ipv4') && entry.check('255.255.255.255', 'ipv4')) wide.push({ network, version })
+  }
+  return { list, wide }
+}
+
+// Whether a webhook may connect to an address: any public one, and the internal ones in webhooks.allowNetworks, such
+// as 10.0.0.0/8 or 127.0.0.1
+export function webhookNetworks(allowNetworks: Array<string> = []) {
+  const { list: allowed, wide } = networkList('webhooks.allowNetworks', allowNetworks, '10.0.0.0/8')
+  // An IPv6 network that holds every IPv4 address, internal ones too, is more than it looks
+  const ipv6 = wide.find(({ version }) => version === 6)
+  if (ipv6) {
+    throw new Error(
+      `webhooks.allowNetworks in iight.config.ts has ${ipv6.network}, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.`,
+    )
   }
   return (address: string) => allowed.check(address, family(address)) || !internal.check(address, family(address))
 }

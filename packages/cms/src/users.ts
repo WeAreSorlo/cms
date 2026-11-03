@@ -13,6 +13,7 @@ import { getCookie, setCookie } from 'hono/cookie'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, sql } from 'kysely'
 import { randomBytes } from 'node:crypto'
+import type { BlockList } from 'node:net'
 
 // People, and how they get a session (PLAN.md section 5): sign-in, invites, reset links and each person's account. The
 // routes under /api/session need no session, since they're how someone gets one, and the rest need one.
@@ -49,6 +50,8 @@ export interface PeopleOptions {
   // How the site sends email, which invites and reset links go by only with url set too
   mail?: MailOptions
   limits: ReturnType<typeof peopleLimits>
+  // The networks whose X-Forwarded-For the limits believe, from proxyList
+  proxies: BlockList
 }
 
 // A link to one of the admin's pages for links. The token goes in the URL's fragment, which browsers never send to a
@@ -197,7 +200,7 @@ function resetEmail(to: string, url: string, link: string) {
 // The routes under /api/session that need no session: signing in, joining with an invite, and asking for and using a
 // reset link. Anyone can post to them, so each body is limited before it's read, and each link is looked up before any
 // password is hashed, so a made-up one costs no scrypt.
-export function sessionRoutes(db: Kysely<Database>, { url, mail, limits }: PeopleOptions) {
+export function sessionRoutes(db: Kysely<Database>, { url, mail, limits, proxies }: PeopleOptions) {
   const app = new Hono()
   const limit = bodyLimit({
     maxSize: 64 * 1024,
@@ -216,7 +219,7 @@ export function sessionRoutes(db: Kysely<Database>, { url, mail, limits }: Peopl
     // Every attempt counts as it arrives, before the lookup and the hash, so guesses sent at once can't all get through,
     // and a success clears the count
     const address = values.email.toLowerCase()
-    const key = `${limitKey(clientIp(c))} ${address}`
+    const key = `${limitKey(clientIp(c, proxies))} ${address}`
     const seconds = limits.signIns.hit(key)
     if (seconds) return tooMany(c, seconds, 'Too many failed sign-ins. Wait a few minutes, then try again.')
 
@@ -333,7 +336,7 @@ export function sessionRoutes(db: Kysely<Database>, { url, mail, limits }: Peopl
 
     // An address's asks first, whatever the emails, so one client can't fill the per-email counts, then the email's, then
     // the work waiting, which counts no one's and so says nothing about accounts
-    const from = limitKey(clientIp(c))
+    const from = limitKey(clientIp(c, proxies))
     const address = values.email.toLowerCase()
     const seconds = limits.forgotAddresses.hit(from) || limits.forgot.hit(`${from} ${address}`)
     if (seconds) return tooMany(c, seconds, 'Too many requests. Wait a few minutes, then try again.')
@@ -412,7 +415,7 @@ export function sessionRoutes(db: Kysely<Database>, { url, mail, limits }: Peopl
 
 // The people routes behind the session: the Users page, invites, and your own account. Anyone signed in can invite,
 // remove and make reset links, until roles exist (PLAN.md section 5).
-export function userRoutes(db: Kysely<Database>, { url, mail, limits }: PeopleOptions) {
+export function userRoutes(db: Kysely<Database>, { url, mail, limits, proxies }: PeopleOptions) {
   const app = new Hono<AdminEnv>()
 
   // Links in replies start from the site's address, or without one, from the address of the request, which is that of
@@ -673,7 +676,7 @@ export function userRoutes(db: Kysely<Database>, { url, mail, limits }: PeopleOp
 
     // It's there once the form shows it, when the email or the password changes, and counts as sign-in's attempts do
     if (values.password !== undefined) {
-      const key = `${limitKey(clientIp(c))} ${me.email}`
+      const key = `${limitKey(clientIp(c, proxies))} ${me.email}`
       const seconds = limits.signIns.hit(key)
       if (seconds) return tooMany(c, seconds, 'Too many wrong passwords. Wait a few minutes, then try again.')
       if (!(await verifyPassword(values.password, me.password_hash))) {

@@ -298,6 +298,78 @@ test('each level of with() loads its entries in one query and its media in anoth
   expect(queries.filter((sql) => sql.includes('= any('))).toHaveLength(3)
 })
 
+test('one reply holds at most 2,000 linked entries and files, counting every place it shows one, refused before the level that passes it loads', async () => {
+  // Four posts, each with a cover and related to the other three, so each level shows each post three times as often
+  const posts = [await post('A'), await post('B'), await post('C'), await post('D')]
+  for (const { id, values } of posts) {
+    const related = posts.filter((other) => other.id !== id).map((other) => other.id)
+    await post(values.title, { related, cover: await file(`${values.title}.png`) }, id)
+  }
+  // And a gallery, whose images count at the first level only
+  const images = []
+  for (let i = 0; i < 65; i++) images.push(await file(`image-${i}.png`))
+  const gallery = await post('Gallery', { blocks: [{ _layout: 'gallery', images: images.slice(0, 64) }] })
+
+  // The entries and files a reply shows besides its five posts, every place it shows them
+  const shown = (body: object) => {
+    const text = JSON.stringify(body)
+    return text.split('"publishedAt":').length - 1 - 5 + text.split('"mime":').length - 1
+  }
+  const path = `/entries/blog?${params(['related', 'cover', 'blocks'], 5)}`
+
+  // 16 + 64 at the first level, then 48, 144, 432 and 1,296: 2,000 in all
+  const { status, body } = await deliver(path)
+  expect(status).toBe(200)
+  expect(shown(body)).toBe(2000)
+
+  // One more image is one too many, refused before the fifth level's entries and files load
+  await post('Gallery', { blocks: [{ _layout: 'gallery', images }] }, gallery.id)
+  queries.length = 0
+  expect(await deliver(path, createApp(counted, types))).toEqual({
+    status: 400,
+    body: {
+      message:
+        'This reply would hold more than 2,000 linked entries and files. Ask for fewer with perPage, depth or with.',
+    },
+  })
+  expect(queries.filter((sql) => sql.includes('= any('))).toHaveLength(8)
+  expect((await deliver(`/entries/blog?${params(['related', 'cover', 'blocks'], 4)}`)).status).toBe(200)
+
+  // delivery.maxLinks raises the limit, and Infinity lifts it
+  for (const maxLinks of [2001, Infinity]) {
+    expect((await deliver(path, createApp(db, types, { delivery: { maxLinks } }))).status).toBe(200)
+  }
+  expect(() => createApp(db, types, { delivery: { maxLinks: 0 } })).toThrow(
+    'delivery.maxLinks in iight.config.ts needs a whole number from 1, or Infinity for no limit.',
+  )
+})
+
+test('a link stored with its ID in capitals leaves the limit on', async () => {
+  const [r, s, f] = [await post('R'), await post('S'), await post('F')]
+  const q = await post('Q', { related: [r.id, s.id] })
+  const e = await post('E', { related: [f.id] })
+  const p = await post('P', { related: [q.id] })
+  // A content migration or a write to the database can store one, which Postgres matches in any case
+  const related = [e.id.toUpperCase(), q.id]
+  await db
+    .updateTable('published_entries')
+    .set({ values: { ...p.values, related } })
+    .where('id', '=', p.id)
+    .execute()
+
+  // The first level shows two links, then Q's two make four, past three, while E, never swapped in, shows nothing
+  const { status, body } = await deliver(
+    `/entries/blog/${p.id}?${params(['related'], 2)}`,
+    createApp(db, types, { delivery: { maxLinks: 3 } }),
+  )
+  expect({ status, body }).toEqual({
+    status: 400,
+    body: {
+      message: 'This reply would hold more than 3 linked entries and files. Ask for fewer with perPage, depth or with.',
+    },
+  })
+})
+
 test('a with or depth the delivery API cannot use replies 400', async () => {
   const message = async (path: string) => {
     const { status, body } = await deliver(path)

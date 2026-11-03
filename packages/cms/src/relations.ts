@@ -1,12 +1,11 @@
-import type { DeliveryOptions } from '.'
 import { inputs, pickValues, validationError } from './core'
 import { Database, isUuid } from './db'
-import { allows, form, holdsOne, idsOf, linkFields, media, relationship, shared } from './fields'
+import { allows, form, holdsOne, idsOf, isLink, linkFields, media, relationship, shared } from './fields'
 import { toMedia } from './media'
 import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
 import { HTTPException } from 'hono/http-exception'
-import type { Input, InputPickValue, InputSchema } from 'iight'
+import type { FieldSchema, Input, InputPickFields, InputPickValue, InputSchema } from 'iight'
 import { Kysely, SqlBool, sql } from 'kysely'
 
 // Core's inputs and the CMS's own, which the server never renders. The admin adds their pickers. Types have no
@@ -207,7 +206,7 @@ const badRequest = (message: string) => new HTTPException(400, { message })
 export function parseWith(
   type: ContentType,
   params: Record<string, string>,
-  { depth, maxDepth }: Required<DeliveryOptions>,
+  { depth, maxDepth }: { depth: number; maxDepth: number },
 ) {
   if (params.with === undefined) return undefined
   const fields = linkFields(type).map((field) => field.name)
@@ -238,11 +237,33 @@ export function parseWith(
 
 type Entry = ReturnType<typeof toEntry>
 
+// Calls found with each relationship and media field in some values and the IDs it holds, once for each place it sits,
+// inside groups, repeaters and flexible blocks too. Each container's pickValue finds its items, as in pickValues, but
+// without pickValues' condition scopes, which visit every field again, so fields that conditions hide are visited too.
+function eachLink(
+  fields: Array<FieldSchema>,
+  values: Record<string, any>,
+  found: (field: FieldSchema, ids: Array<string>) => void,
+) {
+  const inside: InputPickFields = (children, items) => {
+    eachLink(children, items, found)
+    return {}
+  }
+  for (const field of fields) {
+    const value = values?.[field.name] === undefined ? field.defaultValue : values[field.name]
+    if (isLink(field)) found(field, idsOf(value).filter(isUuid))
+    else cmsInputs[field.type]?.pickValue?.(value, field, inside)
+  }
+}
+
 // Swap the IDs in some fields of entries for what they link to, as the delivery API's with does. The named fields go
 // first, then every link of the entries they hold, a level at a time down to depth. Each level loads its entries in one
 // query and its media in another, whatever their types, and pickValues walks the groups, repeaters and flexible blocks
 // in between (PLAN.md section 12, change 4). Links go to live copies, or for a preview, to drafts. Entries the delivery
-// API doesn't serve, such as unpublished or archived ones, are left out, which is null in a field that holds one.
+// API doesn't serve, such as unpublished or archived ones, are left out, which is null in a field that holds one. A reply
+// that would hold more than maxLinks of them, counting every place it shows one, is refused before its level's queries,
+// since a record linked from several places is written out at each, and a few entries that link to each other can make
+// a reply of gigabytes.
 export async function resolveLinks(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
@@ -250,9 +271,12 @@ export async function resolveLinks(
   entries: Array<Entry>,
   names: Array<string>,
   depth: number,
+  maxLinks: number,
   draft = false,
 ) {
-  let level = entries.map((entry) => ({ entry, names: names as Array<string> | undefined }))
+  // Each entry of a level, with how many places the reply shows it
+  let level = entries.map((entry) => ({ entry, names: names as Array<string> | undefined, shown: 1 }))
+  let copies = 0
   for (let remaining = depth; remaining > 0 && level.length > 0; remaining--) {
     // Fields an entry has no value for stay out, since pickValues would fill them with defaults
     const fieldsOf = (entry: Entry, names?: Array<string>) =>
@@ -260,27 +284,35 @@ export async function resolveLinks(
         (field) => (!names || names.includes(field.name)) && Object.hasOwn(entry.values, field.name),
       )
 
-    // The first pass collects the IDs
-    const entryIds = new Set<string>()
+    // The first pass collects the IDs, each entry's with the places the reply will show it, and counts the copies, as
+    // a link shows up wherever the entry holding it does. Links in hidden fields count too, and IDs count before
+    // they're looked up, which can only refuse a reply early.
+    const entryIds = new Map<string, number>()
     const mediaIds = new Set<string>()
-    const collect =
-      (ids: Set<string>): InputPickValue =>
-      (value) => {
-        for (const id of idsOf(value).filter(isUuid)) ids.add(id)
-        return value
-      }
-    for (const { entry, names } of level) {
-      pickValues(fieldsOf(entry, names), entry.values, walking(collect(entryIds), collect(mediaIds)))
+    for (const { entry, names, shown } of level) {
+      eachLink(fieldsOf(entry, names), entry.values, (field, ids) => {
+        for (const id of ids) {
+          copies += shown
+          if (field.type === 'media') mediaIds.add(id)
+          else entryIds.set(id, (entryIds.get(id) ?? 0) + shown)
+        }
+      })
+    }
+    if (copies > maxLinks) {
+      throw badRequest(
+        `This reply would hold more than ${maxLinks.toLocaleString('en')} linked entries and files. ` +
+          'Ask for fewer with perPage, depth or with.',
+      )
     }
 
-    const among = (ids: Set<string>) => sql<SqlBool>`id = any(${[...ids]}::uuid[])`
+    const among = (ids: Iterable<string>) => sql<SqlBool>`id = any(${[...ids]}::uuid[])`
     const linked = new Map(
       (entryIds.size === 0
         ? []
         : await deliveredEntries(db, draft)
             .selectAll()
             .$castTo<Delivered>()
-            .where(among(entryIds))
+            .where(among(entryIds.keys()))
             // Entries of a type that's been removed stay in the database, but the API doesn't serve them
             .where('type', 'in', [...types.keys()])
             .execute()
@@ -310,8 +342,9 @@ export async function resolveLinks(
       entry.values = { ...entry.values, ...pickValues(fieldsOf(entry, names), entry.values, inputs) }
     }
 
-    // An entry linked from several places is one record, resolved once for all of them
-    level = [...linked.values()].map((entry) => ({ entry, names: undefined }))
+    // An entry linked from several places is one record, resolved once for all of them. One linked only by an ID in
+    // capitals, which Postgres finds but returns in lowercase, is never swapped in, so nothing shows it.
+    level = [...linked.values()].map((entry) => ({ entry, names: undefined, shown: entryIds.get(entry.id) ?? 0 }))
   }
   return entries
 }

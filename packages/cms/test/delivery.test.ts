@@ -180,6 +180,22 @@ test("rejects a query it can't check against the type", async () => {
   expect((await get('/entries/blog?page=0')).status).toBe(400)
 })
 
+test('takes as many conditions and sort fields as a query needs, and like values of any length', async () => {
+  const query = (params: Record<string, unknown>) =>
+    new URLSearchParams(Object.entries(params).map(([name, value]) => [name, JSON.stringify(value)])).toString()
+  const groups = [0, 1, 2].map(() =>
+    Array.from({ length: 20 }, (_, i) => ({ field: 'values.views', op: '!=', value: i })),
+  )
+  const order = Object.fromEntries(
+    ['values.title', 'values.views', 'createdAt', 'slug', 'id', 'position'].map((field) => [field, 'asc']),
+  )
+  const like = [[{ field: 'values.title', op: 'like', value: 'a'.repeat(1000) }]]
+
+  for (const params of [{ where: groups }, { order }, { where: like }]) {
+    expect((await get(`/entries/blog?${query(params)}`)).status).toBe(200)
+  }
+})
+
 test('finds one live entry by ID, slug or uri', async () => {
   expect((await get(`/entries/blog/${ids.hello}`)).body.data.slug).toBe('hello-world')
   expect((await get('/entries/blog/slug/hello-world')).body.data.id).toBe(ids.hello)
@@ -192,4 +208,51 @@ test('finds one live entry by ID, slug or uri', async () => {
   expect(await get('/entries/docs/slug/install')).toEqual(notFound)
   expect(await get('/entries/blog/nope')).toEqual(notFound)
   expect(await get('/entries/nope')).toEqual(notFound)
+})
+
+test("any site's JavaScript can read entries and media, unless iight.config.ts names the sites that can", async () => {
+  const browser = (origin: string, token = key) => ({ headers: { origin, authorization: `Bearer ${token}` } })
+
+  // A browser asks first, without a key, for the methods and headers it may send
+  const preflight = await app.request('/v1/entries/blog', {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'https://example.org',
+      'access-control-request-method': 'GET',
+      'access-control-request-headers': 'authorization',
+    },
+  })
+  expect(preflight.status).toBe(204)
+  expect(preflight.headers.get('access-control-allow-origin')).toBe('*')
+  expect(preflight.headers.get('access-control-allow-methods')).toBe('GET')
+  expect(preflight.headers.get('access-control-allow-headers')).toBe('authorization')
+
+  // Every reply can be read, so a page can show a refusal's message
+  for (const [path, token, status] of [
+    ['/entries/blog', key, 200],
+    [`/entries/blog/${ids.hello}`, key, 200],
+    ['/media', key, 200],
+    ['/entries/blog', 'nope', 401],
+    ['/entries/blog?perPage=500', key, 400],
+  ] as const) {
+    const reply = await app.request(`/v1${path}`, browser('https://example.org', token))
+    expect(reply.status, path).toBe(status)
+    expect(reply.headers.get('access-control-allow-origin'), path).toBe('*')
+  }
+
+  // Not the types, which only types pull reads, or the admin's API
+  for (const path of ['/types', '/api/types']) {
+    expect(
+      (await app.request(path, browser('https://example.org'))).headers.get('access-control-allow-origin'),
+    ).toBeNull()
+  }
+
+  // With origins, only those sites, so replies vary by the site asking
+  const listed = createApp(db, types, { delivery: { origins: ['https://example.com'] } })
+  const allowed = await listed.request('/v1/media', browser('https://example.com'))
+  expect(allowed.headers.get('access-control-allow-origin')).toBe('https://example.com')
+  expect(allowed.headers.get('vary')).toContain('Origin')
+  const other = await listed.request('/v1/entries/blog', browser('https://example.org'))
+  expect(other.status).toBe(200)
+  expect(other.headers.get('access-control-allow-origin')).toBeNull()
 })

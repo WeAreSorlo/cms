@@ -1,4 +1,4 @@
-import { createApp } from '../src/app'
+import { adminHeaders, createApp } from '../src/app'
 import { db } from './database'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -33,6 +33,19 @@ test('serves the built admin at /admin/, and browsers check for a new page each 
   expect(script.headers.get('content-type')).toMatch(/^text\/javascript/)
   expect(script.headers.get('cache-control')).toBeNull()
   expect(await script.text()).toBe('console.log("admin")')
+})
+
+test("no other site can frame the admin, its page or its files, but the API's replies are left alone", async () => {
+  expect(adminHeaders).toEqual({ 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" })
+  for (const path of ['/admin/', '/admin/assets/index-abc.js']) {
+    const reply = await app.request(path)
+    expect(reply.headers.get('x-frame-options'), path).toBe('DENY')
+    expect(reply.headers.get('content-security-policy'), path).toBe("frame-ancestors 'none'")
+  }
+
+  const api = await app.request('/api/types')
+  expect(api.headers.get('x-frame-options')).toBeNull()
+  expect(api.headers.get('content-security-policy')).toBeNull()
 })
 
 test("serves nothing that isn't in the build", async () => {

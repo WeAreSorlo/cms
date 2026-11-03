@@ -1,6 +1,6 @@
 import type { Config } from '.'
 import { anthropic } from './ai'
-import { createApp } from './app'
+import { adminHeaders, createApp } from './app'
 import { createWorker } from './automations'
 import { type ContentMigrationFile, checkEntries, contentMigrations, loadContentMigrations } from './content'
 import { flattenValidationReport, inputs, validateServerValues } from './core'
@@ -185,6 +185,7 @@ async function dev(db: Kysely<Database>) {
     ai: config.ai && anthropic(config.ai),
     url: config.url,
     mail: config.mail,
+    proxies: config.proxies,
   })
   const api = getRequestListener(app.fetch)
 
@@ -192,8 +193,16 @@ async function dev(db: Kysely<Database>) {
   createWorker(db, types, { mail: config.mail, automations: config.automations, webhooks: config.webhooks }).start()
 
   // Vite serves the admin under /admin, and Hono everything else
-  server.on('request', (req, res) => (req.url?.startsWith('/admin') ? admin.middlewares(req, res) : api(req, res)))
-  server.listen(port, () => console.log(`The admin is running at http://localhost:${port}/admin/`))
+  server.on('request', (req, res) => {
+    if (!req.url?.startsWith('/admin')) return api(req, res)
+    for (const [name, value] of Object.entries(adminHeaders)) res.setHeader(name, value)
+    admin.middlewares(req, res)
+  })
+  // Only this machine, unless HOST names another address, such as 0.0.0.0 in a container. Not localhost, which Node can
+  // bind to ::1 alone, refusing 127.0.0.1. An empty HOST, as a .env can leave it, names none.
+  server.listen(port, process.env.HOST || '127.0.0.1', () =>
+    console.log(`The admin is running at http://localhost:${port}/admin/`),
+  )
 }
 
 // The production server: the admin as npm run build wrote it, and types that change only through git
@@ -221,6 +230,7 @@ async function start(db: Kysely<Database>) {
     ai: config.ai && anthropic(config.ai),
     url: config.url,
     mail: config.mail,
+    proxies: config.proxies,
   })
 
   // Hands events on to automations, in this process

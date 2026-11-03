@@ -667,6 +667,23 @@ test('an IPv4 address written as IPv6 counts as itself, from a socket or through
   expect((await through('::ffff:198.51.100.8')).status).toBe(422)
 }, 30_000)
 
+test('sign-in counts the visitor a proxy iight.config.ts lists forwards for', async () => {
+  const behind = createApp(db, types, { proxies: ['198.51.100.0/24'] })
+  const guess = (visitor: string) =>
+    behind.request(
+      '/api/session',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': visitor },
+        body: JSON.stringify({ email: 'nobody@example.com', password: 'wrong' }),
+      },
+      { incoming: { socket: { remoteAddress: '198.51.100.7' } } },
+    )
+  for (let tries = 0; tries < 10; tries++) expect((await guess('192.0.2.1')).status).toBe(422)
+  expect((await guess('192.0.2.1')).status).toBe(429)
+  expect((await guess('192.0.2.2')).status).toBe(422)
+}, 30_000)
+
 test('Forgot your password? takes 20 asks a minute from an address, whatever the emails', async () => {
   const limited = createApp(db, types, { url: 'https://cms.example.com', mail })
   for (let asks = 0; asks < 20; asks++) {

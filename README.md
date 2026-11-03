@@ -34,7 +34,7 @@ Run it from a site project, where it reads `iight.config.ts`, and before that th
 
 | Command                       | What it does                                                                                                                                                                       |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `iight dev`                   | Serves the API and the admin on one port, `PORT` or 3000, and runs automations                                                                                                     |
+| `iight dev`                   | Serves the API and the admin on one port, `PORT` or 3000, on 127.0.0.1 unless `HOST` names another address, and runs automations                                                   |
 | `iight start`                 | Serves the API and the built admin for production on `PORT` or 3000, and runs automations. Types are read-only                                                                     |
 | `iight migrate`               | Runs pending migrations as one batch: the CMS's own, then the site project's content migrations. It refuses a waiting one with a TODO left, running nothing                        |
 | `iight migrate --check`       | Lists the saved entries whose drafts no longer pass what a save checks, or whose live copies no longer pass what a publish checks, and fails if there are any. It migrates nothing |
@@ -45,7 +45,7 @@ Run it from a site project, where it reads `iight.config.ts`, and before that th
 | `iight user:password <email>` | Sets someone's password, asked for hidden, and signs them out everywhere, for a site whose only person forgot theirs and that sends no email                                       |
 | `iight make:api-key`          | Creates a key for the delivery API, shown just once. `--preview`, `--types` and `--submit` give it those [permissions](#api-keys)                                                  |
 
-`iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine. It serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin.
+`iight dev` listens on 127.0.0.1 alone, so only this machine reaches it, unless `HOST` names another address, such as `HOST=0.0.0.0 npx iight dev` for a phone on the same network or a container's port. An empty `HOST`, as a `.env` can leave it, counts as none. `iight start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine. Both send every reply under `/admin/` with `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`, so no other site can frame the admin and lay its own page over its buttons. `iight start` serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin.
 
 ## Content types
 
@@ -327,11 +327,12 @@ Forms live in the database rather than in `schema/`, since marketers make them i
 - A plain form post names a group's fields as `address.town`, and a list of choices, such as a checkbox field, sends its name again for each one ticked. The text it sends takes each field's type, so `3` is a number and `on` ticks a boolean.
 - The values go through `pickValues` and `validateServerValues`, as entries' do. JSON requests, and requests that accept JSON, get JSON replies. A plain form post gets a small page in place of each reply, with the same status and a link back to the page it came from.
 - Each submission keeps the form's version, and the IP address, user agent and referer it came with.
+- A post of more than 1 MB, or with more than 1,000 list items in all, replies 413 `{ "message": "The submission is too large." }`, or a page saying so. Items count in every list at any depth, such as a repeater's items and the boxes ticked in each, lists the form doesn't have included, before anything reads them, so a post can't make the server check more than 1,000. `forms.maxItems` sets the number, and `Infinity` lifts it, which we advise against: anyone can post, and before this limit a 700 KB post of empty repeater items took about 680 MB of memory to check. A list with a `maximum` bounds the work itself, since a list over its maximum isn't checked item by item, so set maximums on a form's lists before lifting it.
 
 Spam is kept out of the inbox in two ways:
 
 - **A honeypot.** The pasted HTML has a field named `_website`, off screen and out of reach of screen readers and the keyboard. A submission that fills it in is kept as spam and gets the reply any other gets, so a bot can't tell. Field names start with a letter, so no field can take the name.
-- **A rate limit.** Each IP address, or an IPv6 address's /64, the usual allocation for one machine or home, with an IPv4 address written as IPv6, such as `::ffff:198.51.100.7`, counting as itself, can make 10 posts in 10 minutes, valid or not, and is then refused with a 429 and `Retry-After` until the time is up. Requests that send an API key with the `submit` [permission](#api-keys) aren't limited, so a site's own server can submit for all its visitors. Other keys count as anyone, since they can sit in a site's pages. Behind a proxy on a private network, such as a load balancer, the address is the one the proxy forwarded for in `X-Forwarded-For`, which the CMS believes from no one else.
+- **A rate limit.** Each IP address, or an IPv6 address's /64, the usual allocation for one machine or home, with an IPv4 address written as IPv6, such as `::ffff:198.51.100.7`, counting as itself, can make 10 posts in 10 minutes, valid or not, and is then refused with a 429 and `Retry-After` until the time is up. Requests that send an API key with the `submit` [permission](#api-keys) aren't limited, so a site's own server can submit for all its visitors. Other keys count as anyone, since they can sit in a site's pages. Behind a proxy, the address is the one the proxy forwarded for, which the CMS believes only from the proxies in [Behind a proxy](#behind-a-proxy).
 
 Any site's JavaScript can call the form routes, unless `forms.origins` in `iight.config.ts` lists the sites that can.
 
@@ -342,6 +343,7 @@ export default defineConfig({
   forms: {
     origins: ['https://example.com'],
     rateLimit: { posts: 10, minutes: 10 },
+    maxItems: 1000,
   },
 })
 ```
@@ -350,6 +352,7 @@ export default defineConfig({
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `origins`   | The sites whose JavaScript can call the form routes, through CORS. Any site can if not given. Plain HTML forms and servers can always post |
 | `rateLimit` | How many `posts` an IP address can make in a number of `minutes`, 10 in 10 if not given                                                    |
+| `maxItems`  | The most list items one post can hold in all, 1,000 if not given. `Infinity` lifts it                                                      |
 
 The rate limit counts posts in the CMS's process, so each process behind a load balancer keeps its own count.
 
@@ -456,7 +459,7 @@ export default defineConfig({
 - **Bringing someone back** is inviting their address again, which the invite page says before it's made: accepting brings back their account, with what it made and its chats. Their revoked tokens stay revoked.
 - **Forgot your password?**, under Sign in, emails a link that works once, for an hour, where the site sends email. It replies the same, and at once, whatever the address, so it never tells an account from none, and each person gets at most one email a minute. Choosing a new password with the link signs them out everywhere, then in, and their account page says so, adding that their MCP tokens still work. Without email, someone signed in makes a link on the person's page with Make a reset link, which works the same way. Until roles exist, whoever makes one could use it themselves, so pass it only to the person. Nobody makes one for themselves, since your own password changes only on your account page, with your current password, so a stolen session can't change it. For a site whose only person forgot, `npx iight user:password <email>` sets a password, changing nothing if they're removed while it asks.
 - **Your account**, from the menu under your name at the foot of the nav, changes your name, email and password in one form. A new email or password needs your current password, and a new password signs you out everywhere else, as Sign out everywhere else does without one. Either ends a reset link of yours that's waiting. A save that lands after you've been removed, or after your password changed elsewhere, such as through a reset link, changes nothing.
-- **Limits on guessing.** Sign-in counts each attempt for each email from each address as it arrives, before anything is looked up or hashed, so guesses sent at once can't all get through. An IPv6 address counts by its /64, and an IPv4 address written as IPv6 as itself. After 10 in 10 minutes without a success, which clears them, it replies 429 with `Retry-After`. So one person's typos don't lock out an office behind one address, and nobody can lock someone out from elsewhere. Your current password on your account counts the same way. Forgot your password? takes 20 asks a minute from each address, whatever the emails, and 10 for each email from each address in 10 minutes, and holds at most 50 links waiting to be emailed, replying 429 for a minute past that. The counts are kept in each process, as the forms limit's are.
+- **Limits on guessing.** Sign-in counts each attempt for each email from each address as it arrives, before anything is looked up or hashed, so guesses sent at once can't all get through. An IPv6 address counts by its /64, and an IPv4 address written as IPv6 as itself. After 10 in 10 minutes without a success, which clears them, it replies 429 with `Retry-After`. So one person's typos don't lock out an office behind one address, and nobody can lock someone out from elsewhere. Your current password on your account counts the same way. Forgot your password? takes 20 asks a minute from each address, whatever the emails, and 10 for each email from each address in 10 minutes, and holds at most 50 links waiting to be emailed, replying 429 for a minute past that. The counts are kept in each process, as the forms limit's are, and behind a proxy, each counts the visitor it forwarded for, as [Behind a proxy](#behind-a-proxy) says.
 
 ## The API
 
@@ -496,6 +499,24 @@ A media file has the `url` that serves it, on the address the request came to, w
   "updatedAt": "2026-10-28T12:00:00.000Z"
 }
 ```
+
+### Behind a proxy
+
+The forms' rate limit, the address each submission records and [the limits on signing in](#people) count the address a request came from. Behind a proxy, that's the proxy's, so the CMS takes the address in `X-Forwarded-For` instead, but only from a proxy it believes, since anyone can send the header. It believes loopback and private networks, such as a load balancer's, Docker's bridge network or `cloudflared` on the same machine, and the addresses and networks `proxies` in `iight.config.ts` lists. It reads the header from the right, past every proxy on a loopback or private network, then past one listed proxy at most: the hop a listed proxy names is the visitor, even if it's in a listed network too, since a CDN's customers can connect from its networks, as Cloudflare's Workers do. A hop written with a port, as Azure's Application Gateway writes `203.0.113.9:51234` or `[2001:db8::9]:443`, counts as its address alone.
+
+```ts
+// iight.config.ts
+export default defineConfig({
+  // ...
+  // Cloudflare's networks, from https://www.cloudflare.com/ips/
+  proxies: ['173.245.48.0/20', '103.21.244.0/22', /* … */ '2400:cb00::/32' /* … */],
+})
+```
+
+- **A CDN in front**, such as Cloudflare's proxy, connects from public addresses, so list its networks. Otherwise everyone coming through one of its addresses shares that address's limits, and submissions record the CDN's address.
+- **The servers won't start** with an entry that isn't an address or a network.
+- **A host that publishes no addresses**, such as Vercel or Netlify in front as a rewrite, can only be listed as every address, `['0.0.0.0/0', '::/0']`, which we advise against. Whoever connects then names the visitor, in the header's last hop, so it's safe only if nothing reaches the CMS except through your proxies. The servers warn when they start with an entry that holds every address.
+- **`X-Forwarded-Proto`** is believed from anyone, for the session cookie's `Secure` flag and media files' URLs.
 
 ### The admin API
 
@@ -673,6 +694,8 @@ The admin lists each key's permissions, who made it and when, and when it was la
 
 It's read-only, and serves media and the live copies of published entries, or with a preview key and `status=draft`, drafts (see [Previews](#previews)). It needs an [API key](#api-keys), sent as `Authorization: Bearer <key>`.
 
+Any site's JavaScript can read `/v1/entries` and `/v1/media`, unless `delivery.origins` lists the sites that can. A browser's preflight needs no key, and gets the methods and headers it may send, `Authorization` among them, and every reply can be read, a 401 or 400 included, so a page can show its message. No cookie is involved, so an allowed site gets nothing a visitor's session could give it. `/types` and media files, at `/media/:id/:name`, send no CORS headers, since images and video show without them.
+
 | Route                              | What it does                                                                                                                             |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /v1/entries/:type`            | Lists entries. A singleton is a list of one                                                                                              |
@@ -707,25 +730,29 @@ Lists take these query parameters, with `where` and `order` in JSON:
 - Field values compare as JSON, so `10` is more than `7`, and ISO dates compare as text. `like` ignores case and matches anywhere in the text. `in` takes a list, and `between` a list of two.
 - `exists` means a value that isn't empty, as core sees it: a missing field, null, empty text and an empty list don't count. A missing field never matches a comparison, `!=` included.
 - A query with a field the type doesn't have, an unknown operator, or a value that doesn't suit it replies 400 with a `{ message }` saying what's wrong.
+- A query takes as many conditions and sort fields as it needs, and `like` values of any length, but many make it slow, so we advise against them, above all over large entries. Each condition and each sort field reads its field out of every entry again, and Postgres lowercases a `like` pattern again for every entry it compares. Over 10,000 entries of about 20 KB each, 20 conditions took about 0.4 s and 164, about as many as fit in a URL, about 5 s, against 26 ms for 20 over small entries. Sorting by 30 fields took 1.3 s, and a 15,000-character `like` 0.6 s over small entries. The admin's lists and the MCP tools take the same queries, and the admin's filter makes two groups for each is not or does not contain rule, one for an empty field, so a filter group's conditions double with each such rule.
 
 `with` names relationship and media fields, or fields that hold them. Naming a group, repeater or flexible field resolves every link inside it.
 
 - A linked entry comes back as the delivery API returns entries, and a file as `/v1/media` does. A linked entry's own links come resolved too, down to `depth` levels, so at the default of 2 a post's author comes with the author's avatar. Past the depth, links stay IDs, and links that loop repeat until it runs out.
 - What the delivery API doesn't serve, such as an archived entry, is left out: null in a field that holds one item, and missing from a list.
 - Each level takes one query for its entries and one for its files, whatever their types. Each level can also multiply the entries a reply holds, which is why `delivery.maxDepth` caps it.
+- One reply holds at most 2,000 linked entries and files, counting each place it shows one, since an entry linked from several places is written out at each. Past that it replies 400, `This reply would hold more than 2,000 linked entries and files. Ask for fewer with perPage, depth or with.`, before loading the level that would pass it. The page's own entries don't count. `delivery.maxLinks` sets the number, and `Infinity` lifts it, which we advise against: anyone with a key can send `with`, and before this limit eight entries that link to each other made a 73 MB reply at depth 5, and ten made 360 MB with 1.9 GB of memory.
 
 ```ts
 // iight.config.ts
 export default defineConfig({
   // ...
-  delivery: { depth: 2, maxDepth: 5 },
+  delivery: { depth: 2, maxDepth: 5, maxLinks: 2000, origins: ['https://example.com'] },
 })
 ```
 
-| Setting    | What it holds                                                                           |
-| ---------- | --------------------------------------------------------------------------------------- |
-| `depth`    | The levels of links `with` resolves when a request doesn't send `depth`, 2 if not given |
-| `maxDepth` | The most levels a request can ask for, 5 if not given                                   |
+| Setting    | What it holds                                                                                              |
+| ---------- | ---------------------------------------------------------------------------------------------------------- |
+| `depth`    | The levels of links `with` resolves when a request doesn't send `depth`, 2 if not given                    |
+| `maxDepth` | The most levels a request can ask for, 5 if not given                                                      |
+| `maxLinks` | The most linked entries and files one reply can hold, 2,000 if not given. `Infinity` lifts it              |
+| `origins`  | The sites whose JavaScript can read `/v1/entries` and `/v1/media`, through CORS. Any site can if not given |
 
 ## MCP
 

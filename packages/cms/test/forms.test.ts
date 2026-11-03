@@ -372,6 +372,62 @@ test('takes the address a proxy on a private network forwarded for, and no one e
   expect((await submissions()).map((row) => row.ip)).toEqual(['198.51.100.9', '203.0.113.200', '198.51.100.10'])
 })
 
+test('believes X-Forwarded-For from the proxies iight.config.ts lists too, everyone included with a warning', async () => {
+  await createForm()
+  const proxies = ['198.51.100.0/24', '2001:db8::1']
+  const behind = createApp(db, types, { proxies, forms: { rateLimit: { posts: 1 } } })
+  const from = (forwarded: string, proxy: string) =>
+    submit('contact', valid, { 'x-forwarded-for': forwarded }, proxy, behind)
+
+  // A listed proxy's visitors each count as themselves, through a load balancer on a private network too
+  expect((await from('192.0.2.1', '198.51.100.7')).status).toBe(201)
+  expect((await from('192.0.2.2', '198.51.100.7')).status).toBe(201)
+  expect((await from('192.0.2.1', '198.51.100.8')).status).toBe(429)
+  expect((await from('192.0.2.3', '2001:db8::1')).status).toBe(201)
+  expect((await from('192.0.2.4, 198.51.100.7', '10.0.0.1')).status).toBe(201)
+  // A listed proxy is believed for one hop, even when that hop is in a listed network too, as a CDN's customers can be
+  expect((await from('6.6.6.6, 198.51.100.50', '198.51.100.7')).status).toBe(201)
+  // The port some proxies write after a hop is left out, on a proxy's hop too
+  expect((await from('203.0.113.9:51234', '10.0.0.1')).status).toBe(201)
+  expect((await from('[2001:db8::9]:443', '10.0.0.1')).status).toBe(201)
+  expect((await from('192.0.2.21, 10.0.0.2:8080', '10.0.0.1')).status).toBe(201)
+  // A proxy that isn't listed is the sender, whoever it says it forwards for
+  expect((await from('192.0.2.5', '203.0.113.50')).status).toBe(201)
+  expect((await from('192.0.2.6', '203.0.113.50')).status).toBe(429)
+  expect((await submissions()).map((row) => row.ip)).toEqual([
+    '192.0.2.1',
+    '192.0.2.2',
+    '192.0.2.3',
+    '192.0.2.4',
+    '198.51.100.50',
+    '203.0.113.9',
+    '2001:db8::9',
+    '192.0.2.21',
+    '203.0.113.50',
+  ])
+
+  // A typo stops the server
+  expect(() => createApp(db, types, { proxies: ['173.245.48/20'] })).toThrow(
+    "proxies in iight.config.ts has 173.245.48/20, which isn't an address or a network such as 173.245.48.0/20.",
+  )
+
+  // A network that holds every address is the site's call, taken with a warning, and believes the hop whoever connects
+  // names
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const everyone = createApp(db, types, { proxies: ['0.0.0.0/0', '::ffff:0:0/96', '::ffff:198.51.100.0/120'] })
+  expect(warn.mock.calls.map(([message]) => message)).toEqual(
+    ['0.0.0.0/0', '::ffff:0:0/96'].map(
+      (network) =>
+        `proxies in iight.config.ts has ${network}, which holds every address, so whoever connects can name any ` +
+        'address in X-Forwarded-For. List it only if nothing reaches the CMS except through your proxies.',
+    ),
+  )
+  warn.mockRestore()
+  const named = await submit('contact', valid, { 'x-forwarded-for': '6.6.6.6, 192.0.2.99' }, '203.0.113.60', everyone)
+  expect(named.status).toBe(201)
+  expect((await submissions()).at(-1)?.ip).toBe('192.0.2.99')
+})
+
 test('the embed HTML posts every field it shows to the form, by its ID', async () => {
   const { id, embed } = await createForm()
   expect(embed).toContain(`<form method="post" action="http://localhost/v1/forms/${id}">`)
@@ -428,4 +484,55 @@ test('turns away a post too large for a form', async () => {
   const { status, body } = await submit('contact', { ...valid, name: 'x'.repeat(1024 * 1024) })
   expect(status).toBe(413)
   expect(body).toEqual({ message: 'The submission is too large.' })
+})
+
+test('turns away a post with more than 1,000 list items in all, at any depth, before reading them', async () => {
+  const diet = {
+    id: 'fld_diet',
+    type: 'checkbox',
+    name: 'diet',
+    options: { choices: [{ value: 'vegan', label: 'Vegan' }] },
+  }
+  await createForm(
+    contactFields.map((field) =>
+      field.name === 'guests' ? { ...field, options: { fields: [...field.options!.fields, diet] } } : field,
+    ),
+  )
+  const guests = (count: number) => Array.from({ length: count }, () => ({ guest: 'Ada', diet: ['vegan'] }))
+  const tooLarge = { status: 413, body: { message: 'The submission is too large.' } }
+
+  // 500 guests with a box ticked each is 1,000 items, which core checks
+  expect((await submit('contact', { guests: guests(500) })).status).toBe(422)
+  // One more is too many, wherever it is, in the form's lists or not
+  expect(await submit('contact', { guests: guests(500), topics: ['sales'] })).toMatchObject(tooLarge)
+  expect(await submit('contact', { ...valid, junk: [guests(500), [1]] })).toMatchObject(tooLarge)
+  // A plain form post gets the page
+  const ticks = await post(
+    'contact',
+    Array.from({ length: 1001 }, () => ['topics', 'sales']),
+  )
+  expect(ticks.status).toBe(413)
+  expect(ticks.html).toContain('<h1>Too large</h1>')
+
+  // forms.maxItems raises the limit, and Infinity lifts it
+  for (const maxItems of [1001, Infinity]) {
+    const raised = createApp(db, types, { forms: { maxItems } })
+    expect((await submit('contact', { guests: guests(500), topics: ['sales'] }, {}, undefined, raised)).status).toBe(
+      422,
+    )
+  }
+  expect(() => createApp(db, types, { forms: { maxItems: 1.5 } })).toThrow(
+    'forms.maxItems in iight.config.ts needs a whole number from 1, or Infinity for no limit.',
+  )
+
+  // A post nested deep is counted without overflowing the stack: a list in a list 100,000 times over is too many
+  // items, and objects nested as deep hold none
+  const deep = async (open: string, inside: string, close: string) => {
+    const body = `{"guests":${open.repeat(100_000)}${inside}${close.repeat(100_000)}}`
+    return (await visit('/v1/forms/contact', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))
+      .status
+  }
+  expect(await deep('[', '', ']')).toBe(413)
+  expect(await deep('{"a":', '1', '}')).toBe(422)
+  expect(await submissions()).toEqual([])
 })

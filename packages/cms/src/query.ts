@@ -196,7 +196,8 @@ function checkCondition(subject: Subject, condition: any) {
   }
 }
 
-// Read where, order, page and perPage from a query string, checking every field
+// Read where, order, page and perPage from a query string, checking every field. How many conditions and sort fields
+// there are, and how long a like is, are the site's call: the README says what many cost (PLAN.md section 16).
 function parse(subject: Subject, params: Record<string, string>): Query {
   const json = (name: string, example: string) => {
     const invalid = badRequest(`${name} must be JSON, such as ${example}.`)
