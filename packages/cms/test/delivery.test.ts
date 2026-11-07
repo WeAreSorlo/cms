@@ -74,7 +74,7 @@ test('needs an API key, and stores only its hash', async () => {
   expect(await get('/entries/blog', '')).toEqual({ status: 401, body: { message: 'Unauthenticated.' } })
   expect((await get('/entries/blog', `${key}x`)).status).toBe(401)
 
-  expect(key).toMatch(/^iight_[\w-]{43}$/)
+  expect(key).toMatch(/^sorlo_[\w-]{43}$/)
   const { token_hash } = await db.selectFrom('api_keys').select('token_hash').executeTakeFirstOrThrow()
   expect(token_hash).toBe(hashToken(key))
 })
@@ -210,7 +210,7 @@ test('finds one live entry by ID, slug or uri', async () => {
   expect(await get('/entries/nope')).toEqual(notFound)
 })
 
-test("any site's JavaScript can read entries and media, unless iight.config.ts names the sites that can", async () => {
+test("any site's JavaScript can read entries and media, unless sorlo.config.ts names the sites that can", async () => {
   const browser = (origin: string, token = key) => ({ headers: { origin, authorization: `Bearer ${token}` } })
 
   // A browser asks first, without a key, for the methods and headers it may send

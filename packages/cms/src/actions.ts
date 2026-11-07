@@ -4,7 +4,7 @@ import { escapeHtml } from './embed'
 import { isEmpty, showValue } from './fields'
 import { events } from './schemas'
 import type { ContentType } from './types'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 import { Kysely, Selectable } from 'kysely'
 import { createHmac, randomBytes } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
@@ -105,7 +105,7 @@ export const actions: Record<string, Action> = {
   email: {
     run: async (settings, event, context) => {
       const { mail, automation } = context
-      if (!mail) throw new ActionFailed('Set mail in iight.config.ts to send email.')
+      if (!mail) throw new ActionFailed('Set mail in sorlo.config.ts to send email.')
 
       const { title, rows } = await summary(event, context)
       const footer = `Sent by the automation ${automation.name}.`
@@ -154,7 +154,7 @@ export const actions: Record<string, Action> = {
         value,
       ])
       const headers = {
-        'user-agent': 'iight',
+        'user-agent': 'Sorlo',
         ...Object.fromEntries(custom),
         'content-type': 'application/json',
         'webhook-id': event.id,
@@ -202,7 +202,7 @@ for (const [network, prefix] of [
 
 const family = (address: string) => (isIP(address) === 4 ? 'ipv4' : 'ipv6')
 
-// The addresses and networks a setting in iight.config.ts lists, such as 10.0.0.0/8 or 127.0.0.1, as a BlockList,
+// The addresses and networks a setting in sorlo.config.ts lists, such as 10.0.0.0/8 or 127.0.0.1, as a BlockList,
 // refusing any entry that's neither, with the entries that hold every IPv4 address. BlockList checks IPv4 addresses as
 // ::ffff:<address> too, so an IPv6 network as wide as ::ffff:0:0/96 holds every one of them, as 0.0.0.0/0 does.
 export function networkList(setting: string, networks: Array<string>, example: string) {
@@ -214,7 +214,7 @@ export function networkList(setting: string, networks: Array<string>, example: s
     const valid = version && !rest.length && (prefix === undefined || /^\d{1,3}$/.test(prefix))
     if (!valid || Number(prefix ?? 0) > (version === 4 ? 32 : 128)) {
       throw new Error(
-        `${setting} in iight.config.ts has ${network}, which isn't an address or a network such as ${example}.`,
+        `${setting} in sorlo.config.ts has ${network}, which isn't an address or a network such as ${example}.`,
       )
     }
     const entry = new BlockList()
@@ -235,7 +235,7 @@ export function webhookNetworks(allowNetworks: Array<string> = []) {
   const ipv6 = wide.find(({ version }) => version === 6)
   if (ipv6) {
     throw new Error(
-      `webhooks.allowNetworks in iight.config.ts has ${ipv6.network}, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.`,
+      `webhooks.allowNetworks in sorlo.config.ts has ${ipv6.network}, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.`,
     )
   }
   return (address: string) => allowed.check(address, family(address)) || !internal.check(address, family(address))
@@ -266,7 +266,7 @@ async function post(
   if (!reaches(address)) {
     const where = address === host ? address : `${host}, at ${address},`
     throw new ActionFailed(
-      `${where} is on a network webhooks can't reach, unless webhooks.allowNetworks in iight.config.ts allows it.`,
+      `${where} is on a network webhooks can't reach, unless webhooks.allowNetworks in sorlo.config.ts allows it.`,
     )
   }
 

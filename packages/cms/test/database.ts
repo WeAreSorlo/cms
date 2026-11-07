@@ -2,7 +2,7 @@ import { createDb } from '../src/db'
 import { sql } from 'kysely'
 
 // compose.yaml creates this database next to the playground's
-export const url = process.env.TEST_DATABASE_URL ?? 'postgres://iight:iight@localhost:5432/iight_test'
+export const url = process.env.TEST_DATABASE_URL ?? 'postgres://sorlo:sorlo@localhost:5432/sorlo_test'
 export const db = createDb(url)
 
 // Drop every table, so each test starts from an empty database

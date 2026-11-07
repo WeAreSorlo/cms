@@ -1,5 +1,5 @@
 import { normaliseConditions } from './core'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 
 // The honeypot: a field that people never see, so a submission that fills it in is kept as spam
 export const honeypot = '_website'
@@ -41,7 +41,7 @@ interface Choice {
 function fieldHtml(field: FieldSchema, prefix: string, indent: string): string {
   const options = field.options ?? {}
   const name = `${prefix}${field.name}`
-  const id = `iight-${field.id ?? name}`
+  const id = `sorlo-${field.id ?? name}`
   const label = escapeHtml(field.label ?? field.name)
   const inner = `${indent}  `
   const help = field.instructions

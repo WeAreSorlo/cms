@@ -16,7 +16,7 @@ import sharp from 'sharp'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
 // The storage folder sits inside a temporary folder that also holds a file it mustn't serve
-const root = await mkdtemp(join(tmpdir(), 'iight-media-'))
+const root = await mkdtemp(join(tmpdir(), 'sorlo-media-'))
 const location = join(root, 'storage')
 const storage = { default: 'local', services: { local: () => new FSDriver({ location, visibility: 'public' }) } }
 const app = createApp(db, types, { storage })
@@ -234,7 +234,7 @@ test('sites choose the types they take, the size limit and how files are cached'
 
 test("won't start with a type that a file's content can't show", () => {
   expect(() => createApp(db, types, { storage, media: { types: ['text/csv', 'image/*', 'font/*', 'foo/*'] } })).toThrow(
-    "media.types in iight.config.ts has text/csv, foo/*, which can't be told from a file's content.",
+    "media.types in sorlo.config.ts has text/csv, foo/*, which can't be told from a file's content.",
   )
 })
 
@@ -448,7 +448,7 @@ test('with url set, file URLs start from it, whatever Host or X-Forwarded-Proto 
 })
 
 test("the admin's dev server serves no files from the workspace around it, such as a site's uploads", async () => {
-  // As iight dev runs it, with its cache in the temporary folder
+  // As sorlo dev runs it, with its cache in the temporary folder
   const vite = await import('vite')
   const admin = await vite.createServer({
     configFile: fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url)),

@@ -1,4 +1,4 @@
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 
 // Rendered by the admin's sign-in page and checked by POST /api/session
 export const signInSchema: Array<FieldSchema> = [
@@ -6,7 +6,7 @@ export const signInSchema: Array<FieldSchema> = [
   { name: 'password', label: 'Password', type: 'password', required: true },
 ]
 
-// Asked for by iight make:user
+// Asked for by sorlo make:user
 export const userSchema: Array<FieldSchema> = [
   { name: 'name', label: 'Name', type: 'text', required: true },
   { name: 'email', label: 'Email', type: 'email', required: true },
@@ -20,7 +20,7 @@ export const inviteSchema: Array<FieldSchema> = [{ name: 'email', label: 'Email'
 // What someone invited chooses for themselves, on the invite's page and checked by POST /api/session/invite
 export const joinSchema: Array<FieldSchema> = userSchema.filter((field) => field.name !== 'email')
 
-// A new password, on a reset link's page and checked by POST /api/session/reset, and asked for by iight user:password
+// A new password, on a reset link's page and checked by POST /api/session/reset, and asked for by sorlo user:password
 export const resetSchema: Array<FieldSchema> = [
   { name: 'password', label: 'New password', type: 'password', required: true, options: { minLength: 8 } },
 ]
@@ -50,14 +50,14 @@ export const accountSchema = (email: string): Array<FieldSchema> => [
   },
 ]
 
-// What a key can do besides reading live content and media (PLAN.md section 16), each a flag of iight make:api-key
+// What a key can do besides reading live content and media (PLAN.md section 16), each a flag of sorlo make:api-key
 export const apiKeyScopes = [
   { value: 'preview', label: 'Preview: read drafts, with status=draft' },
   { value: 'types', label: 'Types: pull TypeScript types for the SDK, from GET /types' },
   { value: 'submit', label: 'Submit: post to forms without the rate limit' },
 ]
 
-// A key's name and scopes, asked for by iight make:api-key, whose flags give the scopes, and edited on the admin's API
+// A key's name and scopes, asked for by sorlo make:api-key, whose flags give the scopes, and edited on the admin's API
 // keys page, whose routes check it
 export const apiKeySchema: Array<FieldSchema> = [
   { name: 'name', label: 'Name', type: 'text', required: true, options: { placeholder: 'Website' } },

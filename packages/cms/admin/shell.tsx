@@ -69,7 +69,7 @@ function Splitter({
   vertical,
   measure,
 }: {
-  // The custom property, --cms-<name>, and what this browser remembers it as, iight-<name>
+  // The custom property, --cms-<name>, and what this browser remembers it as, sorlo-<name>
   name: string
   label: string
   // The id of what it resizes
@@ -81,7 +81,7 @@ function Splitter({
   const handle = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<Size>()
   const property = `--cms-${name}`
-  const key = `iight-${name}`
+  const key = `sorlo-${name}`
   const sized = () => measure(document.getElementById(controls)!, handle.current!)
 
   const resize = (to: number) => {
@@ -240,7 +240,7 @@ export function Shell({
   hash: string
   types: Map<string, ContentType>
   user: { id: string; name: string; email: string }
-  // Whether the type editor is on, as in iight dev, where migrations run from the admin
+  // Whether the type editor is on, as in sorlo dev, where migrations run from the admin
   editable: boolean
   // Whether /mcp is on, so the person's menu links to their MCP tokens
   mcp: boolean
@@ -265,7 +265,7 @@ export function Shell({
   // Whether the person has hidden the assistant's chat beside pages, which this browser remembers
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return !!localStorage.getItem('iight-assistant-collapsed')
+      return !!localStorage.getItem('sorlo-assistant-collapsed')
     } catch {
       return false
     }
@@ -274,8 +274,8 @@ export function Shell({
     setCollapsed(next)
     // Without storage, it lasts until the page reloads
     try {
-      if (next) localStorage.setItem('iight-assistant-collapsed', 'true')
-      else localStorage.removeItem('iight-assistant-collapsed')
+      if (next) localStorage.setItem('sorlo-assistant-collapsed', 'true')
+      else localStorage.removeItem('sorlo-assistant-collapsed')
     } catch {}
   }
   const main = useRef<HTMLElement>(null)
@@ -299,7 +299,7 @@ export function Shell({
   const pending = useRef(arriving)
   const update = () => {
     const heading = main.current?.querySelector('h1')
-    document.title = heading?.textContent ? `${heading.textContent} · iight` : 'iight'
+    document.title = heading?.textContent ? `${heading.textContent} · Sorlo` : 'Sorlo'
     if (pending.current && heading) {
       pending.current = false
       focusHeading()
@@ -351,16 +351,16 @@ export function Shell({
   return (
     <LucideProvider size={16}>
       <div className='admin'>
-        <button type='button' className='iight-button cms-skip' onClick={focusHeading}>
+        <button type='button' className='sorlo-button cms-skip' onClick={focusHeading}>
           Skip to content
         </button>
 
         <div className='cms-bar'>
-          <strong>iight</strong>
+          <strong>Sorlo</strong>
           <button
             ref={menuButton}
             type='button'
-            className='iight-button'
+            className='sorlo-button'
             aria-expanded={menuOpen}
             aria-controls='nav'
             onClick={() => setMenuOpen(!menuOpen)}

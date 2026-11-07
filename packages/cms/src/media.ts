@@ -71,7 +71,7 @@ const formatSize = (bytes: number) =>
 // site, such as an SVG or XML file, is served in a sandbox that runs no scripts.
 const viewable = /^(image\/(?!svg\+xml)|video\/|audio\/|application\/pdf)/
 
-// The address file URLs start from: url in iight.config.ts, which createApp sets for each request, or else the CMS's
+// The address file URLs start from: url in sorlo.config.ts, which createApp sets for each request, or else the CMS's
 // address as its client sees it, https behind a proxy that says so, as the session cookie assumes
 export function origin(c: Context) {
   const site: string | undefined = c.get('origin')
@@ -190,7 +190,7 @@ export function mediaRoutes(
   const unknown = types.filter((type) => ![...supportedMimeTypes, 'image/svg+xml'].some((mime) => allows([type], mime)))
   if (unknown.length) {
     throw new Error(
-      `media.types in iight.config.ts has ${unknown.join(', ')}, which can't be told from a file's content.`,
+      `media.types in sorlo.config.ts has ${unknown.join(', ')}, which can't be told from a file's content.`,
     )
   }
 

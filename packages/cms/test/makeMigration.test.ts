@@ -1,7 +1,7 @@
 import { ContentMigrationFile, catchUp } from '../src/content'
 import { makeMigration } from '../src/makeMigration'
 import { type ContentType, type SharedGroup, expandFields } from '../src/types'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -90,7 +90,7 @@ function remove(fields: Array<FieldSchema>, id: string): any {
 
 // The migration make:migration writes for going from one set of types to another
 async function migration(before: Array<ContentType>, after: Array<ContentType>, name?: string) {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-migrations-'))
   await makeMigration(dir, new Map(before.map((type) => [type.name, type])))
   const made = await makeMigration(dir, new Map(after.map((type) => [type.name, type])), name)
   const file: ContentMigrationFile | undefined = made.file && (await import(join(dir, made.file)))
@@ -105,7 +105,7 @@ async function roundTrip(file: ContentMigrationFile, start: object = values(), t
 }
 
 test('the first run writes the snapshot, and later ones only write migrations for changes to values', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-migrations-'))
   const types = new Map([['blog', blog]])
   expect(await makeMigration(dir, types)).toEqual({ file: undefined, notes: [], created: true, updated: true })
   expect(JSON.parse(await readFile(join(dir, '.snapshot.json'), 'utf8'))).toEqual({ blog })
@@ -138,8 +138,8 @@ test('renamed fields and layouts get renames both ways', async () => {
 
   expect(notes).toEqual([])
   expect(source)
-    .toBe(`// Made by iight make:migration. Content migrations only change entries' values, so old versions can run them too
-import type { ContentMigration } from '@iight/cms'
+    .toBe(`// Made by sorlo make:migration. Content migrations only change entries' values, so old versions can run them too
+import type { ContentMigration } from '@sorlo/cms'
 
 export const up: ContentMigration = ({ entries }) => {
   entries.renameField('blog', 'title', 'headline')
@@ -245,8 +245,8 @@ test('narrowed choices and settings are flagged for --check, widened ones and ne
   const { source, notes } = await migration([blog], [narrowed])
 
   expect(notes).toEqual([
-    'Flagged: title is now required and has a new maxLength, so some entries may not pass. Run iight migrate --check',
-    'Flagged: category lost the choice draft, so some entries may not pass. Run iight migrate --check',
+    'Flagged: title is now required and has a new maxLength, so some entries may not pass. Run sorlo migrate --check',
+    'Flagged: category lost the choice draft, so some entries may not pass. Run sorlo migrate --check',
   ])
   expect(source).toContain('export const down: ContentMigration = ({ entries }) => {\n  // Nothing to undo\n}')
 })
@@ -284,7 +284,7 @@ test('new fields with a default fill it in, and new required ones without a defa
   const { file, source, notes } = await migration([blog], [added])
 
   expect(notes).toEqual([
-    'Flagged: kind is new and required, so entries saved before it have no value. Run iight migrate --check',
+    'Flagged: kind is new and required, so entries saved before it have no value. Run sorlo migrate --check',
   ])
   expect(source).toContain(`entries.addField('blog', 'blocks.quote.style', "it's plain")`)
   const { up, down } = await roundTrip(file)
@@ -311,7 +311,7 @@ test('renamed types are renamed, removed ones are flagged, and two types can swa
   const { file, source, notes } = await migration([blog, docs], [posts])
 
   expect(notes).toEqual([
-    'Flagged: the type docs is gone, but its entries stay until you delete them. iight migrate --check lists them',
+    'Flagged: the type docs is gone, but its entries stay until you delete them. sorlo migrate --check lists them',
   ])
   expect(source).toContain(
     "  entries.renameType('blog', 'posts')\n  entries.renameField('posts', 'title', 'name')\n  // Flagged: the type docs",
@@ -372,7 +372,7 @@ test("swapped names, and names taken from removed fields, don't overwrite values
 })
 
 test('migrations are named for the time and the types, or a name given, and sort in the order they were made', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-migrations-'))
   await makeMigration(dir, new Map([['blog', blog]]))
   const first = edit(blog, (find) => (find('fld_title').name = 'headline'))
   const second = edit(first, (find) => (find('fld_title').name = 'name'))
@@ -527,7 +527,7 @@ test('using a shared group in place of a copy keeps the values whose names match
   // Matched fields are flagged for their changed settings and types, as any field is
   expect(notes).toEqual([
     "Flagged: deletes the values of seo.summary, which down can't bring back. Old versions keep them",
-    'Flagged: seo.title has a new maxLength, so some entries may not pass. Run iight migrate --check',
+    'Flagged: seo.title has a new maxLength, so some entries may not pass. Run sorlo migrate --check',
     'TODO: seo.keywords changed from textarea to text. Convert its values here, and back in down',
   ])
   expect(source).not.toContain("'seo.title'")

@@ -1,7 +1,7 @@
 import type { ChatFile, ChatMessage, ReplyNotice } from '../src/chats'
 import type { Proposal } from '../src/proposals'
 import { api, errorMessage, pathOf } from './api'
-import type { ValidationReport } from 'iight'
+import type { ValidationReport } from '@sorlo/core'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
 export type { ChatFile, ChatMessage, Proposal }
@@ -112,7 +112,7 @@ export const AssistantContext = createContext<Assistant | null>(null)
 export const useAssistant = () => useContext(AssistantContext)!
 
 // The chat open in this browser, so a reload opens it again
-const remembered = 'iight-chat'
+const remembered = 'sorlo-chat'
 const remember = (id: string | null) => {
   try {
     if (id) localStorage.setItem(remembered, id)

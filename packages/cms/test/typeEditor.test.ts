@@ -17,7 +17,7 @@ afterAll(() => db.destroy())
 
 // A site project with the blog and authors types and a snapshot of them, served with the type editor
 beforeEach(async () => {
-  const root = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const root = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   dirs = { types: join(root, 'schema/types'), migrations: join(root, 'migrations') }
   await mkdir(dirs.types, { recursive: true })
   await writeFile(join(dirs.types, 'blog.json'), JSON.stringify(blog))
@@ -46,7 +46,7 @@ const events = {
   fields: [{ id: 'fld_event_title', type: 'text', name: 'title', label: 'Title', required: true }],
 }
 
-test('types are read-only without the site project folders, as outside iight dev', async () => {
+test('types are read-only without the site project folders, as outside sorlo dev', async () => {
   const readOnly = createApp(db, fixtures)
   const list = await send('GET', '/types', undefined, readOnly)
   expect(list.body.editable).toBe(false)
@@ -59,7 +59,7 @@ test('types are read-only without the site project folders, as outside iight dev
   ]) {
     expect(await send(method, path, events, readOnly)).toEqual({
       status: 403,
-      body: { message: 'Content types can only be changed in development, with iight dev.' },
+      body: { message: 'Content types can only be changed in development, with sorlo dev.' },
     })
   }
   expect((await send('GET', '/types')).body.editable).toBe(true)
@@ -159,7 +159,7 @@ test('renaming a type renames its file, and deleting one removes it and flags it
       migration: {
         file: expect.stringMatching(/_posts\.ts$/),
         notes: [
-          'Flagged: the type posts is gone, but its entries stay until you delete them. iight migrate --check lists them',
+          'Flagged: the type posts is gone, but its entries stay until you delete them. sorlo migrate --check lists them',
         ],
       },
     },
@@ -197,7 +197,7 @@ test('shared groups need a session, and are read-only without the site project f
   ]) {
     expect(await send(method, path, seo, readOnly)).toEqual({
       status: 403,
-      body: { message: 'Shared groups can only be changed in development, with iight dev.' },
+      body: { message: 'Shared groups can only be changed in development, with sorlo dev.' },
     })
   }
 })

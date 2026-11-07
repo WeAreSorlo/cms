@@ -13,9 +13,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
-// The admin's Migrations page (PLAN.md section 6): every migration listed, with what each waiting one does, and in iight
-// dev, where the type editor is, Run, which runs them as iight migrate does, and Check entries, which is
-// iight migrate --check.
+// The admin's Migrations page (PLAN.md section 6): every migration listed, with what each waiting one does, and in sorlo
+// dev, where the type editor is, Run, which runs them as sorlo migrate does, and Check entries, which is
+// sorlo migrate --check.
 
 let cookie: string
 let userId: string
@@ -27,7 +27,7 @@ afterAll(() => db.destroy())
 let dir: string
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'iight-site-migrations-'))
+  dir = await mkdtemp(join(tmpdir(), 'sorlo-site-migrations-'))
   await db.deleteFrom('entries').execute()
   await db.deleteFrom('migrations').where('name', 'like', '2099_%').execute()
   await db.deleteFrom('rebuilds').execute()
@@ -39,7 +39,7 @@ afterEach(async () => {
 
 type App = ReturnType<typeof createApp>
 
-// The server as iight dev makes it, with the type editor, or as iight start does without it
+// The server as sorlo dev makes it, with the type editor, or as sorlo start does without it
 const site = ({ editor = true, types: loaded = types, finishLinks = false } = {}) =>
   createApp(db, loaded, {
     siteMigrations: dir,
@@ -502,7 +502,7 @@ test('a migration counts as run once it commits, and a failure outside any names
 })
 
 test("the CMS's own migrations are the ones there when the server started", async () => {
-  const cmsDir = await mkdtemp(join(tmpdir(), 'iight-cms-migrations-'))
+  const cmsDir = await mkdtemp(join(tmpdir(), 'sorlo-cms-migrations-'))
   const migration = 'export const up = async () => {}\nexport const down = async () => {}\n'
   await writeFile(join(cmsDir, '2099_01_01_000000_first.ts'), migration)
   try {
@@ -531,7 +531,7 @@ test("a file that doesn't load says so with paths from the site's folder, not th
 
 test("another run taking a migration first is said in words, not in the database's", async () => {
   const name = '2099_01_01_000000_elsewhere'
-  // As iight migrate in a terminal would, while this run's migration is going
+  // As sorlo migrate in a terminal would, while this run's migration is going
   const elsewhere = { up: async () => void (await db.insertInto('migrations').values({ name, batch: 99 }).execute()) }
   const { ran, failed } = await runMigrations(db, {
     cms: { [name]: { ...elsewhere, down: async () => {} } },
@@ -541,7 +541,7 @@ test("another run taking a migration first is said in words, not in the database
   expect(ran).toEqual([])
   expect(failed).toMatchObject({
     name,
-    message: `${name} ran elsewhere while this run went, such as through npx iight migrate, so this run stopped there.`,
+    message: `${name} ran elsewhere while this run went, such as through npx sorlo migrate, so this run stopped there.`,
   })
 })
 
@@ -700,7 +700,7 @@ test('Check entries lists the drafts and live copies that no longer pass, up to 
   expect(capped.body.data.failures).toHaveLength(100)
 })
 
-test('only iight dev runs and checks, and only someone signed in sees the list', async () => {
+test('only sorlo dev runs and checks, and only someone signed in sees the list', async () => {
   await write('2099_01_01_000000_blog', ["  entries.addField('blog', 'featured', false)"])
   const app = site({ editor: false })
   const { status, body } = await send(app, 'GET', '/migrations')
@@ -709,7 +709,7 @@ test('only iight dev runs and checks, and only someone signed in sees the list',
 
   const refused = {
     status: 403,
-    body: { message: 'Migrations run from the admin only in development, with iight dev. Run npx iight migrate.' },
+    body: { message: 'Migrations run from the admin only in development, with sorlo dev. Run npx sorlo migrate.' },
   }
   expect(await send(app, 'POST', '/migrations/run', { waiting: body.waiting })).toEqual(refused)
   expect(await send(app, 'GET', '/migrations/check')).toEqual(refused)

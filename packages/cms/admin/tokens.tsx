@@ -3,7 +3,7 @@ import { api, errorMessage, shortDate } from './api'
 import { NewToken } from './keys'
 import { Badge, EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
 import { AccountTabs } from './users'
-import Form, { FormHandle } from 'iight'
+import Form, { FormHandle } from '@sorlo/core'
 import { CircleAlert, Copy, Plug, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -45,11 +45,11 @@ const access = (scopes: Array<string> = []) => (
   </section>
 )
 
-// Under the permissions whenever Publish changes is ticked, since what it lets through goes live with no one in iight
+// Under the permissions whenever Publish changes is ticked, since what it lets through goes live with no one in Sorlo
 // reviewing it
 const publishWarning = (
   <Notice tone='warning'>
-    With Publish changes, what your AI client writes can go live on the site without anyone reviewing it in iight,
+    With Publish changes, what your AI client writes can go live on the site without anyone reviewing it in Sorlo,
     including what a web page, a file or an email it read steered it to write. Your client's approval prompt is the only
     check, so keep it asking before it publishes.
   </Notice>
@@ -70,7 +70,7 @@ export function TokenList({ publish }: { publish: boolean }) {
   }, [])
 
   const newToken = (
-    <a className='iight-button iight-button--primary' href='#/account/tokens/new'>
+    <a className='sorlo-button sorlo-button--primary' href='#/account/tokens/new'>
       <Plus /> New token
     </a>
   )
@@ -179,7 +179,7 @@ export function TokenForm({ publish }: { publish: boolean }) {
         label='About this token'
         problem={problem}
         actions={
-          <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={create}>
+          <button type='button' className='sorlo-button sorlo-button--primary' aria-busy={busy} onClick={create}>
             {busy ? 'Creating…' : 'Create token'}
           </button>
         }
@@ -307,7 +307,7 @@ export function TokenPage({ id, publish }: { id: string; publish: boolean }) {
         actions={
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             aria-busy={busy === 'save'}
             onClick={save}
           >
@@ -317,7 +317,7 @@ export function TokenPage({ id, publish }: { id: string; publish: boolean }) {
         footer={
           <button
             type='button'
-            className='iight-button iight-button--danger'
+            className='sorlo-button sorlo-button--danger'
             aria-busy={busy === 'revoke'}
             onClick={revoke}
           >
@@ -342,7 +342,7 @@ export function TokenPage({ id, publish }: { id: string; publish: boolean }) {
 // How to keep a client asking before each publish, for a token with Publish changes. The rules hold no token, so they
 // show whenever the token can publish, not just when it's made.
 function KeepAsking() {
-  const rules = { permissions: { ask: ['mcp__iight__publish_entries', 'mcp__iight__open_form'] } }
+  const rules = { permissions: { ask: ['mcp__sorlo__publish_entries', 'mcp__sorlo__open_form'] } }
 
   return (
     <section className='cms-section'>
@@ -353,9 +353,9 @@ function KeepAsking() {
       </p>
       <h3>Claude Code</h3>
       <p>
-        To have Claude Code ask before every publish, even once you've let it use iight's other tools without asking,
+        To have Claude Code ask before every publish, even once you've let it use Sorlo's other tools without asking,
         add these to <code>permissions.ask</code> in <code>~/.claude/settings.json</code>. They name the server added as{' '}
-        <code>iight</code>, as the command when the token was made does.
+        <code>sorlo</code>, as the command when the token was made does.
       </p>
       <CopyCode label='Claude Code rules' text={JSON.stringify(rules, null, 2)} />
       <h3>Cursor and VS Code</h3>
@@ -370,10 +370,10 @@ function KeepAsking() {
 function Connect({ token }: { token: string }) {
   const url = mcpUrl()
   const authorization = `Bearer ${token}`
-  const cursor = { mcpServers: { iight: { url, headers: { Authorization: authorization } } } }
+  const cursor = { mcpServers: { sorlo: { url, headers: { Authorization: authorization } } } }
   const vsCode = {
-    inputs: [{ type: 'promptString', id: 'iight-token', description: 'iight MCP token', password: true }],
-    servers: { iight: { type: 'http', url, headers: { Authorization: 'Bearer ${input:iight-token}' } } },
+    inputs: [{ type: 'promptString', id: 'sorlo-token', description: 'Sorlo MCP token', password: true }],
+    servers: { sorlo: { type: 'http', url, headers: { Authorization: 'Bearer ${input:sorlo-token}' } } },
   }
 
   return (
@@ -387,7 +387,7 @@ function Connect({ token }: { token: string }) {
       <CopyCode
         label='Claude Code command'
         rows={3}
-        text={`claude mcp add --transport http iight ${url} --header "Authorization: ${authorization}"`}
+        text={`claude mcp add --transport http sorlo ${url} --header "Authorization: ${authorization}"`}
       />
       <h3>Cursor</h3>
       <p>
@@ -428,7 +428,7 @@ function CopyCode({ label, text, rows }: { label: string; text: string; rows?: n
         value={text}
       />
       <div className='actions'>
-        <button type='button' className='iight-button' aria-label={`Copy the ${label}`} onClick={copy}>
+        <button type='button' className='sorlo-button' aria-label={`Copy the ${label}`} onClick={copy}>
           <Copy /> Copy
         </button>
         {problem && (

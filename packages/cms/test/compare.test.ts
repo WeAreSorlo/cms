@@ -8,7 +8,7 @@ import {
   parentField,
   toJson,
 } from '../admin/compare'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 import { expect, test } from 'vitest'
 
 // Comparing versions (PLAN.md section 20): what changed between two versions' values, worked out in the admin

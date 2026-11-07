@@ -155,7 +155,7 @@ test("anyone can get a form's fields, by its ID or its name, from any site", asy
   expect(preflight.headers.get('access-control-allow-headers')).toBe('content-type')
 })
 
-test('iight.config.ts can name the sites whose JavaScript can use forms', async () => {
+test('sorlo.config.ts can name the sites whose JavaScript can use forms', async () => {
   await createForm()
   const listed = createApp(db, types, { forms: { origins: ['https://example.com'] } })
   const from = async (origin: string) =>
@@ -372,7 +372,7 @@ test('takes the address a proxy on a private network forwarded for, and no one e
   expect((await submissions()).map((row) => row.ip)).toEqual(['198.51.100.9', '203.0.113.200', '198.51.100.10'])
 })
 
-test('believes X-Forwarded-For from the proxies iight.config.ts lists too, everyone included with a warning', async () => {
+test('believes X-Forwarded-For from the proxies sorlo.config.ts lists too, everyone included with a warning', async () => {
   await createForm()
   const proxies = ['198.51.100.0/24', '2001:db8::1']
   const behind = createApp(db, types, { proxies, forms: { rateLimit: { posts: 1 } } })
@@ -408,7 +408,7 @@ test('believes X-Forwarded-For from the proxies iight.config.ts lists too, every
 
   // A typo stops the server
   expect(() => createApp(db, types, { proxies: ['173.245.48/20'] })).toThrow(
-    "proxies in iight.config.ts has 173.245.48/20, which isn't an address or a network such as 173.245.48.0/20.",
+    "proxies in sorlo.config.ts has 173.245.48/20, which isn't an address or a network such as 173.245.48.0/20.",
   )
 
   // A network that holds every address is the site's call, taken with a warning, and believes the hop whoever connects
@@ -418,7 +418,7 @@ test('believes X-Forwarded-For from the proxies iight.config.ts lists too, every
   expect(warn.mock.calls.map(([message]) => message)).toEqual(
     ['0.0.0.0/0', '::ffff:0:0/96'].map(
       (network) =>
-        `proxies in iight.config.ts has ${network}, which holds every address, so whoever connects can name any ` +
+        `proxies in sorlo.config.ts has ${network}, which holds every address, so whoever connects can name any ` +
         'address in X-Forwarded-For. List it only if nothing reaches the CMS except through your proxies.',
     ),
   )
@@ -432,9 +432,9 @@ test('the embed HTML posts every field it shows to the form, by its ID', async (
   const { id, embed } = await createForm()
   expect(embed).toContain(`<form method="post" action="http://localhost/v1/forms/${id}">`)
   expect(embed).toContain('<p>We reply within a day.</p>')
-  expect(embed).toContain('<input type="email" id="iight-fld_email" name="email" required>')
+  expect(embed).toContain('<input type="email" id="sorlo-fld_email" name="email" required>')
   expect(embed).toContain('<label><input type="checkbox" name="topics" value="sales"> Sales</label>')
-  expect(embed).toContain('<input type="text" id="iight-fld_town" name="address.town" required>')
+  expect(embed).toContain('<input type="text" id="sorlo-fld_town" name="address.town" required>')
   expect(embed).toContain('<!-- Guests is left out, as its items need JavaScript -->')
   expect(embed).toContain('<input name="_website" tabindex="-1" autocomplete="off">')
 
@@ -472,7 +472,7 @@ test('the embed HTML posts every field it shows to the form, by its ID', async (
 test("the embed HTML escapes a field's ID wherever it goes", () => {
   const fields = [{ id: '"><script>alert(1)</script>', type: 'text', name: 'name', label: 'Name', instructions: 'Hi' }]
   const embed = embedHtml(fields, 'http://localhost/v1/forms/1')
-  const id = 'iight-&#34;&#62;&#60;script&#62;alert(1)&#60;/script&#62;'
+  const id = 'sorlo-&#34;&#62;&#60;script&#62;alert(1)&#60;/script&#62;'
   expect(embed).not.toContain('<script>')
   expect(embed).toContain(`<label for="${id}">Name</label>`)
   expect(embed).toContain(`<input type="text" id="${id}" name="name" aria-describedby="${id}-help">`)
@@ -522,7 +522,7 @@ test('turns away a post with more than 1,000 list items in all, at any depth, be
     )
   }
   expect(() => createApp(db, types, { forms: { maxItems: 1.5 } })).toThrow(
-    'forms.maxItems in iight.config.ts needs a whole number from 1, or Infinity for no limit.',
+    'forms.maxItems in sorlo.config.ts needs a whole number from 1, or Infinity for no limit.',
   )
 
   // A post nested deep is counted without overflowing the stack: a list in a list 100,000 times over is too many

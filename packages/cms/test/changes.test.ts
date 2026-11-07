@@ -54,13 +54,13 @@ const notices: ContentType = {
 const types = new Map([...fixtureTypes, ['events', events], ['notices', notices]])
 
 // The media library's files, in a folder of their own
-const location = join(await mkdtemp(join(tmpdir(), 'iight-changes-')), 'storage')
+const location = join(await mkdtemp(join(tmpdir(), 'sorlo-changes-')), 'storage')
 const storage = { default: 'local', services: { local: () => new FSDriver({ location, visibility: 'public' }) } }
 
 let cookie: string
 let userId: string
 // A second person, whose chats and proposals are theirs alone
-const bob = { id: uuidv7(), cookie: 'iight_session=bob-token' }
+const bob = { id: uuidv7(), cookie: 'sorlo_session=bob-token' }
 
 beforeAll(async () => {
   ;({ cookie, userId } = await setUp())

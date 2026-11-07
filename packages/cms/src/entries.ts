@@ -7,9 +7,9 @@ import { EntryRow, StatusRow, entryIds, listEntries, parseQuery, toAdminEntry, u
 import { cmsInputs, saveRelations, serverInputs } from './relations'
 import { EventName, maxTicked, versionSchema } from './schemas'
 import type { ContentType } from './types'
+import type { FieldSchema, InputSchema, ValidationReport } from '@sorlo/core'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import type { FieldSchema, InputSchema, ValidationReport } from 'iight'
 import { Kysely, sql } from 'kysely'
 import { isDeepStrictEqual } from 'node:util'
 
@@ -440,7 +440,7 @@ export function entrySaver(
       .find((name) => !applied.includes(name))
     if (pending) {
       throw new HTTPException(409, {
-        message: `Run iight migrate first. The content migration ${pending} hasn't run yet.`,
+        message: `Run sorlo migrate first. The content migration ${pending} hasn't run yet.`,
       })
     }
     return applied
@@ -610,7 +610,7 @@ export function entryRoutes(
   { keep }: Partial<VersionOptions> = {},
 ) {
   if (keep !== undefined && (!Number.isInteger(keep) || keep < 1)) {
-    throw new Error('versions.keep in iight.config.ts needs a whole number from 1.')
+    throw new Error('versions.keep in sorlo.config.ts needs a whole number from 1.')
   }
 
   const app = new Hono<AdminEnv>()

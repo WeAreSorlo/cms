@@ -3,7 +3,7 @@ import { groupSchema } from '../src/schemas'
 import { ContentType, GroupsContext, SharedGroup, TypesContext, api, errorMessage } from './api'
 import { useInputs } from './fields'
 import { Dialog, EmptyState, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FieldSchema, FormHandle } from 'iight'
+import Form, { FieldSchema, FormHandle } from '@sorlo/core'
 import { Component, Plus, Trash2 } from 'lucide-react'
 import { MouseEvent, useContext, useRef, useState } from 'react'
 
@@ -13,7 +13,7 @@ import { MouseEvent, useContext, useRef, useState } from 'react'
 // The builder is a form of its own, as in the type editor
 const fieldsSchema: Array<FieldSchema> = [{ name: 'fields', label: 'Fields', type: 'schemabuilder' }]
 
-const readOnly = 'Shared groups can only be changed in development, with iight dev. Their changes ship through git.'
+const readOnly = 'Shared groups can only be changed in development, with sorlo dev. Their changes ship through git.'
 
 // What a save said, kept for the page it moves to when a group is created or renamed
 let flash: { message: string; migration?: boolean; notes: Array<string> } | undefined
@@ -37,7 +37,7 @@ function usersOf(group: SharedGroup, types: Map<string, ContentType>, groups: Ma
 export function GroupList({ groups, editable }: { groups: Map<string, SharedGroup>; editable: boolean }) {
   const types = useContext(TypesContext)
   const newGroup = editable && (
-    <a className='iight-button iight-button--primary' href='#/groups/new'>
+    <a className='sorlo-button sorlo-button--primary' href='#/groups/new'>
       <Plus /> New shared group
     </a>
   )
@@ -231,7 +231,7 @@ export function GroupEditor({
           editable && (
             <button
               type='button'
-              className='iight-button iight-button--primary'
+              className='sorlo-button sorlo-button--primary'
               aria-busy={busy === 'save'}
               onClick={save}
             >
@@ -242,7 +242,7 @@ export function GroupEditor({
         footer={
           editable &&
           group && (
-            <button type='button' className='iight-button iight-button--danger' onClick={remove}>
+            <button type='button' className='sorlo-button sorlo-button--danger' onClick={remove}>
               <Trash2 /> Delete
             </button>
           )
@@ -336,7 +336,7 @@ export function TypeGroups({
                     <button
                       {...named('make')}
                       type='button'
-                      className='iight-button'
+                      className='sorlo-button'
                       onClick={() => onMakeShared(field)}
                     >
                       Make shared
@@ -345,7 +345,7 @@ export function TypeGroups({
                       <button
                         {...named('use')}
                         type='button'
-                        className='iight-button'
+                        className='sorlo-button'
                         onClick={() => onUseShared(field)}
                       >
                         Use shared group
@@ -412,10 +412,10 @@ export function MakeShared({
       onClose={onClose}
       footer={
         <div className='cms-dialog-actions'>
-          <button type='button' className='iight-button' onClick={closeDialog}>
+          <button type='button' className='sorlo-button' onClick={closeDialog}>
             Cancel
           </button>
-          <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={make}>
+          <button type='button' className='sorlo-button sorlo-button--primary' aria-busy={busy} onClick={make}>
             {busy ? 'Making…' : 'Make shared'}
           </button>
         </div>
@@ -498,12 +498,12 @@ export function UseShared({
       onClose={onClose}
       footer={
         <div className='cms-dialog-actions'>
-          <button type='button' className='iight-button' onClick={closeDialog}>
+          <button type='button' className='sorlo-button' onClick={closeDialog}>
             Cancel
           </button>
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             onClick={(event) => {
               if (!group) return
               onUse(group)

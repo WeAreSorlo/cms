@@ -1,5 +1,5 @@
 import type { ContentType, SharedGroup } from './types'
-import type { FieldSchema, InputSchema, InputValidateValue } from 'iight'
+import type { FieldSchema, InputSchema, InputValidateValue } from '@sorlo/core'
 
 // The CMS's own inputs, which store IDs: relationship links to entries, media to files in the media library
 // (PLAN.md section 12) and form to one of the forms, and the Shared group field. Nothing here loads core or server code, so the admin imports them
@@ -214,7 +214,7 @@ export const relationship = {
   formatValue: count('entry', 'entries'),
 }
 
-// The media field's settings. Its types are MIME types with wildcards, as in iight.config.ts, and none means any.
+// The media field's settings. Its types are MIME types with wildcards, as in sorlo.config.ts, and none means any.
 export const media = {
   name: () => 'Media',
   description: () => 'Files from the media library, which it can also upload to.',

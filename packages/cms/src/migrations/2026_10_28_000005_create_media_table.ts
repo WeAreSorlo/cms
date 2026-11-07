@@ -4,7 +4,7 @@ export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('media')
     .addColumn('id', 'uuid', (col) => col.primaryKey())
-    // The FlyDrive service that stores the file, named in iight.config.ts, and the file's key there
+    // The FlyDrive service that stores the file, named in sorlo.config.ts, and the file's key there
     .addColumn('disk', 'text', (col) => col.notNull())
     .addColumn('path', 'text', (col) => col.notNull())
     .addColumn('name', 'text', (col) => col.notNull())

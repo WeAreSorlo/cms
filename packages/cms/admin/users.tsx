@@ -16,7 +16,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
+import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/core'
 import { KeyRound, LogOut, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -114,7 +114,7 @@ function AccessPage({
   const [sending, setSending] = useState(false)
   const [problem, setProblem] = useState('')
   useEffect(() => {
-    document.title = `${title} · iight`
+    document.title = `${title} · Sorlo`
   }, [title])
 
   // Focus starts on the heading, since the page that had it has gone, and goes back there once the form and its button
@@ -149,7 +149,7 @@ function AccessPage({
       className='cms-sign-in'
       onKeyDown={(event) => event.key === 'Enter' && event.target instanceof HTMLInputElement && submit()}
     >
-      <p className='cms-sign-in__mark'>iight</p>
+      <p className='cms-sign-in__mark'>Sorlo</p>
       <div className='cms-sign-in__card' ref={area}>
         <h1 ref={heading} tabIndex={-1}>
           {title}
@@ -159,7 +159,7 @@ function AccessPage({
         {notice}
         {schema && <Form ref={form} schema={schema} onValuesChange={setValues} />}
         {schema && (
-          <button type='button' className='iight-button iight-button--primary' aria-busy={sending} onClick={submit}>
+          <button type='button' className='sorlo-button sorlo-button--primary' aria-busy={sending} onClick={submit}>
             {sending ? working : action}
           </button>
         )}
@@ -305,7 +305,7 @@ export function UserList({ me }: { me: string }) {
   }
 
   const invite = (
-    <a className='iight-button iight-button--primary' href='#/users/invite'>
+    <a className='sorlo-button sorlo-button--primary' href='#/users/invite'>
       <UserPlus /> Invite someone
     </a>
   )
@@ -317,7 +317,7 @@ export function UserList({ me }: { me: string }) {
         label='Users'
         actions={invite}
         footer={
-          <a className='iight-button' href='#/users/removed'>
+          <a className='sorlo-button' href='#/users/removed'>
             Removed users
           </a>
         }
@@ -574,11 +574,11 @@ export function InvitePage({ query, mail }: { query: string; mail: boolean }) {
         problem={problem}
         actions={
           invite ? (
-            <button type='button' className='iight-button' onClick={again}>
+            <button type='button' className='sorlo-button' onClick={again}>
               <UserPlus /> Invite someone else
             </button>
           ) : (
-            <button type='button' className='iight-button iight-button--primary' aria-busy={busy} onClick={send}>
+            <button type='button' className='sorlo-button sorlo-button--primary' aria-busy={busy} onClick={send}>
               {busy ? 'Inviting…' : 'Invite'}
             </button>
           )
@@ -745,18 +745,18 @@ export function PersonPanel({
       problem={problem}
       actions={
         person.removedAt ? (
-          <a className='iight-button' href={`#/users/invite?email=${encodeURIComponent(person.email)}`}>
+          <a className='sorlo-button' href={`#/users/invite?email=${encodeURIComponent(person.email)}`}>
             <UserPlus /> Invite again
           </a>
         ) : (
-          <button type='button' className='iight-button' aria-busy={busy === 'reset'} onClick={onReset}>
+          <button type='button' className='sorlo-button' aria-busy={busy === 'reset'} onClick={onReset}>
             <KeyRound /> {busy === 'reset' ? 'Making a link…' : 'Make a reset link'}
           </button>
         )
       }
       footer={
         !person.removedAt && (
-          <button type='button' className='iight-button iight-button--danger' onClick={onRemove}>
+          <button type='button' className='sorlo-button sorlo-button--danger' onClick={onRemove}>
             <UserMinus /> Remove
           </button>
         )
@@ -898,7 +898,7 @@ export function AccountPanel({
       actions={
         <button
           type='button'
-          className='iight-button iight-button--primary'
+          className='sorlo-button sorlo-button--primary'
           aria-busy={busy === 'save'}
           onClick={onSave}
         >
@@ -913,7 +913,7 @@ export function AccountPanel({
             ? `You're also signed in on ${count(account.otherSessions, 'other browser', 'other browsers')}.`
             : "You aren't signed in anywhere else."}
         </p>
-        <button type='button' className='iight-button' aria-busy={busy === 'others'} onClick={onSignOut}>
+        <button type='button' className='sorlo-button' aria-busy={busy === 'others'} onClick={onSignOut}>
           <LogOut /> Sign out everywhere else
         </button>
       </section>

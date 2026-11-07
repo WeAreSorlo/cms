@@ -16,21 +16,21 @@ for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
   if (!rules.has(selector.trim())) rules.set(selector.trim(), tokens)
 }
 
-const light = rules.get('.iight-theme-admin')!
-const modes = { light, dark: { ...light, ...rules.get('.iight-theme-admin[data-theme=dark]') } }
+const light = rules.get('.sorlo-theme-admin')!
+const modes = { light, dark: { ...light, ...rules.get('.sorlo-theme-admin[data-theme=dark]') } }
 
 test("sets every token in core's contract", () => {
   const require = createRequire(import.meta.url)
-  const contract = readFileSync(require.resolve('iight/styles/themes/default.scss'), 'utf8').match(
-    /--iight-[\w-]+(?=:)/g,
+  const contract = readFileSync(require.resolve('@sorlo/core/styles/themes/default.scss'), 'utf8').match(
+    /--sorlo-[\w-]+(?=:)/g,
   )!
 
   expect(contract.filter((name) => !(name in light))).toEqual([])
 })
 
 test('chooses dark mode the same way from the OS and from data-theme', () => {
-  expect(rules.get('.iight-theme-admin:not([data-theme=light])')).toEqual(
-    rules.get('.iight-theme-admin[data-theme=dark]'),
+  expect(rules.get('.sorlo-theme-admin:not([data-theme=light])')).toEqual(
+    rules.get('.sorlo-theme-admin[data-theme=dark]'),
   )
 })
 

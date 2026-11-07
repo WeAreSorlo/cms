@@ -7,9 +7,9 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 
 let app: ReturnType<typeof createApp>
 
-// The admin as npm run build writes it, served as iight start serves it, next to a file it mustn't serve
+// The admin as npm run build writes it, served as sorlo start serves it, next to a file it mustn't serve
 beforeAll(async () => {
-  const root = await mkdtemp(join(tmpdir(), 'iight-admin-'))
+  const root = await mkdtemp(join(tmpdir(), 'sorlo-admin-'))
   const admin = join(root, 'dist')
   await mkdir(join(admin, 'assets'), { recursive: true })
   await writeFile(join(admin, 'index.html'), '<script type="module" src="/admin/assets/index-abc.js"></script>')

@@ -4,9 +4,9 @@ import { CircleCheck } from 'lucide-react'
 import { ReactNode, createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
 // The admin's Migrations page and the notice above every other page while migrations wait (PLAN.md section 6). Anyone
-// signed in sees what waits, and in iight dev, where the type editor is, Run runs it as iight migrate does.
+// signed in sees what waits, and in sorlo dev, where the type editor is, Run runs it as sorlo migrate does.
 
-// A migration as GET /api/migrations lists it, in the order iight migrate runs them
+// A migration as GET /api/migrations lists it, in the order sorlo migrate runs them
 export interface Migration {
   name: string
   kind: 'cms' | 'content'
@@ -48,7 +48,7 @@ export interface Listing {
   run: Run | null
 }
 
-// What iight migrate --check lists, up to 100 of them, and how many entries don't pass in all
+// What sorlo migrate --check lists, up to 100 of them, and how many entries don't pass in all
 export interface Check {
   entries: number
   failures: Array<{
@@ -130,7 +130,7 @@ export function MigrationsNotice({
     )
   ) : (
     <>
-      a developer runs <code>npx iight migrate</code>
+      a developer runs <code>npx sorlo migrate</code>
     </>
   )
   const said = !content ? (
@@ -265,7 +265,7 @@ export function RunOutcome({ run, waiting = 0 }: { run: Run; waiting?: number })
   const left = run.migrations.filter((name) => !run.ran.includes(name) && name !== run.failed?.name)
   // A migration's own message may not end its sentence
   const message = `${run.failed?.message}${/[.!?]$/.test(run.failed?.message ?? '') ? '' : '.'}`
-  // Every migration ran and the links failed, which the next run, or start of iight dev, rebuilds
+  // Every migration ran and the links failed, which the next run, or start of sorlo dev, rebuilds
   if (!run.failed?.name && !left.length) {
     return (
       <Notice tone='danger'>
@@ -482,7 +482,7 @@ export function MigrationActions({
       {(waiting > 0 || running) && (
         <button
           type='button'
-          className='iight-button iight-button--primary'
+          className='sorlo-button sorlo-button--primary'
           aria-busy={running || busy === 'run'}
           onClick={onRun}
         >
@@ -490,7 +490,7 @@ export function MigrationActions({
         </button>
       )}
       {!waiting && !running && (
-        <button type='button' className='iight-button' aria-busy={busy === 'check'} onClick={onCheck}>
+        <button type='button' className='sorlo-button' aria-busy={busy === 'check'} onClick={onCheck}>
           {busy === 'check' ? 'Checking entries…' : 'Check entries'}
         </button>
       )}
@@ -506,7 +506,7 @@ const Section = ({ title, children }: { title: string; children: ReactNode }) =>
   </section>
 )
 
-// The page: what waits and what ran, in iight dev with Run and Check entries in its panel. Run asks first when what
+// The page: what waits and what ran, in sorlo dev with Run and Check entries in its panel. Run asks first when what
 // waits deletes values, naming each, and sends back what the page showed, so it runs that and nothing else.
 export function MigrationsPage({ editable }: { editable: boolean }) {
   const { listing, problem: failed, reload, setListing } = useContext(MigrationsContext)
@@ -611,12 +611,12 @@ export function MigrationsPage({ editable }: { editable: boolean }) {
         Content migrations change entries' values when a content type changes, and the CMS's own change its tables.{' '}
         {editable ? (
           <>
-            Run is <code>npx iight migrate</code>: it runs every waiting migration, the CMS's first, each in its own
+            Run is <code>npx sorlo migrate</code>: it runs every waiting migration, the CMS's first, each in its own
             transaction.
           </>
         ) : (
           <>
-            They run with <code>npx iight migrate</code>, as part of each deploy.
+            They run with <code>npx sorlo migrate</code>, as part of each deploy.
           </>
         )}
       </p>
@@ -638,7 +638,7 @@ export function MigrationsPage({ editable }: { editable: boolean }) {
           <Section title='Ran'>
             <RanList ran={ran} />
             <p className='cms-muted'>
-              To undo the last batch, run <code>npx iight migrate:rollback</code>, then put back the type's file, the
+              To undo the last batch, run <code>npx sorlo migrate:rollback</code>, then put back the type's file, the
               snapshot and the migration with git.
             </p>
           </Section>

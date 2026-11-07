@@ -5,7 +5,7 @@ import { sql } from 'kysely'
 import { afterAll, expect, test, vi } from 'vitest'
 
 // A database nothing answers for
-const unreachable = createDb('postgres://iight:iight@127.0.0.1:1/iight')
+const unreachable = createDb('postgres://sorlo:sorlo@127.0.0.1:1/sorlo')
 
 afterAll(async () => {
   await db.destroy()

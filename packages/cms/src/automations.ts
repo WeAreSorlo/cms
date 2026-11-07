@@ -14,9 +14,9 @@ import type { AdminEnv } from './entries'
 import { RunRow, listRuns, parseRunQuery } from './query'
 import { automationSchema } from './schemas'
 import type { ContentType } from './types'
+import type { ConditionGroup } from '@sorlo/core'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import type { ConditionGroup } from 'iight'
 import { Kysely, Selectable, sql } from 'kysely'
 
 // Automations: a trigger, conditions on the event's data, and actions run in order (PLAN.md section 11)
@@ -185,7 +185,7 @@ export function createWorker(
   { mail, automations: { attempts = 6 } = {}, webhooks: { allowNetworks } = {} }: WorkerOptions = {},
 ) {
   if (!Number.isInteger(attempts) || attempts < 1) {
-    throw new Error('automations.attempts in iight.config.ts needs a whole number from 1.')
+    throw new Error('automations.attempts in sorlo.config.ts needs a whole number from 1.')
   }
   const reaches = webhookNetworks(allowNetworks)
 

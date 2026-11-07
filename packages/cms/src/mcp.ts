@@ -71,8 +71,8 @@ export function tokenRoutes(db: Kysely<Database>, publish = false) {
     const report = await validateServerValues(schema, values, inputs)
     if (!report.isValid) return c.json(report, 422)
 
-    // A prefix of its own, so neither people nor secret scanners take it for an API key's iight_
-    const token = `iightpat_${randomBytes(32).toString('base64url')}`
+    // A prefix of its own, so neither people nor secret scanners take it for an API key's sorlo_
+    const token = `sorlopat_${randomBytes(32).toString('base64url')}`
     const scopes = scopesOf(values.scopes)
     // Made with the person's row locked, as a removal locks it, so one racing their removal is revoked with the rest or
     // never made
@@ -186,7 +186,7 @@ export function mcpRoutes(
       ...(writes && { writes: { token, ...(publishes && { publish: true }) } }),
     }
     const access = publishes ? 'publish' : writes ? 'drafts' : 'read'
-    const server = new McpServer({ name: 'iight', version }, { instructions: instructions(access) })
+    const server = new McpServer({ name: 'sorlo', version }, { instructions: instructions(access) })
     // A file's details change on the site once applied, which over MCP has no one to apply them
     const offered = tools.filter(
       (tool) => !tool.assistantOnly && (writes || !tool.changes) && (publishes || !tool.publishes),

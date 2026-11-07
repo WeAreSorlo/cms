@@ -18,7 +18,7 @@ import type { BlockList } from 'node:net'
 // People, and how they get a session (PLAN.md section 5): sign-in, invites, reset links and each person's account. The
 // routes under /api/session need no session, since they're how someone gets one, and the rest need one.
 
-export const sessionCookie = 'iight_session'
+export const sessionCookie = 'sorlo_session'
 const sessionLength = 30 * 24 * 60 * 60 * 1000
 
 // How long a link works: an invite's for 7 days, and a reset link for an hour
@@ -45,7 +45,7 @@ export const peopleLimits = () => ({
 const maxEmailing = 50
 
 export interface PeopleOptions {
-  // The site's address, from iight.config.ts's url, which emailed links start from
+  // The site's address, from sorlo.config.ts's url, which emailed links start from
   url?: string
   // How the site sends email, which invites and reset links go by only with url set too
   mail?: MailOptions

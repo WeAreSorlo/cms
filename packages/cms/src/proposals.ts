@@ -11,8 +11,8 @@ import { formsOf } from './relations'
 import { mediaSchema } from './schemas'
 import { TypeSaver, migrationFor } from './typeEditor'
 import type { ContentType } from './types'
+import type { ValidationReport } from '@sorlo/core'
 import { HTTPException } from 'hono/http-exception'
-import type { ValidationReport } from 'iight'
 import { Insertable, Kysely, Selectable, sql } from 'kysely'
 import { isDeepStrictEqual } from 'node:util'
 
@@ -131,7 +131,7 @@ export function proposals(
   types: Map<string, ContentType>,
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
   versions?: VersionOptions,
-  // The type editor's saves, where content types can change, as in iight dev
+  // The type editor's saves, where content types can change, as in sorlo dev
   editor?: TypeSaver,
 ) {
   const saver = entrySaver(db, types, migrations, versions)
@@ -371,7 +371,7 @@ export function proposals(
   // changes must still be as it was proposed, on disk too, since someone may have edited its file by hand since.
   const applyType = async (row: ProposalRow, user: string) => {
     if (!editor) {
-      throw new HTTPException(403, { message: 'Content types can only be changed in development, with iight dev.' })
+      throw new HTTPException(403, { message: 'Content types can only be changed in development, with sorlo dev.' })
     }
     return editor.queued(async () => {
       const after = row.after as ContentType

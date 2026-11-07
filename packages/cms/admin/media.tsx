@@ -18,7 +18,7 @@ import {
   useListQuery,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, Modal } from 'iight'
+import Form, { FieldSchema, FormHandle, Modal } from '@sorlo/core'
 import {
   CircleAlert,
   FileAudio,
@@ -294,7 +294,7 @@ export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
   const uploadButton = (
     <button
       type='button'
-      className={pick ? 'iight-button' : 'iight-button iight-button--primary'}
+      className={pick ? 'sorlo-button' : 'sorlo-button sorlo-button--primary'}
       aria-busy={!!progress}
       onClick={() => !progress && picker.current?.click()}
     >
@@ -363,7 +363,7 @@ export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
             <EmptyState
               icon={<SearchX />}
               action={
-                <button type='button' className='iight-button' onClick={clearFilters}>
+                <button type='button' className='sorlo-button' onClick={clearFilters}>
                   Clear filters
                 </button>
               }
@@ -476,7 +476,7 @@ function MediaEditor({ media: loaded, onClose }: { media: Media; onClose: () => 
         <div className='cms-dialog-actions'>
           <button
             type='button'
-            className='iight-button iight-button--danger cms-dialog-actions__start'
+            className='sorlo-button sorlo-button--danger cms-dialog-actions__start'
             onClick={(event) => remove(event.currentTarget.closest('dialog'))}
           >
             <Trash2 /> Delete
@@ -488,7 +488,7 @@ function MediaEditor({ media: loaded, onClose }: { media: Media; onClose: () => 
           )}
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             aria-busy={busy === 'save'}
             onClick={save}
           >

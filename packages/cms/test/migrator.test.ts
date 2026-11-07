@@ -74,7 +74,7 @@ test('sets of migrations run in the order given, as one batch, and roll back in 
 })
 
 test("loads a folder's migrations, skipping other files, and needs an up and a down in content migrations", async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-migrations-'))
   await writeFile(join(dir, '2026_01_01_000000_blog.ts'), 'export const up = () => {}\nexport const down = () => {}\n')
   await writeFile(join(dir, '.snapshot.json'), '{}')
   await writeFile(join(dir, 'notes.md'), 'Not a migration')
@@ -88,7 +88,7 @@ test("loads a folder's migrations, skipping other files, and needs an up and a d
 })
 
 test('loads a migration as its file is now, after it was edited since it was first loaded', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-migrations-'))
   const file = join(dir, '2026_01_01_000000_blog.ts')
   await writeFile(file, "export const up = () => 'first'\nexport const down = () => {}\n")
   expect(await (await loadContentMigrations(dir))['2026_01_01_000000_blog'].up({} as any)).toBe('first')
@@ -97,7 +97,7 @@ test('loads a migration as its file is now, after it was edited since it was fir
 })
 
 test("won't load a migration whose file changed after it was read, so what was read of it is what runs", async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-migrations-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-migrations-'))
   const file = join(dir, '2026_01_01_000000_blog.ts')
   await writeFile(file, "// TODO: write it\nexport const up = () => 'stub'\nexport const down = () => {}\n")
   const [read] = await readMigrations(dir)

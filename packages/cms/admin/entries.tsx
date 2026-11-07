@@ -51,7 +51,7 @@ import {
   useListQuery,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, ValidationReport } from 'iight'
+import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/core'
 import {
   Archive,
   ArchiveRestore,
@@ -474,7 +474,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
     }…`
 
   const newEntry = (
-    <a className='iight-button iight-button--primary' href={`#/types/${type.name}/new`}>
+    <a className='sorlo-button sorlo-button--primary' href={`#/types/${type.name}/new`}>
       <Plus /> New {singular}
     </a>
   )
@@ -514,7 +514,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
             ticked.size > 0 && (
               <button
                 type='button'
-                className='iight-button iight-button--primary'
+                className='sorlo-button sorlo-button--primary'
                 aria-busy={!!working}
                 onClick={() => actOnTicked('restore')}
               >
@@ -526,7 +526,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
               {newEntry}
               {/* The grid opens the first hundred, and goes through the rest a hundred at a time */}
               {ticked.size > 0 && (
-                <a className='iight-button' href={`#/types/${type.name}/bulk/${tickedIds.slice(0, 100).join(',')}`}>
+                <a className='sorlo-button' href={`#/types/${type.name}/bulk/${tickedIds.slice(0, 100).join(',')}`}>
                   <Sheet /> Bulk edit {count(ticked.size, 'entry', 'entries')}
                 </a>
               )}
@@ -539,14 +539,14 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
               {ticked.size > 0 && (
                 <button
                   type='button'
-                  className='iight-button iight-button--danger'
+                  className='sorlo-button sorlo-button--danger'
                   aria-busy={!!working}
                   onClick={() => actOnTicked('archive')}
                 >
                   <Archive /> {working ? progress : `Archive ${count(ticked.size, 'entry', 'entries')}`}
                 </button>
               )}
-              <a className='iight-button' href={`#/types/${type.name}/archive`}>
+              <a className='sorlo-button' href={`#/types/${type.name}/archive`}>
                 Open the archive
               </a>
             </>
@@ -573,7 +573,7 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
           <EmptyState
             icon={<SearchX />}
             action={
-              <button type='button' className='iight-button' onClick={clearFilters}>
+              <button type='button' className='sorlo-button' onClick={clearFilters}>
                 Clear filters
               </button>
             }
@@ -776,7 +776,7 @@ export function Versions({
             {version !== current && !entry.archivedAt && (
               <button
                 type='button'
-                className='iight-button'
+                className='sorlo-button'
                 aria-label={`Restore version ${version.number}`}
                 onClick={() => onRestore(version)}
               >
@@ -1046,7 +1046,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
             Version {restoring.number} is in the form. Save to restore it.
             {restoring.parentKept &&
               ' Its parent has been archived, deleted or moved under this page since, so the page stays where it is.'}{' '}
-            <button type='button' className='iight-button' onClick={discard}>
+            <button type='button' className='sorlo-button' onClick={discard}>
               Discard
             </button>
           </Notice>
@@ -1082,7 +1082,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
             <button
               ref={primaryButton}
               type='button'
-              className='iight-button iight-button--primary'
+              className='sorlo-button sorlo-button--primary'
               aria-busy={busy === 'restore'}
               onClick={() => archiveOrRestore('restore')}
             >
@@ -1090,13 +1090,13 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
             </button>
           ) : drafts ? (
             <>
-              <button type='button' className='iight-button' aria-busy={busy === 'save'} onClick={() => save(false)}>
+              <button type='button' className='sorlo-button' aria-busy={busy === 'save'} onClick={() => save(false)}>
                 {busy === 'save' ? 'Saving…' : 'Save draft'}
               </button>
               <button
                 ref={primaryButton}
                 type='button'
-                className='iight-button iight-button--primary'
+                className='sorlo-button sorlo-button--primary'
                 aria-busy={busy === 'publish'}
                 onClick={() => save(true)}
               >
@@ -1107,7 +1107,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
             <button
               ref={primaryButton}
               type='button'
-              className='iight-button iight-button--primary'
+              className='sorlo-button sorlo-button--primary'
               aria-busy={busy === 'save'}
               onClick={() => save(false)}
             >
@@ -1120,7 +1120,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
           (archived ? (
             <button
               type='button'
-              className='iight-button iight-button--danger'
+              className='sorlo-button sorlo-button--danger'
               aria-busy={busy === 'delete'}
               onClick={remove}
             >
@@ -1129,11 +1129,11 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
           ) : (
             <>
               {drafts && entry.status !== 'draft' && (
-                <button type='button' className='iight-button' aria-busy={busy === 'unpublish'} onClick={unpublish}>
+                <button type='button' className='sorlo-button' aria-busy={busy === 'unpublish'} onClick={unpublish}>
                   {busy === 'unpublish' ? 'Unpublishing…' : 'Unpublish'}
                 </button>
               )}
-              <button type='button' className='iight-button' aria-busy={busy === 'archive'} onClick={archive}>
+              <button type='button' className='sorlo-button' aria-busy={busy === 'archive'} onClick={archive}>
                 <Archive /> {busy === 'archive' ? 'Archiving…' : 'Archive'}
               </button>
             </>
@@ -1170,11 +1170,11 @@ export function EntryPage({ id, types }: { id: string; types: Map<string, Conten
   }, [entry, showSection])
 
   const type = entry && types.get(entry.type)
-  // The server finds no entry whose type it doesn't have, such as one renamed that iight migrate hasn't moved it to yet
+  // The server finds no entry whose type it doesn't have, such as one renamed that sorlo migrate hasn't moved it to yet
   if (error === 'Not Found') {
     return (
       <Notice tone='danger'>
-        There's no entry with this id among the site's content types now. If its type was renamed, iight migrate moves
+        There's no entry with this id among the site's content types now. If its type was renamed, sorlo migrate moves
         its entries to the new name, and they open from there.
       </Notice>
     )
@@ -1185,12 +1185,12 @@ export function EntryPage({ id, types }: { id: string; types: Map<string, Conten
 }
 
 // A page of a content type that isn't one of the site's now, such as one renamed since, whose entries keep its old name
-// until iight migrate moves them
+// until sorlo migrate moves them
 export const TypeGone = ({ name }: { name: string }) => (
   <div className='cms-page'>
     <PageHeader title={name} />
     <Notice>
-      There's no content type named {name} now. If it was renamed, iight migrate moves its entries to the new name, and
+      There's no content type named {name} now. If it was renamed, sorlo migrate moves its entries to the new name, and
       they open from there.
     </Notice>
   </div>

@@ -6,9 +6,9 @@ import { collapseUses, expandFields, isUse, someField, usesOf } from './fields'
 import { diffTypes, makeMigration } from './makeMigration'
 import { groupSchema, typeSchema } from './schemas'
 import { ContentType, SharedGroup, checkGroup, checkType, cycleOf, cycleProblem, loadSchema } from './types'
+import type { FieldSchema, ValidationReport } from '@sorlo/core'
 import { Context, Hono, MiddlewareHandler } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import type { FieldSchema, ValidationReport } from 'iight'
 import { Kysely } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -253,7 +253,7 @@ export function typeSaver(
       else if (file) {
         found.push([
           'name',
-          `schema/types already has ${file}, which iight dev hasn't loaded. Restart iight dev to load it, or choose ` +
+          `schema/types already has ${file}, which sorlo dev hasn't loaded. Restart sorlo dev to load it, or choose ` +
             'another name.',
         ])
       } else if (renamed && !(old && sameName(old.name, type.name))) {
@@ -274,7 +274,7 @@ export function typeSaver(
           found.push([
             'structure',
             "A content migration hasn't run yet, which may still rename entries of this type, so its structure can " +
-              'change only once iight migrate has run it.',
+              'change only once sorlo migrate has run it.',
           ])
         } else if (count) {
           found.push([
@@ -334,7 +334,7 @@ export function typeSaver(
       else if (file) {
         found.push([
           'name',
-          `schema/groups already has ${file}, which iight dev hasn't loaded. Restart iight dev to load it, or choose ` +
+          `schema/groups already has ${file}, which sorlo dev hasn't loaded. Restart sorlo dev to load it, or choose ` +
             'another name.',
         ])
       }
@@ -394,7 +394,7 @@ export function migrationFor(before: ContentType, after: ContentType, groups: Ma
 
 export type TypeSaver = ReturnType<typeof typeSaver>
 
-// The admin API for content types and shared groups. Given the type editor's saves, as iight dev gives them, it can
+// The admin API for content types and shared groups. Given the type editor's saves, as sorlo dev gives them, it can
 // also create, change and delete them, writing their files and a content migration for each change (PLAN.md sections
 // 4 and 19). Without them, they're read-only and change through git.
 export function typeRoutes(
@@ -415,7 +415,7 @@ export function typeRoutes(
     (what: string): MiddlewareHandler<AdminEnv> =>
     async (_c, next) => {
       if (!saver)
-        throw new HTTPException(403, { message: `${what} can only be changed in development, with iight dev.` })
+        throw new HTTPException(403, { message: `${what} can only be changed in development, with sorlo dev.` })
       await next()
     }
 

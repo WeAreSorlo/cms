@@ -2,7 +2,7 @@ import { form, holdsOne, idsOf, media, relationship, relationshipOptions, shared
 import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
 import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
-import Form, { FieldSchema, Input, inputs, useFieldContext } from 'iight'
+import Form, { FieldSchema, Input, inputs, useFieldContext } from '@sorlo/core'
 import { CircleAlert, Search, X } from 'lucide-react'
 import { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -132,7 +132,7 @@ function RelationshipPicker() {
   }
 
   return (
-    <div ref={links.area} className='iight-input__relationship cms-picker'>
+    <div ref={links.area} className='sorlo-input__relationship cms-picker'>
       {links.ids.length > 0 && (
         <ul className='cms-picked'>
           {links.ids.map((linked) => (
@@ -154,7 +154,7 @@ function RelationshipPicker() {
           // Named by its text and the field's label, such as Change Author, since the label alone hides what it does
           aria-labelledby={`${id} ${labelId}`}
           type='button'
-          className='iight-button'
+          className='sorlo-button'
           onClick={() => setOpen(true)}
         >
           {links.one && links.ids.length ? 'Change' : 'Choose'}
@@ -257,7 +257,7 @@ function MediaPicker() {
   })
 
   return (
-    <div ref={links.area} className='iight-input__media cms-picker'>
+    <div ref={links.area} className='sorlo-input__media cms-picker'>
       {links.ids.length > 0 && (
         <ul className='cms-picked'>
           {links.ids.map((linked) => {
@@ -282,7 +282,7 @@ function MediaPicker() {
           {...aria}
           aria-labelledby={`${id} ${labelId}`}
           type='button'
-          className='iight-button'
+          className='sorlo-button'
           onClick={() => setOpen(true)}
         >
           {links.one && links.ids.length ? 'Change' : 'Choose'}
@@ -317,7 +317,7 @@ function IconPicker() {
   }
 
   return (
-    <div ref={area} className='iight-input__icon cms-picker'>
+    <div ref={area} className='sorlo-input__icon cms-picker'>
       {value && (
         <ul className='cms-picked'>
           <li>
@@ -337,7 +337,7 @@ function IconPicker() {
           {...aria}
           aria-labelledby={`${id} ${labelId}`}
           type='button'
-          className='iight-button'
+          className='sorlo-button'
           onClick={() => setOpen(true)}
         >
           {value ? 'Change' : 'Choose'}
@@ -377,9 +377,9 @@ function FormPicker() {
 
   return (
     <>
-      <div className='iight-input__select'>
+      <div className='sorlo-input__select'>
         <select
-          className='iight-input'
+          className='sorlo-input'
           id={id}
           {...aria}
           value={value ?? ''}

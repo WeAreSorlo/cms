@@ -1,6 +1,6 @@
-// Generated from the CMS by `npx iight types pull`. Pull again rather than editing it.
+// Generated from the CMS by `npx sorlo types pull`. Pull again rather than editing it.
 
-import type { Entry, Linked, Media } from '@iight/sdk'
+import type { Entry, Linked, Media } from '@sorlo/sdk'
 
 export type GroupOg = {
   image?: string
@@ -160,7 +160,7 @@ export type ContactFormValues = {
   }>
 }
 
-declare module '@iight/sdk' {
+declare module '@sorlo/sdk' {
   interface EntryTypes {
     blog: EntryBlog
     docs: EntryDocs

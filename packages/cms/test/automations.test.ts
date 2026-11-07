@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
-const root = await mkdtemp(join(tmpdir(), 'iight-automations-'))
+const root = await mkdtemp(join(tmpdir(), 'sorlo-automations-'))
 const disk = (location: string) => ({
   default: 'local',
   services: { local: () => new FSDriver({ location, visibility: 'public' }) },
@@ -28,7 +28,7 @@ const broken = createApp(db, types, { storage: disk(join(root, 'file')) })
 // Emails go to this list, through the test's own send
 const sent: Array<MailMessage> = []
 const mail = {
-  from: 'iight <cms@example.com>',
+  from: 'Sorlo <cms@example.com>',
   send: async (message: MailMessage) => ({ messageId: `<${sent.push(message)}@example.com>` }),
 }
 const options = { mail, webhooks: { allowNetworks: ['127.0.0.1'] } }
@@ -455,7 +455,7 @@ test("emails go out through the site's own send, with the submission's fields", 
 
   expect(sent).toHaveLength(1)
   expect(sent[0]).toMatchObject({
-    from: 'iight <cms@example.com>',
+    from: 'Sorlo <cms@example.com>',
     to: ['ada@example.com', 'sales@example.com'],
     subject: 'New submission: Contact us',
   })
@@ -475,7 +475,7 @@ test("emails go out through the site's own send, with the submission's fields", 
   await submit(valid)
   await drain(createWorker(db, types))
   expect((await runs()).slice(-2)).toMatchObject([
-    { status: 'failed', attempt: 1, error: 'Set mail in iight.config.ts to send email.' },
+    { status: 'failed', attempt: 1, error: 'Set mail in sorlo.config.ts to send email.' },
     { status: 'pending', attempt: 2 },
   ])
 })
@@ -493,7 +493,7 @@ test('webhooks are signed the Standard Webhooks way, with their own headers', as
   const [event] = await events()
   expect(headers).toMatchObject({
     'content-type': 'application/json',
-    'user-agent': 'iight',
+    'user-agent': 'Sorlo',
     authorization: 'Bearer abc',
     'webhook-id': event.id,
   })
@@ -574,13 +574,13 @@ test('a failing webhook is tried again later, and every try is logged', async ()
   ])
 })
 
-test("webhooks can't reach private networks unless iight.config.ts allows them, nor wait forever", async () => {
+test("webhooks can't reach private networks unless sorlo.config.ts allows them, nor wait forever", async () => {
   await createAutomation({ actions: [webhook()] })
   await submit(valid)
   await drain(createWorker(db, types, { mail }))
   expect(received).toEqual([])
   expect((await runs())[0].error).toBe(
-    "127.0.0.1 is on a network webhooks can't reach, unless webhooks.allowNetworks in iight.config.ts allows it.",
+    "127.0.0.1 is on a network webhooks can't reach, unless webhooks.allowNetworks in sorlo.config.ts allows it.",
   )
 
   // Names are checked by the address they resolve to
@@ -601,10 +601,10 @@ test("webhooks can't reach private networks unless iight.config.ts allows them, 
   expect((await runs()).at(-2)?.error).toBe('No reply within 1 second.')
 
   expect(() => createWorker(db, types, { webhooks: { allowNetworks: ['10.0.0.0/33'] } })).toThrow(
-    "webhooks.allowNetworks in iight.config.ts has 10.0.0.0/33, which isn't an address or a network such as 10.0.0.0/8.",
+    "webhooks.allowNetworks in sorlo.config.ts has 10.0.0.0/33, which isn't an address or a network such as 10.0.0.0/8.",
   )
   expect(() => createWorker(db, types, { automations: { attempts: 0 } })).toThrow(
-    'automations.attempts in iight.config.ts needs a whole number from 1.',
+    'automations.attempts in sorlo.config.ts needs a whole number from 1.',
   )
 })
 
@@ -622,7 +622,7 @@ test('webhooks reach public addresses, and no way of writing an internal one', (
   // IPv4 addresses are checked as IPv6 ones too, so an IPv6 network as wide as ::ffff:0:0/96 would let them all in
   expect(webhookNetworks(['::ffff:10.0.0.0/104'])('10.0.0.1')).toBe(true)
   expect(() => webhookNetworks(['::ffff:10.0.0.0/8'])).toThrow(
-    'webhooks.allowNetworks in iight.config.ts has ::ffff:10.0.0.0/8, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.',
+    'webhooks.allowNetworks in sorlo.config.ts has ::ffff:10.0.0.0/8, which holds every IPv4 address. Write IPv4 networks as such, as in 10.0.0.0/8.',
   )
 })
 

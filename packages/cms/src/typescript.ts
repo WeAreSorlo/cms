@@ -2,10 +2,10 @@ import { inputs, normaliseConditions, schemaToTypeScript } from './core'
 import { holdsOne, isLink, linkFields, someField } from './fields'
 import { allowedTypes, cmsInputs } from './relations'
 import { type ContentType, type SharedGroup, expandFields } from './types'
-import type { FieldSchema, Input, InputTypeValue } from 'iight'
+import type { FieldSchema, Input, InputTypeValue } from '@sorlo/core'
 
 // The TypeScript types of the entries the delivery API returns and the values forms take, which GET /types serves to
-// `npx iight types pull`. They register with @iight/sdk, so its queries and submissions are typed without generics
+// `npx sorlo types pull`. They register with @sorlo/sdk, so its queries and submissions are typed without generics
 // (PLAN.md section 9). Each type's values come twice, from two inputs maps: as they're stored, with IDs for links, and
 // as with() returns the fields that hold links, resolved Depth levels deep. depth is how many levels a query gets when
 // it doesn't say. Each shared group's values are a type of their own, such as GroupSeo, and GroupSeoResolved<Depth>
@@ -101,14 +101,14 @@ export function typesFile(
   )
 
   return [
-    '// Generated from the CMS by `npx iight types pull`. Pull again rather than editing it.',
+    '// Generated from the CMS by `npx sorlo types pull`. Pull again rather than editing it.',
     '',
-    "import type { Entry, Linked, Media } from '@iight/sdk'",
+    "import type { Entry, Linked, Media } from '@sorlo/sdk'",
     '',
     ...groupDeclarations,
     ...declarations,
     ...formDeclarations,
-    "declare module '@iight/sdk' {",
+    "declare module '@sorlo/sdk' {",
     '  interface EntryTypes {',
     ...[...names].map(([type, name]) => `    ${type}: Entry${name}`),
     '  }',

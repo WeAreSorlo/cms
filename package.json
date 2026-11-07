@@ -1,5 +1,5 @@
 {
-  "name": "iight-cms-workspace",
+  "name": "sorlo-cms-workspace",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -8,10 +8,10 @@
   ],
   "scripts": {
     "db": "docker compose up -d --wait",
-    "dev": "npm exec --workspace @iight/sdk --workspace @iight/cms -- tsup && npm run dev --workspace playground",
-    "build": "npm run build --workspace @iight/sdk && npm run build --workspace @iight/cms",
-    "test": "npm test --workspace @iight/cms",
-    "typecheck": "npm exec --workspace @iight/sdk --workspace @iight/cms -- tsup && npm run typecheck --workspaces --if-present",
+    "dev": "npm exec --workspace @sorlo/sdk --workspace @sorlo/cms -- tsup && npm run dev --workspace playground",
+    "build": "npm run build --workspace @sorlo/sdk && npm run build --workspace @sorlo/cms",
+    "test": "npm test --workspace @sorlo/cms",
+    "typecheck": "npm exec --workspace @sorlo/sdk --workspace @sorlo/cms -- tsup && npm run typecheck --workspaces --if-present",
     "format": "prettier packages playground --check",
     "format:fix": "prettier packages playground --write"
   },

@@ -31,7 +31,7 @@ body {
 
 h1,
 h2 {
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
 }
 
 h1 {
@@ -54,33 +54,33 @@ pre {
 }
 
 :focus-visible {
-  outline: var(--iight-focus-outline);
-  outline-offset: var(--iight-focus-outline-offset);
+  outline: var(--sorlo-focus-outline);
+  outline-offset: var(--sorlo-focus-outline-offset);
 }
 
 .cms-sign-in {
   max-width: 22rem;
   margin: 15vh auto;
-  padding: 0 var(--iight-size-4);
+  padding: 0 var(--sorlo-size-4);
 }
 
 // The name in text until there's a wordmark
 .cms-sign-in__mark {
-  margin: 0 0 var(--iight-size-4);
+  margin: 0 0 var(--sorlo-size-4);
   font-size: var(--cms-text-xl);
   line-height: var(--cms-leading-xl);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   text-align: center;
 }
 
 .cms-sign-in__card {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-4);
+  gap: var(--sorlo-size-4);
   padding: var(--cms-size-6);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
   box-shadow: var(--cms-shadow-1);
 
   h1,
@@ -127,7 +127,7 @@ pre {
     grid-column: 2;
     min-width: 0;
     max-width: var(--cms-column);
-    padding: var(--iight-size-2) var(--iight-size-4) var(--cms-size-6);
+    padding: var(--sorlo-size-2) var(--sorlo-size-4) var(--cms-size-6);
 
     // Focus lands here from the skip link only when a page has no heading
     &:focus {
@@ -139,8 +139,8 @@ pre {
 /* Off screen until it has focus */
 .cms-skip {
   position: absolute;
-  top: var(--iight-size-2);
-  left: var(--iight-size-2);
+  top: var(--sorlo-size-2);
+  left: var(--sorlo-size-2);
   z-index: 1;
 
   &:not(:focus) {
@@ -163,21 +163,21 @@ pre {
   box-sizing: border-box;
   height: calc(100dvh - 2 * var(--cms-inset));
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
   box-shadow: var(--cms-shadow-1);
 
   ul {
     display: flex;
     flex-direction: column;
     margin: 0;
-    padding: var(--iight-size-2);
+    padding: var(--sorlo-size-2);
     list-style: none;
   }
 
   // From edge to edge
   ul + ul {
-    border-top: var(--iight-size-px) solid var(--cms-rule);
+    border-top: var(--sorlo-size-px) solid var(--cms-rule);
   }
 }
 
@@ -186,19 +186,19 @@ pre {
 .cms-account-menu a {
   display: flex;
   align-items: center;
-  gap: var(--iight-size-2);
-  padding: var(--iight-button-padding);
+  gap: var(--sorlo-size-2);
+  padding: var(--sorlo-button-padding);
   color: var(--cms-text);
   text-decoration: none;
-  border: var(--iight-size-px) solid transparent;
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid transparent;
+  border-radius: var(--sorlo-size-1);
 
   &:hover {
     background: var(--cms-subtle);
   }
 
   &[aria-current='page'] {
-    font-weight: var(--iight-font-weight-bold);
+    font-weight: var(--sorlo-font-weight-bold);
     color: var(--cms-on-accent);
     background: var(--cms-accent);
   }
@@ -211,25 +211,25 @@ pre {
 }
 
 .cms-nav__user {
-  padding: var(--iight-size-2);
-  border-top: var(--iight-size-px) solid var(--cms-rule);
+  padding: var(--sorlo-size-2);
+  border-top: var(--sorlo-size-px) solid var(--cms-rule);
 }
 
 // The person's initials and name, as wide as the nav, which opens their menu
 .cms-account {
   display: flex;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   box-sizing: border-box;
   width: 100%;
-  padding: var(--iight-size-1);
+  padding: var(--sorlo-size-1);
   font: inherit;
   color: var(--cms-text);
   text-align: left;
   cursor: pointer;
   background: none;
-  border: var(--iight-size-px) solid transparent;
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid transparent;
+  border-radius: var(--sorlo-size-1);
 
   &:hover,
   &[aria-expanded='true'] {
@@ -254,7 +254,7 @@ pre {
   width: var(--cms-size-8);
   height: var(--cms-size-8);
   font-size: var(--cms-text-xs);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   color: var(--cms-on-accent);
   background: var(--cms-accent);
   border-radius: var(--cms-radius-pill);
@@ -270,11 +270,11 @@ pre {
 
 // A card over the page, such as the person's menu
 .cms-popover {
-  padding: var(--iight-size-3);
+  padding: var(--sorlo-size-3);
   color: var(--cms-text);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
   box-shadow: var(--cms-shadow-2);
 }
 
@@ -286,17 +286,17 @@ pre {
 
   > * {
     margin: 0;
-    padding: var(--iight-size-2);
+    padding: var(--sorlo-size-2);
   }
 
   > * + * {
-    border-top: var(--iight-size-px) solid var(--cms-rule);
+    border-top: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   // Level with the links' text
   > p,
   > .cms-theme {
-    padding-inline: calc(2 * var(--iight-size-2) + var(--iight-size-px));
+    padding-inline: calc(2 * var(--sorlo-size-2) + var(--sorlo-size-px));
   }
 
   ul {
@@ -318,17 +318,17 @@ pre {
 .cms-account-menu__sign-out {
   display: flex;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   box-sizing: border-box;
   width: 100%;
-  padding: var(--iight-button-padding);
+  padding: var(--sorlo-button-padding);
   font: inherit;
   color: var(--cms-danger);
   text-align: left;
   cursor: pointer;
   background: none;
-  border: var(--iight-size-px) solid transparent;
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid transparent;
+  border-radius: var(--sorlo-size-1);
 
   &:hover {
     background: var(--cms-danger-tint);
@@ -342,7 +342,7 @@ pre {
     position-anchor: --cms-account;
     position-area: top span-right;
     position-try-fallbacks: flip-block;
-    margin: 0 0 var(--iight-size-1);
+    margin: 0 0 var(--sorlo-size-1);
   }
 }
 
@@ -352,13 +352,13 @@ pre {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 .cms-theme__choices {
   display: flex;
-  border: var(--iight-size-px) solid var(--cms-border);
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid var(--cms-border);
+  border-radius: var(--sorlo-size-1);
 
   label {
     position: relative;
@@ -368,7 +368,7 @@ pre {
     height: var(--cms-control);
     color: var(--cms-muted);
     cursor: pointer;
-    border-radius: calc(var(--iight-size-1) - var(--iight-size-px));
+    border-radius: calc(var(--sorlo-size-1) - var(--sorlo-size-px));
 
     &:hover {
       color: var(--cms-text);
@@ -378,12 +378,12 @@ pre {
     &:has(:checked) {
       color: var(--cms-on-accent);
       background: var(--cms-accent);
-      box-shadow: inset 0 0 0 var(--iight-size-px) var(--cms-accent-strong);
+      box-shadow: inset 0 0 0 var(--sorlo-size-px) var(--cms-accent-strong);
     }
 
     &:has(:focus-visible) {
-      outline: var(--iight-focus-outline);
-      outline-offset: var(--iight-focus-outline-offset);
+      outline: var(--sorlo-focus-outline);
+      outline-offset: var(--sorlo-focus-outline-offset);
     }
   }
 }
@@ -393,8 +393,8 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-4);
-  margin: var(--iight-size-4) 0;
+  gap: var(--sorlo-size-4);
+  margin: var(--sorlo-size-4) 0;
 }
 
 .cms-table {
@@ -407,15 +407,15 @@ pre {
   td {
     box-sizing: border-box;
     height: var(--cms-row);
-    padding: var(--iight-size-1) var(--iight-size-2);
+    padding: var(--sorlo-size-1) var(--sorlo-size-2);
     text-align: left;
-    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+    border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   th {
     font-size: var(--cms-text-xs);
     line-height: var(--cms-leading-xs);
-    font-weight: var(--iight-font-weight-bold);
+    font-weight: var(--sorlo-font-weight-bold);
     color: var(--cms-muted);
   }
 
@@ -459,13 +459,13 @@ pre {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: var(--iight-size-1) var(--iight-size-3);
-    margin-bottom: var(--iight-size-2);
-    padding: var(--iight-size-2) var(--iight-size-3);
+    gap: var(--sorlo-size-1) var(--sorlo-size-3);
+    margin-bottom: var(--sorlo-size-2);
+    padding: var(--sorlo-size-2) var(--sorlo-size-3);
     font-size: var(--cms-text-sm);
     line-height: var(--cms-leading-sm);
     background: var(--cms-subtle);
-    border-radius: var(--iight-size-2);
+    border-radius: var(--sorlo-size-2);
   }
 
   .cms-problem {
@@ -479,8 +479,8 @@ pre {
   overflow: auto;
   scroll-padding-top: var(--cms-row);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-1);
 }
 
 .cms-grid {
@@ -489,7 +489,7 @@ pre {
   th,
   td {
     vertical-align: top;
-    border-right: var(--iight-size-px) solid var(--cms-rule);
+    border-right: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   thead th {
@@ -524,12 +524,12 @@ pre {
 
   // Inside, so the cells either side don't cover it
   [data-cell]:focus {
-    outline: var(--iight-focus-outline);
-    outline-offset: calc(-1 * var(--iight-size-px) - 2px);
+    outline: var(--sorlo-focus-outline);
+    outline-offset: calc(-1 * var(--sorlo-size-px) - 2px);
   }
 
   [aria-invalid='true'] {
-    box-shadow: inset 0 0 0 var(--iight-size-px) var(--cms-danger);
+    box-shadow: inset 0 0 0 var(--sorlo-size-px) var(--cms-danger);
   }
 
   // A failed row keeps its colour until it saves, and its status says why
@@ -543,9 +543,9 @@ pre {
 
   // The cell's input fills it, named for screen readers by a label that stays out of sight
   .cms-grid__editing {
-    --iight-fieldset-gap: 0;
+    --sorlo-fieldset-gap: 0;
 
-    .iight-meta {
+    .sorlo-meta {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -564,7 +564,7 @@ pre {
 }
 
 .cms-grid__messages {
-  margin: var(--iight-size-1) 0 0;
+  margin: var(--sorlo-size-1) 0 0;
   padding: 0;
   font-size: var(--cms-text-xs);
   line-height: var(--cms-leading-xs);
@@ -573,11 +573,11 @@ pre {
 }
 
 .cms-grid__status .cms-badge {
-  margin-right: var(--iight-size-1);
+  margin-right: var(--sorlo-size-1);
 }
 
 .cms-grid__keys {
-  margin: var(--iight-size-2) 0 0;
+  margin: var(--sorlo-size-2) 0 0;
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
 }
@@ -585,7 +585,7 @@ pre {
 .cms-table__sort {
   display: inline-flex;
   align-items: center;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   padding: 0;
   font: inherit;
   color: inherit;
@@ -604,8 +604,8 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-3);
-  margin-bottom: var(--iight-size-4);
+  gap: var(--sorlo-size-3);
+  margin-bottom: var(--sorlo-size-4);
 }
 
 // The list's link and the title, both bold and large, with the link and its slash muted
@@ -613,11 +613,11 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 var(--iight-size-2);
+  gap: 0 var(--sorlo-size-2);
   min-width: 0;
   font-size: var(--cms-text-xl);
   line-height: var(--cms-leading-xl);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   color: var(--cms-muted);
 
   > a {
@@ -642,14 +642,14 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   font-size: var(--cms-text-base);
   line-height: var(--cms-leading-base);
-  font-weight: var(--iight-font-weight-normal);
+  font-weight: var(--sorlo-font-weight-normal);
 }
 
 // Core's buttons on links, such as New blog post
-a.iight-button {
+a.sorlo-button {
   display: inline-block;
   text-decoration: none;
 }
@@ -664,8 +664,8 @@ a.iight-button {
   color: var(--cms-text);
   cursor: pointer;
   background: transparent;
-  border: var(--iight-size-px) solid transparent;
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid transparent;
+  border-radius: var(--sorlo-size-1);
 
   &:hover:not(:disabled) {
     background: var(--cms-subtle);
@@ -673,18 +673,18 @@ a.iight-button {
 
   &:disabled {
     cursor: not-allowed;
-    opacity: var(--iight-disabled-opacity);
+    opacity: var(--sorlo-disabled-opacity);
   }
 }
 
 .cms-notice {
   display: flex;
   align-items: flex-start;
-  gap: var(--iight-size-2);
-  margin-bottom: var(--iight-size-3);
-  padding: var(--iight-size-2) var(--iight-size-3);
+  gap: var(--sorlo-size-2);
+  margin-bottom: var(--sorlo-size-3);
+  padding: var(--sorlo-size-2) var(--sorlo-size-3);
   background: var(--cms-subtle);
-  border-radius: var(--iight-size-2);
+  border-radius: var(--sorlo-size-2);
 
   // Level with the first line of text
   > .lucide {
@@ -705,10 +705,10 @@ a.iight-button {
 .cms-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0 var(--iight-size-2);
+  padding: 0 var(--sorlo-size-2);
   font-size: var(--cms-text-xs);
   line-height: var(--cms-leading-xs);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   color: var(--cms-muted);
   background: var(--cms-subtle);
   border-radius: var(--cms-radius-pill);
@@ -718,7 +718,7 @@ a.iight-button {
 .cms-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
 }
 
 // A table row's own actions, such as an invite's New link and Delete
@@ -726,7 +726,7 @@ a.iight-button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 .cms-badge--accent {
@@ -745,12 +745,12 @@ a.iight-button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--iight-size-3);
-  padding: var(--cms-size-8) var(--iight-size-4);
+  gap: var(--sorlo-size-3);
+  padding: var(--cms-size-8) var(--sorlo-size-4);
   color: var(--cms-muted);
   text-align: center;
-  border: var(--iight-size-px) dashed var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) dashed var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   p {
     margin: 0;
@@ -761,7 +761,7 @@ a.iight-button {
 .cms-loading {
   display: flex;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   color: var(--cms-muted);
   animation: cms-appear 0s 300ms both;
 }
@@ -792,25 +792,25 @@ a.iight-button {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--iight-size-1);
-  margin-top: var(--iight-size-2);
+  gap: var(--sorlo-size-1);
+  margin-top: var(--sorlo-size-2);
   font-size: var(--cms-text-sm);
   color: var(--cms-muted);
 
   span {
-    margin-right: var(--iight-size-2);
+    margin-right: var(--sorlo-size-2);
   }
 }
 
 // At the bottom right of the page, clear of the panel and of the bar a page's actions make below 64rem
 .cms-toasts {
   position: fixed;
-  right: var(--iight-size-4);
-  bottom: var(--iight-size-4);
+  right: var(--sorlo-size-4);
+  bottom: var(--sorlo-size-4);
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 
   @media (width >= $aside) {
     right: calc(var(--cms-panel-width, var(--cms-panel)) + 2 * var(--cms-inset));
@@ -824,11 +824,11 @@ a.iight-button {
 .cms-toast {
   display: flex;
   align-items: center;
-  gap: var(--iight-size-2);
-  padding: var(--iight-size-1) var(--iight-size-1) var(--iight-size-1) var(--iight-size-3);
+  gap: var(--sorlo-size-2);
+  padding: var(--sorlo-size-1) var(--sorlo-size-1) var(--sorlo-size-1) var(--sorlo-size-3);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
   box-shadow: var(--cms-shadow-2);
 
   > .lucide {
@@ -841,8 +841,8 @@ a.iight-button {
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--iight-size-2);
-  margin-top: var(--iight-size-4);
+  gap: var(--sorlo-size-2);
+  margin-top: var(--sorlo-size-4);
 }
 
 // A destructive action, kept apart on the left
@@ -858,8 +858,8 @@ a.iight-button {
   box-sizing: border-box;
   width: var(--cms-panel);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
   box-shadow: var(--cms-shadow-1);
 }
 
@@ -868,12 +868,12 @@ a.iight-button {
   display: flex;
   flex: none;
   flex-direction: column;
-  gap: var(--iight-size-2);
-  padding: var(--iight-size-3);
+  gap: var(--sorlo-size-2);
+  padding: var(--sorlo-size-3);
 }
 
 .cms-panel__actions {
-  border-bottom: var(--iight-size-px) solid var(--cms-rule);
+  border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
 
   // Empty where the button that opens a sheet is all it holds, and that's hidden
   &:not(:has(.cms-panel__buttons > :not(.cms-panel__sheet), .cms-problem)) {
@@ -885,7 +885,7 @@ a.iight-button {
 .cms-panel__buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 
   > * {
     flex: 1;
@@ -916,10 +916,10 @@ a.iight-button {
   gap: var(--cms-size-6);
   min-height: 0;
   overflow-y: auto;
-  padding: var(--iight-size-3);
+  padding: var(--sorlo-size-3);
 
   h2 {
-    margin: 0 0 var(--iight-size-2);
+    margin: 0 0 var(--sorlo-size-2);
     font-size: var(--cms-text-sm);
     line-height: var(--cms-leading-sm);
     color: var(--cms-muted);
@@ -934,7 +934,7 @@ a.iight-button {
   flex-direction: row;
   flex-wrap: wrap;
   margin-top: auto;
-  border-top: var(--iight-size-px) solid var(--cms-rule);
+  border-top: var(--sorlo-size-px) solid var(--cms-rule);
 }
 
 // Where a page's panel goes in the shell's column, which holds nothing of its own
@@ -961,24 +961,24 @@ a.iight-button {
 .cms-assistant__header {
   display: flex;
   flex: none;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   align-items: center;
-  padding: var(--iight-size-2) var(--iight-size-3);
-  border-bottom: var(--iight-size-px) solid var(--cms-rule);
+  padding: var(--sorlo-size-2) var(--sorlo-size-3);
+  border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
 }
 
 .cms-assistant__title {
   flex: 1;
   margin: 0;
   font-size: var(--cms-text-base);
-  font-weight: var(--iight-font-weight-normal);
+  font-weight: var(--sorlo-font-weight-normal);
   line-height: var(--cms-leading-base);
   color: var(--cms-muted);
 
   // Hides and shows the chat, with its chevron at the end
   > button {
     display: flex;
-    gap: var(--iight-size-2);
+    gap: var(--sorlo-size-2);
     align-items: center;
     justify-content: space-between;
     width: 100%;
@@ -1004,7 +1004,7 @@ a.iight-button {
 .cms-assistant__switch {
   display: flex;
   flex: 1;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   align-items: center;
   justify-content: space-between;
   min-width: 0;
@@ -1024,7 +1024,7 @@ a.iight-button {
   max-height: min(24rem, 60dvh);
   overflow-y: auto;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 
   &:popover-open {
     display: flex;
@@ -1035,14 +1035,14 @@ a.iight-button {
   .cms-chats {
     position-anchor: --cms-chats;
     position-area: bottom span-left;
-    margin: var(--iight-size-1) 0 0;
+    margin: var(--sorlo-size-1) 0 0;
   }
 }
 
 .cms-chats__list {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-px);
+  gap: var(--sorlo-size-px);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1050,11 +1050,11 @@ a.iight-button {
   a,
   button {
     display: flex;
-    gap: var(--iight-size-2);
+    gap: var(--sorlo-size-2);
     justify-content: space-between;
     box-sizing: border-box;
     width: 100%;
-    padding: var(--iight-size-1) var(--iight-size-2);
+    padding: var(--sorlo-size-1) var(--sorlo-size-2);
     font: inherit;
     color: var(--cms-text);
     text-align: left;
@@ -1062,7 +1062,7 @@ a.iight-button {
     cursor: pointer;
     background: none;
     border: 0;
-    border-radius: var(--iight-size-1);
+    border-radius: var(--sorlo-size-1);
 
     &:hover {
       background: var(--cms-subtle);
@@ -1101,19 +1101,19 @@ a.iight-button {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--iight-size-3);
+  padding: var(--sorlo-size-3);
 
   > ol {
     display: flex;
     flex-direction: column;
-    gap: var(--iight-size-4);
+    gap: var(--sorlo-size-4);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
   > .cms-empty {
-    padding: var(--cms-size-6) var(--iight-size-3);
+    padding: var(--cms-size-6) var(--sorlo-size-3);
   }
 }
 
@@ -1121,14 +1121,14 @@ a.iight-button {
 .cms-chat__mine {
   align-self: flex-end;
   max-width: 85%;
-  padding: var(--iight-size-2) var(--iight-size-3);
+  padding: var(--sorlo-size-2) var(--sorlo-size-3);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   background: var(--cms-subtle);
-  border-radius: var(--iight-size-2);
+  border-radius: var(--sorlo-size-2);
 
   > .cms-picked {
-    margin-bottom: var(--iight-size-2);
+    margin-bottom: var(--sorlo-size-2);
   }
 }
 
@@ -1137,19 +1137,19 @@ a.iight-button {
 [data-attaching] {
   background: var(--cms-accent-tint);
   outline: 2px dashed var(--cms-accent-strong);
-  outline-offset: calc(-1 * var(--iight-size-1));
+  outline-offset: calc(-1 * var(--sorlo-size-1));
 }
 
 .cms-chat__reply {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 // A tool the reply used, such as Searched entries for “lamp”: 4 found
 .cms-chat__step {
   display: flex;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   margin: 0;
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
@@ -1169,7 +1169,7 @@ a.iight-button {
 .cms-chat__part {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 // A change the assistant proposed, its fields compared as the version page compares them, then Apply and Skip, or what
@@ -1177,13 +1177,13 @@ a.iight-button {
 .cms-proposal {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
-  padding: var(--iight-size-3);
+  gap: var(--sorlo-size-2);
+  padding: var(--sorlo-size-3);
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   > p {
     margin: 0;
@@ -1195,24 +1195,24 @@ a.iight-button {
   }
 
   .cms-changes {
-    gap: var(--iight-size-3);
+    gap: var(--sorlo-size-3);
   }
 }
 
 .cms-proposal__name {
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   overflow-wrap: anywhere;
 }
 
 .cms-proposal__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 .cms-proposal__outcome {
   display: flex;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   // A migration's file name has no spaces to break at
   overflow-wrap: anywhere;
 
@@ -1236,7 +1236,7 @@ a.iight-button {
 .cms-proposal__file {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 
   > img {
     align-self: flex-start;
@@ -1244,7 +1244,7 @@ a.iight-button {
     max-height: 8rem;
     object-fit: contain;
     background: repeating-conic-gradient(var(--cms-checker) 0 25%, var(--cms-checker-alt) 0 50%) 0 0 / 1rem 1rem;
-    border-radius: var(--iight-size-1);
+    border-radius: var(--sorlo-size-1);
   }
 }
 
@@ -1252,14 +1252,14 @@ a.iight-button {
 .cms-proposals {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 .cms-proposals__head {
   margin: 0;
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
 }
 
 .cms-proposals__list {
@@ -1267,17 +1267,17 @@ a.iight-button {
   padding: 0;
   list-style: none;
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   > li + li {
-    border-top: var(--iight-size-px) solid var(--cms-rule);
+    border-top: var(--sorlo-size-px) solid var(--cms-rule);
   }
 }
 
 .cms-proposal__fold {
   > summary {
-    padding: var(--iight-size-2) var(--iight-size-3);
+    padding: var(--sorlo-size-2) var(--sorlo-size-3);
     font-size: var(--cms-text-sm);
     line-height: var(--cms-leading-sm);
     overflow-wrap: anywhere;
@@ -1285,7 +1285,7 @@ a.iight-button {
   }
 
   > .cms-proposal {
-    border-width: var(--iight-size-px) 0 0;
+    border-width: var(--sorlo-size-px) 0 0;
     border-radius: 0;
   }
 }
@@ -1307,7 +1307,7 @@ a.iight-button {
   }
 
   > .cms-json-diff {
-    margin-top: var(--iight-size-2);
+    margin-top: var(--sorlo-size-2);
   }
 }
 
@@ -1316,7 +1316,7 @@ a.iight-button {
 .cms-proposals__end {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
 
@@ -1343,7 +1343,7 @@ a.iight-button {
   pre,
   table,
   blockquote {
-    margin: 0 0 var(--iight-size-2);
+    margin: 0 0 var(--sorlo-size-2);
   }
 
   ul,
@@ -1355,7 +1355,7 @@ a.iight-button {
   h2,
   h3,
   h4 {
-    margin: var(--iight-size-3) 0 var(--iight-size-1);
+    margin: var(--sorlo-size-3) 0 var(--sorlo-size-1);
     font-size: var(--cms-text-base);
     line-height: var(--cms-leading-base);
   }
@@ -1366,16 +1366,16 @@ a.iight-button {
   }
 
   :not(pre) > code {
-    padding: 0 var(--iight-size-1);
+    padding: 0 var(--sorlo-size-1);
     background: var(--cms-subtle);
-    border-radius: var(--iight-size-1);
+    border-radius: var(--sorlo-size-1);
   }
 
   pre {
     overflow-x: auto;
-    padding: var(--iight-size-2);
+    padding: var(--sorlo-size-2);
     background: var(--cms-subtle);
-    border-radius: var(--iight-size-1);
+    border-radius: var(--sorlo-size-1);
   }
 
   table {
@@ -1387,13 +1387,13 @@ a.iight-button {
 
   th,
   td {
-    padding: var(--iight-size-1) var(--iight-size-2);
+    padding: var(--sorlo-size-1) var(--sorlo-size-2);
     text-align: left;
-    border: var(--iight-size-px) solid var(--cms-rule);
+    border: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   blockquote {
-    padding-left: var(--iight-size-3);
+    padding-left: var(--sorlo-size-3);
     color: var(--cms-muted);
     border-left: 2px solid var(--cms-rule);
   }
@@ -1404,17 +1404,17 @@ a.iight-button {
   display: flex;
   flex: none;
   flex-wrap: wrap;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
   align-items: flex-end;
-  padding: var(--iight-size-3);
-  border-top: var(--iight-size-px) solid var(--cms-rule);
+  padding: var(--sorlo-size-3);
+  border-top: var(--sorlo-size-px) solid var(--cms-rule);
 
-  > .iight-form {
+  > .sorlo-form {
     flex: 1;
     min-width: 0;
   }
 
-  .iight-label {
+  .sorlo-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1430,10 +1430,10 @@ a.iight-button {
     field-sizing: content;
   }
 
-  > .iight-button {
+  > .sorlo-button {
     display: inline-flex;
     flex: none;
-    gap: var(--iight-size-1);
+    gap: var(--sorlo-size-1);
     align-items: center;
   }
 
@@ -1447,7 +1447,7 @@ a.iight-button {
   display: flex;
   flex: 1 0 100%;
   flex-direction: column;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   min-width: 0;
 
   // About two and a half rows, the rest scrolled to, so the box to write in stays in view in a short card
@@ -1472,7 +1472,7 @@ a.iight-button {
 .cms-composer__about {
   display: flex;
   flex: 1 0 100%;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   margin: 0;
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
@@ -1489,12 +1489,12 @@ a.iight-button {
 .cms-chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - 2 * var(--cms-inset) - var(--iight-size-2) - var(--cms-size-6));
+  height: calc(100dvh - 2 * var(--cms-inset) - var(--sorlo-size-2) - var(--cms-size-6));
 
   > .cms-chat {
     background: var(--cms-surface);
-    border: var(--iight-size-px) solid var(--cms-rule);
-    border-radius: var(--iight-size-2);
+    border: var(--sorlo-size-px) solid var(--cms-rule);
+    border-radius: var(--sorlo-size-2);
   }
 }
 
@@ -1504,7 +1504,7 @@ a.iight-button {
 }
 
 // The assistant full screen, in a dialog as big as the window
-.iight-modal[open]:has(.cms-assistant--sheet) {
+.sorlo-modal[open]:has(.cms-assistant--sheet) {
   box-sizing: border-box;
   width: 100vw;
   max-width: none;
@@ -1513,7 +1513,7 @@ a.iight-button {
   margin: 0;
   border-radius: 0;
 
-  > .iight-modal__body {
+  > .sorlo-modal__body {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -1548,7 +1548,7 @@ a.iight-button {
 .cms-filters {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-3);
+  gap: var(--sorlo-size-3);
 
   > p {
     margin: 0;
@@ -1598,8 +1598,8 @@ a.iight-button {
     box-sizing: border-box;
     min-height: 20rem;
     background: var(--cms-surface);
-    border: var(--iight-size-px) solid var(--cms-rule);
-    border-radius: var(--iight-size-2);
+    border: var(--sorlo-size-px) solid var(--cms-rule);
+    border-radius: var(--sorlo-size-2);
     box-shadow: var(--cms-shadow-1);
 
     .cms-panel-slot:empty ~ & {
@@ -1648,12 +1648,12 @@ a.iight-button {
   // Over the page's padding, beside the panel's left edge
   .cms-splitter[aria-orientation='vertical'] {
     position: absolute;
-    inset: 0 auto 0 calc(-1 * var(--iight-size-4));
-    width: var(--iight-size-4);
+    inset: 0 auto 0 calc(-1 * var(--sorlo-size-4));
+    width: var(--sorlo-size-4);
     cursor: col-resize;
 
     &::before {
-      inset: 0 calc(50% - var(--iight-size-px));
+      inset: 0 calc(50% - var(--sorlo-size-px));
     }
   }
 
@@ -1662,13 +1662,13 @@ a.iight-button {
     cursor: row-resize;
 
     &::before {
-      inset: calc(50% - var(--iight-size-px)) var(--iight-size-2);
+      inset: calc(50% - var(--sorlo-size-px)) var(--sorlo-size-2);
     }
 
     // Easier to catch, reaching over the cards' edges
     &::after {
       position: absolute;
-      inset: calc(-1 * var(--iight-size-1)) 0;
+      inset: calc(-1 * var(--sorlo-size-1)) 0;
       content: '';
     }
   }
@@ -1714,15 +1714,15 @@ a.iight-button {
     bottom: var(--cms-inset);
     z-index: 1;
     display: inline-flex;
-    gap: var(--iight-size-1);
+    gap: var(--sorlo-size-1);
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
     width: $assistant-button;
-    height: var(--cms-bar, calc(var(--cms-control) + 2 * var(--iight-size-3) + 2 * var(--iight-size-px)));
+    height: var(--cms-bar, calc(var(--cms-control) + 2 * var(--sorlo-size-3) + 2 * var(--sorlo-size-px)));
     background: var(--cms-surface);
-    border: var(--iight-size-px) solid var(--cms-rule);
-    border-radius: var(--iight-size-2);
+    border: var(--sorlo-size-px) solid var(--cms-rule);
+    border-radius: var(--sorlo-size-2);
     box-shadow: var(--cms-shadow-2);
   }
 
@@ -1731,18 +1731,18 @@ a.iight-button {
   }
 
   .admin:has(.cms-side__assistant) > main {
-    padding-bottom: calc(var(--cms-size-6) + var(--cms-control) + 2 * var(--iight-size-3) + var(--cms-inset));
+    padding-bottom: calc(var(--cms-size-6) + var(--cms-control) + 2 * var(--sorlo-size-3) + var(--cms-inset));
   }
 
   .cms-chat-page {
-    height: calc(100dvh - 3 * var(--cms-inset) - var(--iight-size-2) - var(--cms-size-6) - var(--cms-bar, 0px));
+    height: calc(100dvh - 3 * var(--cms-inset) - var(--sorlo-size-2) - var(--cms-size-6) - var(--cms-bar, 0px));
   }
 
   .cms-panel-slot > .cms-panel {
     box-sizing: content-box;
     width: auto;
     max-width: var(--cms-column);
-    padding: 0 var(--iight-size-4) calc(var(--cms-bar, 0px) + 2 * var(--cms-inset));
+    padding: 0 var(--sorlo-size-4) calc(var(--cms-bar, 0px) + 2 * var(--cms-inset));
     background: none;
     border: 0;
     border-radius: 0;
@@ -1756,8 +1756,8 @@ a.iight-button {
       z-index: 1;
       display: flex;
       background: var(--cms-surface);
-      border: var(--iight-size-px) solid var(--cms-rule);
-      border-radius: var(--iight-size-2);
+      border: var(--sorlo-size-px) solid var(--cms-rule);
+      border-radius: var(--sorlo-size-2);
       box-shadow: var(--cms-shadow-2);
     }
 
@@ -1774,10 +1774,10 @@ a.iight-button {
       z-index: 1;
       max-height: calc(100dvh - var(--cms-bar, 0px) - 6rem);
       overflow-y: auto;
-      padding: var(--iight-size-3);
+      padding: var(--sorlo-size-3);
       background: var(--cms-surface);
-      border: var(--iight-size-px) solid var(--cms-rule);
-      border-radius: var(--iight-size-2);
+      border: var(--sorlo-size-px) solid var(--cms-rule);
+      border-radius: var(--sorlo-size-2);
       box-shadow: var(--cms-shadow-2);
 
       &:not([data-open]) {
@@ -1787,7 +1787,7 @@ a.iight-button {
 
     > .cms-panel__footer {
       margin-top: var(--cms-size-6);
-      padding: var(--iight-size-3) 0 0;
+      padding: var(--sorlo-size-3) 0 0;
     }
   }
 }
@@ -1796,15 +1796,15 @@ a.iight-button {
 .cms-versions {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
-  margin: 0 0 var(--iight-size-2);
+  gap: var(--sorlo-size-2);
+  margin: 0 0 var(--sorlo-size-2);
   padding: 0;
   list-style: none;
 
   li {
     display: flex;
     align-items: center;
-    gap: var(--iight-size-2);
+    gap: var(--sorlo-size-2);
 
     > div {
       flex: 1;
@@ -1817,7 +1817,7 @@ a.iight-button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-1) var(--iight-size-2);
+  gap: var(--sorlo-size-1) var(--sorlo-size-2);
 }
 
 .cms-versions__by {
@@ -1831,8 +1831,8 @@ a.iight-button {
 .cms-pairs {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--iight-size-1) var(--iight-size-3);
-  margin: 0 0 var(--iight-size-4);
+  gap: var(--sorlo-size-1) var(--sorlo-size-3);
+  margin: 0 0 var(--sorlo-size-4);
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
 
@@ -1855,7 +1855,7 @@ a.iight-button {
 .cms-changes {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-4);
+  gap: var(--sorlo-size-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1869,15 +1869,15 @@ a.iight-button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-1) var(--iight-size-2);
-  margin-bottom: var(--iight-size-1);
+  gap: var(--sorlo-size-1) var(--sorlo-size-2);
+  margin-bottom: var(--sorlo-size-1);
 }
 
 .cms-change__label {
   margin: 0;
   font-size: var(--cms-text-base);
   line-height: var(--cms-leading-base);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   overflow-wrap: anywhere;
 }
 
@@ -1885,11 +1885,11 @@ a.iight-button {
 .cms-change__items {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-3);
-  margin: var(--iight-size-2) 0 0;
-  padding: 0 0 0 var(--iight-size-3);
+  gap: var(--sorlo-size-3);
+  margin: var(--sorlo-size-2) 0 0;
+  padding: 0 0 0 var(--sorlo-size-3);
   list-style: none;
-  border-left: var(--iight-size-px) solid var(--cms-rule);
+  border-left: var(--sorlo-size-px) solid var(--cms-rule);
 }
 
 .cms-change__text {
@@ -1902,7 +1902,7 @@ a.iight-button {
   // Struck through and underlined as well as coloured, so the colour isn't all that tells them apart
   del,
   ins {
-    padding: 0 var(--iight-size-px);
+    padding: 0 var(--sorlo-size-px);
   }
 
   del {
@@ -1917,7 +1917,7 @@ a.iight-button {
 
   // Words that replace others
   del + ins {
-    margin-left: var(--iight-size-1);
+    margin-left: var(--sorlo-size-1);
   }
 }
 
@@ -1928,15 +1928,15 @@ a.iight-button {
   grid-template-columns: minmax(max-content, 1fr);
   overflow-x: auto;
   margin: 0;
-  padding: var(--iight-size-2) 0;
+  padding: var(--sorlo-size-2) 0;
   font-size: var(--cms-text-sm);
   line-height: var(--cms-leading-sm);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   > * {
-    padding: 0 var(--iight-size-3);
+    padding: 0 var(--sorlo-size-3);
     text-decoration: none;
     white-space: pre;
   }
@@ -1956,7 +1956,7 @@ a.iight-button {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 
   > :first-child {
     align-self: stretch;
@@ -1966,7 +1966,7 @@ a.iight-button {
 .cms-problem {
   display: flex;
   align-items: center;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   margin: 0;
   color: var(--cms-danger);
   // A server's message can name a file, whose path has no spaces to break at
@@ -1989,8 +1989,8 @@ a.iight-button {
 .cms-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-2);
-  margin-bottom: var(--iight-size-3);
+  gap: var(--sorlo-size-2);
+  margin-bottom: var(--sorlo-size-3);
 }
 
 // A picture fills the space without cropping. Its squares show where it's transparent, and the file's kind shows
@@ -2000,13 +2000,13 @@ a.iight-button {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   overflow: hidden;
   font-size: var(--cms-text-xs);
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
   color: var(--cms-muted);
   background: var(--cms-subtle);
-  border-radius: var(--iight-size-1);
+  border-radius: var(--sorlo-size-1);
 
   img {
     width: 100%;
@@ -2019,7 +2019,7 @@ a.iight-button {
 .cms-media-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
-  gap: var(--iight-size-3);
+  gap: var(--sorlo-size-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2028,17 +2028,17 @@ a.iight-button {
 .cms-media-card {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   width: 100%;
   height: 100%;
-  padding: var(--iight-size-2);
+  padding: var(--sorlo-size-2);
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   &:hover:not([aria-disabled]) {
     border-color: var(--cms-border);
@@ -2053,7 +2053,7 @@ a.iight-button {
 
   .cms-thumbnail {
     aspect-ratio: 1;
-    margin-bottom: var(--iight-size-1);
+    margin-bottom: var(--sorlo-size-1);
 
     .lucide {
       width: 2rem;
@@ -2080,25 +2080,25 @@ a.iight-button {
 .cms-media-card__badges {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
 }
 
 // Shows where files will land while they're dragged over it
 .cms-dropzone {
-  border-radius: var(--iight-size-2);
+  border-radius: var(--sorlo-size-2);
 
   &[data-dragging] {
     background: var(--cms-accent-tint);
     outline: 2px dashed var(--cms-accent-strong);
-    outline-offset: var(--iight-size-1);
+    outline-offset: var(--sorlo-size-1);
   }
 }
 
 .cms-media-details {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-2);
-  margin-bottom: var(--iight-size-4);
+  gap: var(--sorlo-size-2);
+  margin-bottom: var(--sorlo-size-4);
 
   .cms-thumbnail {
     height: min(40vh, 18rem);
@@ -2115,7 +2115,7 @@ a.iight-button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 // A relationship or media field: what it holds, each removable, and the button that chooses more
@@ -2123,13 +2123,13 @@ a.iight-button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 .cms-picked {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-1);
+  gap: var(--sorlo-size-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2137,12 +2137,12 @@ a.iight-button {
   li {
     display: flex;
     align-items: center;
-    gap: var(--iight-size-2);
-    padding: var(--iight-size-1) var(--iight-size-1) var(--iight-size-1) var(--iight-size-2);
+    gap: var(--sorlo-size-2);
+    padding: var(--sorlo-size-1) var(--sorlo-size-1) var(--sorlo-size-1) var(--sorlo-size-2);
     overflow-wrap: anywhere;
     background: var(--cms-surface);
-    border: var(--iight-size-px) solid var(--cms-rule);
-    border-radius: var(--iight-size-1);
+    border: var(--sorlo-size-px) solid var(--cms-rule);
+    border-radius: var(--sorlo-size-1);
   }
 
   .cms-thumbnail {
@@ -2181,20 +2181,20 @@ a.iight-button {
 
 // A picker's search results, each a button that chooses it
 .cms-pick-list {
-  margin: var(--iight-size-3) 0 0;
+  margin: var(--sorlo-size-3) 0 0;
   padding: 0;
   list-style: none;
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   button {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--iight-size-2);
+    gap: var(--sorlo-size-2);
     width: 100%;
     min-height: var(--cms-row);
-    padding: var(--iight-size-1) var(--iight-size-3);
+    padding: var(--sorlo-size-1) var(--sorlo-size-3);
     font: inherit;
     color: inherit;
     text-align: left;
@@ -2204,7 +2204,7 @@ a.iight-button {
   }
 
   li + li button {
-    border-top: var(--iight-size-px) solid var(--cms-rule);
+    border-top: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   button:hover:not([aria-disabled]) {
@@ -2220,8 +2220,8 @@ a.iight-button {
 .cms-icon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
-  gap: var(--iight-size-1);
-  margin: var(--iight-size-3) 0;
+  gap: var(--sorlo-size-1);
+  margin: var(--sorlo-size-3) 0;
   padding: 0;
   list-style: none;
 
@@ -2229,10 +2229,10 @@ a.iight-button {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--iight-size-1);
+    gap: var(--sorlo-size-1);
     width: 100%;
     height: 100%;
-    padding: var(--iight-size-2) var(--iight-size-1);
+    padding: var(--sorlo-size-2) var(--sorlo-size-1);
     font: inherit;
     font-size: var(--cms-text-xs);
     line-height: var(--cms-leading-xs);
@@ -2240,8 +2240,8 @@ a.iight-button {
     overflow-wrap: anywhere;
     cursor: pointer;
     background: var(--cms-surface);
-    border: var(--iight-size-px) solid var(--cms-rule);
-    border-radius: var(--iight-size-1);
+    border: var(--sorlo-size-px) solid var(--cms-rule);
+    border-radius: var(--sorlo-size-1);
 
     &:hover {
       background: var(--cms-subtle);
@@ -2263,22 +2263,22 @@ a.iight-button {
 }
 
 /* Core's dialogs keep their title and buttons in view while a long body scrolls */
-.iight-modal[open] {
+.sorlo-modal[open] {
   display: flex;
   flex-direction: column;
   max-height: calc(100dvh - 4rem);
 }
 
 // Padded out and pulled back in, so its fields' focus rings aren't clipped by the scrolling
-.iight-modal__body {
+.sorlo-modal__body {
   min-height: 0;
-  margin: calc(-1 * var(--iight-size-1));
-  padding: var(--iight-size-1);
+  margin: calc(-1 * var(--sorlo-size-1));
+  padding: var(--sorlo-size-1);
   overflow-y: auto;
 }
 
-.iight-modal__header h2 {
-  margin: 0 0 var(--iight-size-3);
+.sorlo-modal__header h2 {
+  margin: 0 0 var(--sorlo-size-3);
   overflow-wrap: anywhere;
 }
 
@@ -2286,12 +2286,12 @@ a.iight-button {
 .embed {
   box-sizing: border-box;
   width: 100%;
-  padding: var(--iight-size-2);
+  padding: var(--sorlo-size-2);
   font: var(--cms-text-sm) / var(--cms-leading-sm) var(--cms-font-mono);
   color: var(--cms-text);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-border);
-  border-radius: var(--iight-size-1);
+  border: var(--sorlo-size-px) solid var(--cms-border);
+  border-radius: var(--sorlo-size-1);
 }
 
 // Short code shown whole, such as a client's setup, as tall as its lines wrap to where browsers can size it so
@@ -2311,14 +2311,14 @@ a.iight-button {
 .cms-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-4);
-  margin-bottom: var(--iight-size-4);
-  border-bottom: var(--iight-size-px) solid var(--cms-rule);
+  gap: var(--sorlo-size-4);
+  margin-bottom: var(--sorlo-size-4);
+  border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
 
   // The current one is bold as well as underlined in the accent
   a {
-    margin-bottom: calc(-1 * var(--iight-size-px));
-    padding: var(--iight-size-2) 0;
+    margin-bottom: calc(-1 * var(--sorlo-size-px));
+    padding: var(--sorlo-size-2) 0;
     color: var(--cms-muted);
     text-decoration: none;
     border-bottom: 2px solid transparent;
@@ -2328,7 +2328,7 @@ a.iight-button {
     }
 
     &[aria-current='page'] {
-      font-weight: var(--iight-font-weight-bold);
+      font-weight: var(--sorlo-font-weight-bold);
       color: var(--cms-text);
       border-bottom-color: var(--cms-accent-strong);
     }
@@ -2352,13 +2352,13 @@ a.iight-button {
 .cms-split__detail {
   flex: 1 1 22rem;
   min-width: 0;
-  padding: var(--iight-size-4);
+  padding: var(--sorlo-size-4);
   background: var(--cms-surface);
-  border: var(--iight-size-px) solid var(--cms-rule);
-  border-radius: var(--iight-size-2);
+  border: var(--sorlo-size-px) solid var(--cms-rule);
+  border-radius: var(--sorlo-size-2);
 
   h2 {
-    margin: 0 0 var(--iight-size-1);
+    margin: 0 0 var(--sorlo-size-1);
     overflow-wrap: anywhere;
   }
 }
@@ -2378,7 +2378,7 @@ a.iight-button {
   border: 0;
 
   &[aria-current='true'] {
-    font-weight: var(--iight-font-weight-bold);
+    font-weight: var(--sorlo-font-weight-bold);
   }
 }
 
@@ -2386,13 +2386,13 @@ a.iight-button {
   > div {
     display: grid;
     grid-template-columns: minmax(8rem, 1fr) 3fr;
-    gap: var(--iight-size-4);
-    padding: var(--iight-size-2) 0;
-    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+    gap: var(--sorlo-size-4);
+    padding: var(--sorlo-size-2) 0;
+    border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   dt {
-    font-weight: var(--iight-font-weight-bold);
+    font-weight: var(--sorlo-font-weight-bold);
   }
 
   dd {
@@ -2414,11 +2414,11 @@ a.iight-button {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--iight-size-1) var(--iight-size-2);
+  gap: var(--sorlo-size-1) var(--sorlo-size-2);
 }
 
 .cms-run-error {
-  margin: 0 0 var(--iight-size-1);
+  margin: 0 0 var(--sorlo-size-1);
   color: var(--cms-danger);
 }
 
@@ -2434,37 +2434,37 @@ a.iight-button {
   overflow-wrap: anywhere;
 
   > li {
-    padding: var(--iight-size-3) 0;
+    padding: var(--sorlo-size-3) 0;
   }
 
   > li + li {
-    border-top: var(--iight-size-px) solid var(--cms-rule);
+    border-top: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   ul {
-    margin: var(--iight-size-1) 0 0;
+    margin: var(--sorlo-size-1) 0 0;
     padding-left: var(--cms-size-6);
   }
 
   .cms-notice {
-    margin: var(--iight-size-2) 0 0;
+    margin: var(--sorlo-size-2) 0 0;
   }
 }
 
 .cms-migrations__name {
-  font-weight: var(--iight-font-weight-bold);
+  font-weight: var(--sorlo-font-weight-bold);
 }
 
 .cms-migrations__steps .cms-badge {
-  margin-left: var(--iight-size-2);
+  margin-left: var(--sorlo-size-2);
 }
 
 .cms-migrations__fold {
-  margin-top: var(--iight-size-3);
+  margin-top: var(--sorlo-size-3);
 
   > summary {
     width: fit-content;
-    margin-bottom: var(--iight-size-2);
+    margin-bottom: var(--sorlo-size-2);
     cursor: pointer;
   }
 }
@@ -2479,41 +2479,41 @@ a.iight-button {
 .cms-type-preview {
   display: inline-flex;
   align-items: center;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 .cms-type-preview {
-  margin: 0 0 var(--iight-size-2);
-  padding: var(--iight-button-padding);
+  margin: 0 0 var(--sorlo-size-2);
+  padding: var(--sorlo-button-padding);
   background: var(--cms-subtle);
-  border-radius: var(--iight-size-1);
+  border-radius: var(--sorlo-size-1);
 }
 
 // A type's groups beside its editor, each with what it can become or the shared group it uses
 .cms-groups {
   display: flex;
   flex-direction: column;
-  gap: var(--iight-size-3);
+  gap: var(--sorlo-size-3);
   padding: 0;
   list-style: none;
 
   li {
     display: flex;
     flex-direction: column;
-    gap: var(--iight-size-1);
+    gap: var(--sorlo-size-1);
   }
 }
 
 .cms-groups__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--iight-size-2);
+  gap: var(--sorlo-size-2);
 }
 
 @media (max-width: $phone) {
   // The assistant's button is its icon alone, its name for screen readers
   .cms-side .cms-assistant__open {
-    width: calc(var(--cms-control) + 2 * var(--iight-size-3));
+    width: calc(var(--cms-control) + 2 * var(--sorlo-size-3));
 
     > span {
       position: absolute;
@@ -2526,12 +2526,12 @@ a.iight-button {
   }
 
   .cms-side:has(> .cms-side__assistant) .cms-panel-slot > .cms-panel > .cms-panel__actions {
-    right: calc(2 * var(--cms-inset) + var(--cms-control) + 2 * var(--iight-size-3));
+    right: calc(2 * var(--cms-inset) + var(--cms-control) + 2 * var(--sorlo-size-3));
   }
 
   // Under the phone's top bar
   .cms-chat-page {
-    height: calc(100dvh - 3.5rem - 2 * var(--iight-size-4) - var(--cms-bar, 0px) - var(--cms-inset));
+    height: calc(100dvh - 3.5rem - 2 * var(--sorlo-size-4) - var(--cms-bar, 0px) - var(--cms-inset));
   }
 
   .admin {
@@ -2541,7 +2541,7 @@ a.iight-button {
 
     > main {
       grid-column: 1;
-      padding: var(--iight-size-4);
+      padding: var(--sorlo-size-4);
     }
   }
 
@@ -2561,9 +2561,9 @@ a.iight-button {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--iight-size-2) var(--iight-size-4);
+    padding: var(--sorlo-size-2) var(--sorlo-size-4);
     background: var(--cms-surface);
-    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+    border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
   }
 
   // The menu button shows and hides the nav, which then sits under the bar
@@ -2572,7 +2572,7 @@ a.iight-button {
     grid-row: auto;
     height: auto;
     border: 0;
-    border-bottom: var(--iight-size-px) solid var(--cms-rule);
+    border-bottom: var(--sorlo-size-px) solid var(--cms-rule);
     border-radius: 0;
     box-shadow: none;
 
@@ -2582,6 +2582,6 @@ a.iight-button {
   }
 
   .cms-toasts {
-    left: var(--iight-size-4);
+    left: var(--sorlo-size-4);
   }
 }

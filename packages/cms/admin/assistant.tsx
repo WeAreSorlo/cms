@@ -19,7 +19,7 @@ import {
   useToast,
 } from './ui'
 import { ChangeList, JsonChanges, kinds } from './versions'
-import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
+import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/core'
 import {
   ArrowUp,
   Check,
@@ -343,7 +343,7 @@ function typeWarning(proposal: Proposal) {
       : '. It needs no content migration.',
     changes.some((change) => change.api) &&
       " It changes what the site's API returns, so the site's code that reads what it renames or removes needs " +
-        'changing, and npx iight types pull updates its types.',
+        'changing, and npx sorlo types pull updates its types.',
     before.drafts !== false &&
       after.drafts === false &&
       " Without drafts, every save publishes, and an entry's unpublished changes go live at its next save.",
@@ -530,7 +530,7 @@ function Decide({
         {typesOnly && (
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             aria-label={named('Apply', 'apply')}
             aria-busy={busy === 'apply'}
             onClick={() => decide('apply')}
@@ -541,7 +541,7 @@ function Decide({
         {!typesOnly && drafts && (
           <button
             type='button'
-            className='iight-button'
+            className='sorlo-button'
             aria-label={named('Apply as draft', 'apply')}
             aria-busy={busy === 'apply'}
             onClick={() => decide('apply')}
@@ -552,7 +552,7 @@ function Decide({
         {!typesOnly && (
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             aria-label={named('Apply and publish', 'publish')}
             aria-busy={busy === 'publish'}
             onClick={() => decide('publish')}
@@ -562,7 +562,7 @@ function Decide({
         )}
         <button
           type='button'
-          className='iight-button'
+          className='sorlo-button'
           aria-label={named('Skip', 'skip')}
           aria-busy={busy === 'skip'}
           onClick={() => decide('skip')}
@@ -1068,7 +1068,7 @@ function Composer({ view, attachments }: { view?: PageView | null; attachments: 
       </button>
       <button
         type='button'
-        className={`iight-button${assistant.replying ? '' : ' iight-button--primary'}`}
+        className={`sorlo-button${assistant.replying ? '' : ' sorlo-button--primary'}`}
         aria-busy={waiting || undefined}
         onClick={assistant.replying ? assistant.stop : () => send()}
       >
@@ -1157,7 +1157,7 @@ function Switcher({ menu }: { menu?: boolean }) {
           <EllipsisVertical />
         </button>
       ) : (
-        <button type='button' className='iight-button cms-assistant__switch' popoverTarget={id}>
+        <button type='button' className='sorlo-button cms-assistant__switch' popoverTarget={id}>
           <span>{nameOf(assistant.chat)}</span>
           <span className='cms-visually-hidden'>, switch chats</span>
           <ChevronsUpDown />
@@ -1167,7 +1167,7 @@ function Switcher({ menu }: { menu?: boolean }) {
         {menu && (
           <button
             type='button'
-            className='iight-button'
+            className='sorlo-button'
             onClick={(event) => {
               close()
               newChat(assistant, event.currentTarget)
@@ -1221,7 +1221,7 @@ function ChatList({ onPick }: { onPick?: () => void }) {
         })}
       </ul>
       {assistant.more && (
-        <button type='button' className='iight-button' onClick={assistant.showMore}>
+        <button type='button' className='sorlo-button' onClick={assistant.showMore}>
           Show more chats
         </button>
       )}
@@ -1295,7 +1295,7 @@ export function PanelAssistant({
   return (
     <>
       <AssistantChat view={view} collapsed={collapsed} onCollapse={onCollapse} />
-      <button type='button' className='iight-button cms-assistant__open' onClick={() => setOpen(true)}>
+      <button type='button' className='sorlo-button cms-assistant__open' onClick={() => setOpen(true)}>
         <Sparkles />
         <span>Assistant</span>
       </button>
@@ -1346,7 +1346,7 @@ function Rename({ chat, onClose }: { chat: Chat; onClose: () => void }) {
       title='Rename chat'
       onClose={onClose}
       footer={
-        <button type='button' className='iight-button iight-button--primary' aria-busy={saving} onClick={save}>
+        <button type='button' className='sorlo-button sorlo-button--primary' aria-busy={saving} onClick={save}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       }
@@ -1445,7 +1445,7 @@ export function ChatPage({ query }: { query: string }) {
         actions={
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             onClick={() => {
               assistant.open(null)
               // Someone else's chat gives way to the new one too, which has no id yet
@@ -1461,10 +1461,10 @@ export function ChatPage({ query }: { query: string }) {
           !shared &&
           assistant.chat && (
             <>
-              <button type='button' className='iight-button' onClick={() => setRenaming(true)}>
+              <button type='button' className='sorlo-button' onClick={() => setRenaming(true)}>
                 Rename
               </button>
-              <button type='button' className='iight-button iight-button--danger' onClick={remove}>
+              <button type='button' className='sorlo-button sorlo-button--danger' onClick={remove}>
                 Delete
               </button>
             </>

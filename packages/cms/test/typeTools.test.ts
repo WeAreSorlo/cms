@@ -17,9 +17,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
-// The assistant's tools for content types (PLAN.md section 21): offered only where the type editor is on, as in iight
+// The assistant's tools for content types (PLAN.md section 21): offered only where the type editor is on, as in sorlo
 // dev, they propose new types and changes to them, checked as the type editor and its schema builder check them, and
-// Apply writes the type's file and its content migration as the type editor's Save does, never running iight migrate.
+// Apply writes the type's file and its content migration as the type editor's Save does, never running sorlo migrate.
 
 let cookie: string
 
@@ -51,7 +51,7 @@ let dirs: { types: string; migrations: string }
 
 // A site project with blog posts, authors and pages and the SEO group, and a snapshot of them unless it's left out
 async function site({ snapshot = true } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'iight-type-tools-'))
+  const root = await mkdtemp(join(tmpdir(), 'sorlo-type-tools-'))
   dirs = { types: join(root, 'schema/types'), migrations: join(root, 'migrations') }
   await mkdir(dirs.types, { recursive: true })
   await mkdir(join(root, 'schema/groups'), { recursive: true })
@@ -287,7 +287,7 @@ test('a new type is proposed, writing nothing, and Apply writes its file as the 
   expect(JSON.parse(await snapshotOf())).toHaveProperty('jobs')
 })
 
-test('a change is proposed with what its migration will say, and Apply writes it, never running iight migrate', async () => {
+test('a change is proposed with what its migration will say, and Apply writes it, never running sorlo migrate', async () => {
   const change = {
     type: 'blog',
     fields: [
@@ -322,7 +322,7 @@ test('a change is proposed with what its migration will say, and Apply writes it
     'credits',
     'reading_time',
   ])
-  // The model hears what applying it writes, and to wait for iight migrate before proposing entries
+  // The model hears what applying it writes, and to wait for sorlo migrate before proposing entries
   const { text } = resultOf(requests[1])
   expect(text).toContain('writes schema/types/blog.json and a content migration')
   expect(text).toContain('Until it runs, no entry can be saved')
@@ -347,7 +347,7 @@ test('a change is proposed with what its migration will say, and Apply writes it
   // The migration waits for a developer, so entries can't be saved until it runs
   const saved = await admin(app, 'PUT', `/entries/${post.id}`, { values: { title: 'Hi again', slug: 'hi' } })
   expect(saved.status).toBe(409)
-  expect(saved.body.message).toContain('Run iight migrate first')
+  expect(saved.body.message).toContain('Run sorlo migrate first')
 
   // The model hears it was applied, never as a draft
   await ask(app, chat, 'Thanks')
@@ -649,7 +649,7 @@ test('the type editor says what "this" means, and Apply refuses without the type
   expect(body.data[0]).toEqual(
     expect.objectContaining({
       status: 403,
-      message: 'Content types can only be changed in development, with iight dev.',
+      message: 'Content types can only be changed in development, with sorlo dev.',
       data: expect.objectContaining({ status: 'pending' }),
     }),
   )
@@ -660,7 +660,7 @@ test('the type editor says what "this" means, and Apply refuses without the type
       { db, types: live.types, migrations: async () => ({}), user: { id: '', email: '', name: '' }, origin: '' },
       {},
     ),
-  ).rejects.toThrow('Content types can only be changed in development, with iight dev. Their changes ship through git.')
+  ).rejects.toThrow('Content types can only be changed in development, with sorlo dev. Their changes ship through git.')
 })
 
 test('with no snapshot yet, the first change still gets its migration, in the type editor too', async () => {
@@ -837,16 +837,16 @@ test('names are one whatever their case, a rename of only the case keeps the fil
   expect((await readdir(dirs.types)).filter((file) => /^authors\.json$/i.test(file))).toEqual(['Authors.json'])
   expect((await admin(app, 'GET', '/types')).body.data.map((type: ContentType) => type.name)).toContain('Authors')
 
-  // A file a git pull brought, which iight dev hasn't loaded, is never written over
+  // A file a git pull brought, which sorlo dev hasn't loaded, is never written over
   await writeFile(join(dirs.types, 'jobs.json'), JSON.stringify({ ...titled, id: 'typ_pulled', fields: [] }))
   const title = { ...jobs.fields[0], id: 'fld_job_title' }
   const made = await admin(app, 'POST', '/types', { ...titled, fields: [title] })
   expect(made.body.fields.name.messages).toEqual([
-    "schema/types already has jobs.json, which iight dev hasn't loaded. Restart iight dev to load it, or choose " +
+    "schema/types already has jobs.json, which sorlo dev hasn't loaded. Restart sorlo dev to load it, or choose " +
       'another name.',
   ])
   await ask(app, chat, 'Make jobs')
-  expect(resultOf(requests.at(-1)!).text).toContain("schema/types already has jobs.json, which iight dev hasn't loaded")
+  expect(resultOf(requests.at(-1)!).text).toContain("schema/types already has jobs.json, which sorlo dev hasn't loaded")
   expect((await typeFile('jobs')).id).toBe('typ_pulled')
 })
 
@@ -916,7 +916,7 @@ test('a structure waits for a pending migration, and a name with entries left un
   const changed = await admin(app, 'PUT', '/types/writers', { ...authors, name: 'writers', structure: 'singleton' })
   expect(changed.body.fields.structure.messages).toEqual([
     "A content migration hasn't run yet, which may still rename entries of this type, so its structure can change " +
-      'only once iight migrate has run it.',
+      'only once sorlo migrate has run it.',
   ])
 
   // Entries of a type that's gone, under its name

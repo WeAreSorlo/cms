@@ -8,7 +8,7 @@ import type {
   GroupOg,
   GroupOgResolved,
   GroupSeo,
-} from './iight-types'
+} from './sorlo-types'
 import {
   type Draft,
   type Entry,
@@ -17,14 +17,14 @@ import {
   type Submission,
   type With,
   createClient,
-} from '@iight/sdk'
+} from '@sorlo/sdk'
 import { expectTypeOf, test } from 'vitest'
 
-// Compile-time tests, which vitest typechecks rather than runs. The generated iight-types.d.ts types the SDK here.
-const cms = createClient({ url: 'http://localhost:3000', token: 'iight_key' })
+// Compile-time tests, which vitest typechecks rather than runs. The generated sorlo-types.d.ts types the SDK here.
+const cms = createClient({ url: 'http://localhost:3000', token: 'sorlo_key' })
 
 // A property a newer SDK could give every entry
-declare module '@iight/sdk' {
+declare module '@sorlo/sdk' {
   interface Entry {
     addedLater?: true
   }
@@ -195,7 +195,7 @@ test('submit() takes the values a form takes, and resolves what was stored', () 
 })
 
 test('a preview client types drafts, whose fields can be empty and which may never have been published', () => {
-  const preview = createClient({ url: 'http://localhost:3000', token: 'iight_key', preview: true })
+  const preview = createClient({ url: 'http://localhost:3000', token: 'sorlo_key', preview: true })
   const posts = preview.entries('blog')
   expectTypeOf(posts.first()).resolves.toEqualTypeOf<Draft<EntryBlog> | null>()
   expectTypeOf<Found<typeof posts>['slug']>().toEqualTypeOf<string | null>()

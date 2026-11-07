@@ -75,7 +75,7 @@ const toChat = (row: ChatRow) => ({
 })
 
 const instructions = [
-  "You're the assistant in the admin of a website built with iight, a CMS. The people you talk to work on the site's " +
+  "You're the assistant in the admin of a website built with Sorlo, a CMS. The people you talk to work on the site's " +
     'content: the entries of its content types, its forms and its media library. The tools read it, and propose ' +
     "changes to it, as the person you're talking to.",
   'Answer questions about the content and review it, such as for typos, unclear writing, entries that disagree with ' +
@@ -106,16 +106,16 @@ const instructions = [
     'addresses in full.',
 ].join('\n\n')
 
-// What the model is told of content types, which change only where the type editor is on, as in iight dev
+// What the model is told of content types, which change only where the type editor is on, as in sorlo dev
 const typeInstructions = (editable: boolean) =>
   editable
     ? 'Content types can change here too, since the site runs in development. To make one, or change one, read the ' +
       'field types with list_field_types, then propose it with create_content_type or update_content_type, which the ' +
       'person applies. Applying one writes its file and, when its entries need one, a content migration that a ' +
-      "person checks and runs on the admin's Migrations page, or with iight migrate. Renaming, removing or retyping a " +
+      "person checks and runs on the admin's Migrations page, or with sorlo migrate. Renaming, removing or retyping a " +
       "field changes the entries and what the site's API returns, so say so when you propose it, and propose removing " +
       'fields only when the person asks. You never delete content types, change shared groups or write migration code.'
-    : "Content types can't change here. They change in development, with iight dev's type editor, and ship through " +
+    : "Content types can't change here. They change in development, with sorlo dev's type editor, and ship through " +
       'git, so say so when asked for one, and you can describe the change for a developer.'
 
 // What the model is told before every chat. Nothing in it changes from person to person or from message to message, so
@@ -149,7 +149,7 @@ const specOf = (tool: Tool) => {
 // they cache. None publishes, since here only the person's Apply and publish does.
 const offeredTools = (editable: boolean) => tools.filter((tool) => !tool.publishes && (editable || !tool.editorOnly))
 
-// The tools as the provider is given them without the type editor, as outside iight dev
+// The tools as the provider is given them without the type editor, as outside sorlo dev
 export const toolSpecs = offeredTools(false).map(specOf)
 
 // The chat as the model is sent it. A reply the model declined is left out, as the provider asks, and so is the page
@@ -344,7 +344,7 @@ export function chatRoutes(
   provider: AiProvider,
   versions?: VersionOptions,
   storage?: Storage,
-  // The type editor's saves, as in iight dev, with which the assistant also proposes content types
+  // The type editor's saves, as in sorlo dev, with which the assistant also proposes content types
   editor?: TypeSaver,
 ) {
   const app = new Hono<AdminEnv>()

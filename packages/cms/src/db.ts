@@ -1,5 +1,5 @@
 import type { EventName } from './schemas'
-import type { ConditionGroup, FieldSchema } from 'iight'
+import type { ConditionGroup, FieldSchema } from '@sorlo/core'
 import { ColumnType, Generated, Kysely, PostgresDialect } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { Pool } from 'pg'
@@ -18,7 +18,7 @@ export interface Database {
     updated_at: Generated<Date>
     // When they last used the admin, written at most once a minute
     last_active_at: Date | null
-    // Null for people iight make:user made
+    // Null for people sorlo make:user made
     invited_by: string | null
     // Removing someone keeps their row, so everything that points at them keeps their name (PLAN.md section 5)
     removed_at: Date | null
@@ -124,7 +124,7 @@ export interface Database {
     // What the key can do besides reading live content: preview reads drafts, types pulls types, and submit skips the
     // forms rate limit
     scopes: Generated<Array<string>>
-    // Null for keys from iight make:api-key
+    // Null for keys from sorlo make:api-key
     created_by: string | null
     // Written at most once a minute
     last_used_at: Date | null

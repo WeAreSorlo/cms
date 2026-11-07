@@ -1,6 +1,6 @@
-// A typed client for the iight CMS's delivery API (PLAN.md section 8). It must never import server code.
+// A typed client for the Sorlo CMS's delivery API (PLAN.md section 8). It must never import server code.
 
-// An entry as the delivery API returns it. The file `npx iight types pull` writes narrows it for each content type.
+// An entry as the delivery API returns it. The file `npx sorlo types pull` writes narrows it for each content type.
 export interface Entry {
   id: string
   type: string
@@ -161,8 +161,8 @@ type Value<F, V, O extends Operator> = O extends 'exists' | 'not exists'
         : [value: V]
 
 // A request the CMS refused or couldn't answer, with its HTTP status and the API's { message }
-export class IightError extends Error {
-  name = 'IightError'
+export class SorloError extends Error {
+  name = 'SorloError'
   status: number
   body: unknown
 
@@ -267,11 +267,11 @@ class EntriesQuery<
 export interface ClientOptions<Preview extends boolean = boolean> {
   // The CMS's address, such as https://cms.example.com
   url: string
-  // A key from `iight make:api-key`, which entries need. Forms take submissions without one, so browsers can send
-  // them, but a site's own server sends one from `iight make:api-key --submit`, so it isn't rate limited as one visitor.
+  // A key from `sorlo make:api-key`, which entries need. Forms take submissions without one, so browsers can send
+  // them, but a site's own server sends one from `sorlo make:api-key --submit`, so it isn't rate limited as one visitor.
   token?: string
   // Reads drafts in place of what's live, for a site's preview, typing their values as unfinished. Every query sends
-  // status=draft, which needs a key from `iight make:api-key --preview`, so keep the client on a server.
+  // status=draft, which needs a key from `sorlo make:api-key --preview`, so keep the client on a server.
   preview?: Preview
   // In place of the global fetch, e.g. to add caching
   fetch?: typeof globalThis.fetch
@@ -298,7 +298,7 @@ export function createClient<Preview extends boolean = false>({
       const failed =
         response.status === 422 ? "The values don't pass the form's checks." : `The CMS replied ${response.status}.`
       const message = body?.message ?? (response.ok ? "The CMS's reply isn't JSON." : failed)
-      throw new IightError(message, response.status, body)
+      throw new SorloError(message, response.status, body)
     }
     return body
   }
@@ -316,7 +316,7 @@ export function createClient<Preview extends boolean = false>({
 
     // A form, by its name, such as cms.form('contact')
     form: <F extends keyof RegisteredForms & string>(form: F) => ({
-      // Sends the values, resolving the submission as it was stored. Values that don't pass throw an IightError with
+      // Sends the values, resolving the submission as it was stored. Values that don't pass throw a SorloError with
       // status 422, whose body is core's report, for a core form's applyReport.
       submit: async (values: RegisteredForms[F]): Promise<Submission<RegisteredForms[F]>> =>
         (await request(`/v1/forms/${encodeURIComponent(form)}`, values)).data,

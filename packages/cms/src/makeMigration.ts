@@ -1,13 +1,13 @@
 import { sharedDepth } from './content'
 import { mapFields } from './fields'
 import type { ContentType } from './types'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
-// iight make:migration compares schema/types with migrations/.snapshot.json, the types as the last migration left them,
+// sorlo make:migration compares schema/types with migrations/.snapshot.json, the types as the last migration left them,
 // and writes a content migration for the difference (PLAN.md section 6). Types, fields and layouts are matched by id,
 // so a renamed field isn't taken for one removed and another added.
 
@@ -73,7 +73,7 @@ function inside(tree: Tree, id: string, path = '', found = new Map<string, Node>
 // The old fields with new ids wherever a group's fields came from somewhere else, such as a type's own SEO group swapped
 // for a use of a shared one, which gives the fields inside new ids (PLAN.md section 19). Those are matched by name, so
 // each keeps its values where the name matches, and the ones that don't match are removed and flagged.
-// shortcut: a swap that changes no values writes no migration, so iight migrate doesn't rebuild entry_relations, whose
+// shortcut: a swap that changes no values writes no migration, so sorlo migrate doesn't rebuild entry_relations, whose
 // rows keep the copy's field ids until each entry saves. Nothing reads field_id yet; rebuild them here once something does.
 function matchSwaps(before: Array<FieldSchema>, after: Array<FieldSchema>) {
   const old = treeOf(before)
@@ -254,7 +254,7 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
         ...(changed.length ? [`has a new ${changed.join(', ')}`] : []),
       ]
       if (reasons.length) {
-        const note = `Flagged: ${path} ${reasons.join(' and ')}, so some entries may not pass. Run iight migrate --check`
+        const note = `Flagged: ${path} ${reasons.join(' and ')}, so some entries may not pass. Run sorlo migrate --check`
         changes.push({ up: [comment(note)], down: [], note })
       }
     } else if (!node.parent || old.has(node.parent)) {
@@ -266,7 +266,7 @@ function fieldChanges(type: string, before: Array<FieldSchema>, after: Array<Fie
           down: call('removeField', name, literal(path)),
         })
       } else if (node.schema.required) {
-        const note = `Flagged: ${path} is new and required, so entries saved before it have no value. Run iight migrate --check`
+        const note = `Flagged: ${path} is new and required, so entries saved before it have no value. Run sorlo migrate --check`
         changes.push({ up: [comment(note)], down: [], note })
       }
     }
@@ -313,7 +313,7 @@ export function diffTypes(snapshot: Record<string, ContentType>, types: Map<stri
 
   for (const [id, type] of before) {
     if (kept.has(id)) continue
-    const note = `Flagged: the type ${type.name} is gone, but its entries stay until you delete them. iight migrate --check lists them`
+    const note = `Flagged: the type ${type.name} is gone, but its entries stay until you delete them. sorlo migrate --check lists them`
     changes.push({ up: [comment(note)], down: [], note })
     touched.add(type.name)
   }
@@ -325,8 +325,8 @@ export function diffTypes(snapshot: Record<string, ContentType>, types: Map<stri
 function source(changes: Array<Change>) {
   const body = (lines: Array<string>) => (lines.length ? lines : ['// Nothing to undo']).map((line) => `  ${line}`)
   return [
-    "// Made by iight make:migration. Content migrations only change entries' values, so old versions can run them too",
-    "import type { ContentMigration } from '@iight/cms'",
+    "// Made by sorlo make:migration. Content migrations only change entries' values, so old versions can run them too",
+    "import type { ContentMigration } from '@sorlo/cms'",
     '',
     'export const up: ContentMigration = ({ entries }) => {',
     ...body(changes.flatMap((change) => change.up)),

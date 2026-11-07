@@ -1,7 +1,7 @@
 import { inputs } from './core'
 import { expandFields, usesOf } from './fields'
 import { cmsInputs } from './relations'
-import type { FieldSchema, Input } from 'iight'
+import type { FieldSchema, Input } from '@sorlo/core'
 import { existsSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'

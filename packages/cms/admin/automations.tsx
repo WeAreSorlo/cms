@@ -13,7 +13,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, baseInputSchemaFields } from 'iight'
+import Form, { FieldSchema, FormHandle, baseInputSchemaFields } from '@sorlo/core'
 import { History, Mail, Pencil, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -90,7 +90,7 @@ export function AutomationList() {
   }, [])
 
   const newAutomation = (
-    <a className='iight-button iight-button--primary' href='#/automations/new'>
+    <a className='sorlo-button sorlo-button--primary' href='#/automations/new'>
       <Plus /> New automation
     </a>
   )
@@ -131,7 +131,7 @@ export function FormAutomations({ formId }: { formId: string }) {
       {automations?.length === 0 && <p className='cms-muted'>None yet.</p>}
       {!!automations?.length && <AutomationTable automations={automations} />}
       <div className='actions'>
-        <a className='iight-button' href={`#/automations/new/${formId}`}>
+        <a className='sorlo-button' href={`#/automations/new/${formId}`}>
           <Mail /> Email new submissions
         </a>
       </div>
@@ -246,14 +246,14 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
           <>
             <button
               type='button'
-              className='iight-button iight-button--primary'
+              className='sorlo-button sorlo-button--primary'
               aria-busy={busy === 'save'}
               onClick={save}
             >
               {busy === 'save' ? 'Saving…' : 'Save'}
             </button>
             {automation && (
-              <a className='iight-button' href={`#/automations/${automation.id}/runs`}>
+              <a className='sorlo-button' href={`#/automations/${automation.id}/runs`}>
                 <History /> Runs
               </a>
             )}
@@ -261,7 +261,7 @@ function AutomationEditor({ automation: loaded, initial }: { automation?: Automa
         }
         footer={
           automation && (
-            <button type='button' className='iight-button iight-button--danger' onClick={remove}>
+            <button type='button' className='sorlo-button sorlo-button--danger' onClick={remove}>
               <Trash2 /> Delete
             </button>
           )
@@ -365,11 +365,11 @@ export function Runs({ id }: { id: string }) {
         label={automation ? `${automation.name}: runs` : 'Runs'}
         actions={
           <>
-            <button type='button' className='iight-button' onClick={refresh}>
+            <button type='button' className='sorlo-button' onClick={refresh}>
               <RefreshCw /> Refresh
             </button>
             {automation && (
-              <a className='iight-button' href={`#/automations/${id}`}>
+              <a className='sorlo-button' href={`#/automations/${id}`}>
                 <Pencil /> Edit the automation
               </a>
             )}

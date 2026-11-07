@@ -6,7 +6,7 @@ import { toJson } from './compare'
 import { iconInput, useInputs } from './fields'
 import { MakeShared, TypeGroups, UseShared } from './groups'
 import { Badge, EmptyState, Notice, PageHeader, Panel, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FieldSchema, FormHandle } from 'iight'
+import Form, { FieldSchema, FormHandle } from '@sorlo/core'
 import { Blocks, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -15,7 +15,7 @@ const fieldsSchema: Array<FieldSchema> = [{ name: 'fields', label: 'Fields', typ
 
 const settingsInputs = { icon: iconInput }
 
-const readOnly = 'Content types can only be changed in development, with iight dev. Their changes ship through git.'
+const readOnly = 'Content types can only be changed in development, with sorlo dev. Their changes ship through git.'
 
 // What a save said, kept for the page it moves to when a type is created or renamed
 let flash: { message: string; migration?: boolean; notes: Array<string> } | undefined
@@ -45,7 +45,7 @@ const asFile = (settings: Record<string, any>, fields: Array<FieldSchema>) =>
 // Every content type, each opening in the type editor
 export function TypeList({ types, editable }: { types: Map<string, ContentType>; editable: boolean }) {
   const newType = editable && (
-    <a className='iight-button iight-button--primary' href='#/schema/new'>
+    <a className='sorlo-button sorlo-button--primary' href='#/schema/new'>
       <Plus /> New content type
     </a>
   )
@@ -276,7 +276,7 @@ export function TypeEditor({
     if (locked) return
     const sure = await confirm({
       title: `Delete the content type ${type!.label}?`,
-      body: 'Its entries stay until you delete them, and iight migrate --check lists them.',
+      body: 'Its entries stay until you delete them, and sorlo migrate --check lists them.',
       action: 'Delete',
       danger: true,
     })
@@ -336,7 +336,7 @@ export function TypeEditor({
           editable && (
             <button
               type='button'
-              className='iight-button iight-button--primary'
+              className='sorlo-button sorlo-button--primary'
               aria-busy={busy === 'save'}
               aria-disabled={locked || undefined}
               onClick={save}
@@ -350,7 +350,7 @@ export function TypeEditor({
           type && (
             <button
               type='button'
-              className='iight-button iight-button--danger'
+              className='sorlo-button sorlo-button--danger'
               aria-disabled={locked || undefined}
               onClick={remove}
             >

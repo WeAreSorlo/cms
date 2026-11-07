@@ -10,18 +10,18 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, expect, test } from 'vitest'
 
-// The iight CLI, run from a site project as a site runs it
+// The Sorlo CLI, run from a site project as a site runs it
 
-const bin = fileURLToPath(new URL('../bin/iight.js', import.meta.url))
+const bin = fileURLToPath(new URL('../bin/sorlo.js', import.meta.url))
 
 afterAll(() => db.destroy())
 
 // A site project on the test database, which a command runs in, given what's typed into it, or with typed as a
 // function, once it first asks something
 async function inSite(args: Array<string>, typed: string | (() => Promise<string>) = '') {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
-  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await writeFile(join(dir, 'sorlo.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
   try {
     const run = promisify(execFile)(process.execPath, [bin, ...args], { cwd: dir })
     if (typeof typed === 'string') run.child.stdin?.end(typed)
@@ -80,20 +80,20 @@ test('user:password sets a new password, signing them out everywhere, and refuse
   })
 }, 60_000)
 
-test(".env sets what the environment doesn't, before iight.config.ts loads", async () => {
+test(".env sets what the environment doesn't, before sorlo.config.ts loads", async () => {
   // A site project whose config prints what it sees, with a command that needs no database
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
   await writeFile(
-    join(dir, 'iight.config.ts'),
-    'console.log(JSON.stringify({ a: process.env.IIGHT_TEST_A, b: process.env.IIGHT_TEST_B }))\n' +
+    join(dir, 'sorlo.config.ts'),
+    'console.log(JSON.stringify({ a: process.env.SORLO_TEST_A, b: process.env.SORLO_TEST_B }))\n' +
       "export default { database: { url: 'postgres://localhost/unused' } }\n",
   )
-  await writeFile(join(dir, '.env'), 'IIGHT_TEST_A=from the file\nIIGHT_TEST_B="from the file"\n')
+  await writeFile(join(dir, '.env'), 'SORLO_TEST_A=from the file\nSORLO_TEST_B="from the file"\n')
   await mkdir(join(dir, 'schema/types'), { recursive: true })
 
   try {
-    const env = { ...process.env, IIGHT_TEST_B: 'from the environment' }
+    const env = { ...process.env, SORLO_TEST_B: 'from the environment' }
     const { stdout } = await promisify(execFile)(process.execPath, [bin, 'make:migration'], { cwd: dir, env })
     expect(stdout.split('\n')[0]).toBe('{"a":"from the file","b":"from the environment"}')
   } finally {
@@ -102,9 +102,9 @@ test(".env sets what the environment doesn't, before iight.config.ts loads", asy
 }, 30_000)
 
 test('migrate refuses a waiting migration with a TODO left, running nothing', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
-  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await writeFile(join(dir, 'sorlo.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
   await mkdir(join(dir, 'migrations'), { recursive: true })
   await writeFile(
     join(dir, 'migrations/2099_12_31_000000_todo.ts'),
@@ -143,14 +143,14 @@ const freePort = () =>
 
 test("dev listens on 127.0.0.1 unless HOST names another address, and other sites can't frame its admin", async () => {
   await setUp()
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
-  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await writeFile(join(dir, 'sorlo.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
   await mkdir(join(dir, 'schema/types'), { recursive: true })
   await mkdir(join(dir, 'migrations'), { recursive: true })
   const running: Array<ChildProcess> = []
 
-  // iight dev on a free port, with HOST or without, once it says where the admin is
+  // sorlo dev on a free port, with HOST or without, once it says where the admin is
   const dev = async (host?: string) => {
     const port = await freePort()
     const { HOST, ...env } = process.env
@@ -158,7 +158,7 @@ test("dev listens on 127.0.0.1 unless HOST names another address, and other site
     running.push(child)
     await new Promise((resolve, reject) => {
       child.stdout.on('data', (data) => String(data).includes('The admin is running') && resolve(undefined))
-      child.once('exit', (code) => reject(new Error(`iight dev stopped with ${code}`)))
+      child.once('exit', (code) => reject(new Error(`sorlo dev stopped with ${code}`)))
     })
     return port
   }
@@ -198,9 +198,9 @@ test("dev listens on 127.0.0.1 unless HOST names another address, and other site
 
 test('dev stops cleanly on SIGTERM, as start does when a host stops its container, and on one Ctrl-C through npm', async () => {
   await setUp()
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
-  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  await writeFile(join(dir, 'sorlo.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
   await mkdir(join(dir, 'schema/types'), { recursive: true })
 
   try {
@@ -212,7 +212,7 @@ test('dev stops cleanly on SIGTERM, as start does when a host stops its containe
       child.stdout.on('data', (data) => (stdout += data))
       await new Promise((resolve, reject) => {
         child.stdout.on('data', () => stdout.includes('The admin is running') && resolve(undefined))
-        child.once('exit', (code) => reject(new Error(`iight dev stopped with ${code}`)))
+        child.once('exit', (code) => reject(new Error(`sorlo dev stopped with ${code}`)))
       })
 
       const exited = new Promise((resolve) => child.once('exit', resolve))

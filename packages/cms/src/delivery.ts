@@ -18,7 +18,7 @@ import { randomBytes } from 'node:crypto'
 // A new key for the delivery API, which reads what's live, and more with its scopes, such as drafts with preview. Only
 // its hash is stored, so this is the one time it can be shown. Keys from the CLI have no user.
 async function makeKey(db: Kysely<Database>, name: string, scopes: Array<string>, createdBy: string | null) {
-  const token = `iight_${randomBytes(32).toString('base64url')}`
+  const token = `sorlo_${randomBytes(32).toString('base64url')}`
   const id = uuidv7()
   await db
     .insertInto('api_keys')
@@ -166,10 +166,10 @@ export function deliveryRoutes(
 ) {
   const { depth, maxDepth, maxLinks, origins } = delivery
   if (![depth, maxDepth].every(Number.isInteger) || depth < 1 || depth > maxDepth) {
-    throw new Error('delivery in iight.config.ts needs a whole number depth from 1 to its maxDepth.')
+    throw new Error('delivery in sorlo.config.ts needs a whole number depth from 1 to its maxDepth.')
   }
   if (maxLinks !== Infinity && !(Number.isInteger(maxLinks) && maxLinks >= 1)) {
-    throw new Error('delivery.maxLinks in iight.config.ts needs a whole number from 1, or Infinity for no limit.')
+    throw new Error('delivery.maxLinks in sorlo.config.ts needs a whole number from 1, or Infinity for no limit.')
   }
 
   const app = new Hono<DeliveryEnv>()
@@ -186,7 +186,7 @@ export function deliveryRoutes(
     }
     if (status === 'draft' && !found.scopes.includes('preview')) {
       return c.json(
-        { message: "This key can't read drafts. Make one that can with iight make:api-key --preview." },
+        { message: "This key can't read drafts. Make one that can with sorlo make:api-key --preview." },
         403,
       )
     }
@@ -194,7 +194,7 @@ export function deliveryRoutes(
     await next()
   }
 
-  // Any site's JavaScript can read them, unless iight.config.ts names the sites that can. Ahead of the key, as a browser
+  // Any site's JavaScript can read them, unless sorlo.config.ts names the sites that can. Ahead of the key, as a browser
   // asks first without one. Keys go in a header, never a cookie, so a site gets nothing a visitor's session could give.
   const crossSite = cors({ origin: origins ?? '*', allowMethods: ['GET'] })
   // The public form routes share /v1, so these name their paths

@@ -1,7 +1,7 @@
 {
-  "name": "@iight/sdk",
+  "name": "@sorlo/sdk",
   "version": "0.1.0",
-  "description": "A typed client for the iight CMS's delivery API, and iight types pull",
+  "description": "A typed client for the Sorlo CMS's delivery API, and sorlo types pull",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -12,7 +12,7 @@
     "./cli": "./dist/cli.js"
   },
   "bin": {
-    "iight": "./bin/iight.js"
+    "sorlo": "./bin/sorlo.js"
   },
   "files": [
     "bin",

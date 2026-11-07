@@ -65,7 +65,7 @@ test('anyone signed in lists, makes, edits and revokes keys, and only the reply 
         createdAt: expect.any(String),
         createdBy: { id: userId, name: 'Ada' },
         lastUsedAt: null,
-        token: expect.stringMatching(/^iight_[\w-]{43}$/),
+        token: expect.stringMatching(/^sorlo_[\w-]{43}$/),
       },
     },
   })
@@ -85,7 +85,7 @@ test('anyone signed in lists, makes, edits and revokes keys, and only the reply 
     },
     { ...made.body.data, token: undefined, lastUsedAt: expect.any(String) },
   ])
-  expect(JSON.stringify(listed.body)).not.toMatch(/token|iight_/)
+  expect(JSON.stringify(listed.body)).not.toMatch(/token|sorlo_/)
 
   // Editing changes what the key can do, and keeps the key itself
   const edited = await admin('PUT', `/keys/${id}`, { name: 'Site', scopes: ['types'] })
@@ -170,12 +170,12 @@ test("a key is marked as used by each request it's sent with, at most once a min
   }
 })
 
-test('iight make:api-key --types --submit makes a key that pulls types and skips the forms rate limit', async () => {
+test('sorlo make:api-key --types --submit makes a key that pulls types and skips the forms rate limit', async () => {
   // A site project with just enough config for the command
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
-  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
-  const bin = fileURLToPath(new URL('../bin/iight.js', import.meta.url))
+  await writeFile(join(dir, 'sorlo.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  const bin = fileURLToPath(new URL('../bin/sorlo.js', import.meta.url))
 
   try {
     const running = promisify(execFile)(process.execPath, [bin, 'make:api-key', '--submit', '--types'], { cwd: dir })

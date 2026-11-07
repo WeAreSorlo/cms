@@ -39,9 +39,9 @@ export interface AppOptions {
   migrations?: () => Promise<Record<string, ContentMigrationFile>>
   // Its shared groups, which its types come with expanded
   groups?: Map<string, SharedGroup>
-  // Its folders, where the type editor writes types, shared groups and migrations, as in iight dev
+  // Its folders, where the type editor writes types, shared groups and migrations, as in sorlo dev
   editor?: EditorDirs
-  // Its storage for media, from iight.config.ts. The media library and its files need it.
+  // Its storage for media, from sorlo.config.ts. The media library and its files need it.
   storage?: Storage
   // What the media library takes, and how it serves files
   media?: MediaOptions
@@ -51,17 +51,17 @@ export interface AppOptions {
   forms?: FormOptions
   // How many versions each entry keeps
   versions?: VersionOptions
-  // The built admin's folder, which iight start serves at /admin/. iight dev serves the admin with Vite instead.
+  // The built admin's folder, which sorlo start serves at /admin/. sorlo dev serves the admin with Vite instead.
   admin?: string
   // Whether /mcp and the admin's MCP tokens page are on, and with publish, whether tokens can be given Publish changes
   mcp?: boolean | McpOptions
   // The model provider for the admin's assistant and Chat page, which are off without one
   ai?: AiProvider
   // The site's public address, which emailed links and file URLs start from, and how it sends email, from
-  // iight.config.ts. Invites and reset links are emailed only with both.
+  // sorlo.config.ts. Invites and reset links are emailed only with both.
   url?: string
   mail?: MailOptions
-  // The networks of the proxies in front of the CMS, beyond loopback and private ones, from iight.config.ts
+  // The networks of the proxies in front of the CMS, beyond loopback and private ones, from sorlo.config.ts
   proxies?: Array<string>
   // Whether to log each request, as the servers do
   log?: boolean
@@ -106,7 +106,7 @@ export function createApp(
   // Emailed links start from the site's address, never a request's Host header, which can say anything
   const site = url === undefined ? undefined : URL.canParse(url) ? new URL(url) : undefined
   if (url !== undefined && !/^https?:$/.test(site?.protocol ?? '')) {
-    throw new Error("url in iight.config.ts needs to be the admin's address, such as https://cms.example.com.")
+    throw new Error("url in sorlo.config.ts needs to be the admin's address, such as https://cms.example.com.")
   }
   // File URLs start from it too, through origin()
   if (site) {
@@ -221,7 +221,7 @@ export function createApp(
     typeRoutes(types, groups, saver, { mcp: !!mcp && { publish }, ai: !!ai, mail: !!(people.url && mail) }),
   )
   app.route('/api', entryRoutes(db, types, migrations, versions))
-  // Migrations run from the admin only where the type editor is, in iight dev (PLAN.md section 6)
+  // Migrations run from the admin only where the type editor is, in sorlo dev (PLAN.md section 6)
   app.route(
     '/api',
     migrationRoutes(db, types, { dir: siteMigrations, runnable: !!editor, queued: saver?.queued, finish: finishLinks }),
@@ -244,9 +244,9 @@ export function createApp(
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth, maxLinks, origins: delivery?.origins }))
   app.route('/v1', publicFormRoutes(db, forms, trusted))
 
-  // What the delivery API returns and the forms take, as TypeScript, for `npx iight types pull`, to keys with the types
+  // What the delivery API returns and the forms take, as TypeScript, for `npx sorlo types pull`, to keys with the types
   // scope. Made for each request, since the type editor can change the types, and the admin the forms.
-  const typesKey = apiKey(db, 'types', "This key can't pull types. Make one that can with iight make:api-key --types.")
+  const typesKey = apiKey(db, 'types', "This key can't pull types. Make one that can with sorlo make:api-key --types.")
   app.get('/types', typesKey, async (c) => {
     const found = await db.selectFrom('forms').select(['name', 'fields']).orderBy('name').execute()
     return c.text(typesFile(types, depth, found, groups))

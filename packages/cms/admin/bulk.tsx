@@ -25,7 +25,7 @@ import Form, {
   flattenValidationReport,
   inputs as coreInputs,
   validateValues,
-} from 'iight'
+} from '@sorlo/core'
 import { Columns3, Sheet } from 'lucide-react'
 import {
   FocusEvent,
@@ -583,12 +583,12 @@ function CellDialog({
       onClose={onClose}
       footer={
         <div className='cms-dialog-actions'>
-          <button type='button' className='iight-button' onClick={close}>
+          <button type='button' className='sorlo-button' onClick={close}>
             Cancel
           </button>
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             onClick={(event) => {
               onDone(value)
               close(event)
@@ -611,7 +611,7 @@ function CellDialog({
 
 // Which columns a type's grid shows, remembered in this browser. It starts with the title field and the list columns.
 function useChosenColumns(type: ContentType, columns: Array<Column>) {
-  const key = `iight-bulk-columns-${type.name}`
+  const key = `sorlo-bulk-columns-${type.name}`
   const [chosen, setChosen] = useState<Array<string>>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(key) ?? 'null')
@@ -651,7 +651,7 @@ function ColumnsMenu({
 
   return (
     <>
-      <button type='button' className='iight-button' onClick={() => setShown({ columns: chosen })}>
+      <button type='button' className='sorlo-button' onClick={() => setShown({ columns: chosen })}>
         <Columns3 /> Columns
       </button>
       {shown && (
@@ -821,7 +821,7 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
             <>
               <button
                 type='button'
-                className={drafts ? 'iight-button' : 'iight-button iight-button--primary'}
+                className={drafts ? 'sorlo-button' : 'sorlo-button sorlo-button--primary'}
                 aria-busy={busy === 'save'}
                 onClick={() => save(false)}
               >
@@ -830,7 +830,7 @@ export function BulkEditor({ type, ids }: { type: ContentType; ids: Array<string
               {drafts && (
                 <button
                   type='button'
-                  className='iight-button iight-button--primary'
+                  className='sorlo-button sorlo-button--primary'
                   aria-busy={busy === 'publish'}
                   onClick={() => save(true)}
                 >

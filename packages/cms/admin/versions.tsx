@@ -16,7 +16,7 @@ import { Change, compare, compareParent, diffLines, diffWords, linksOf, parentFi
 import { Version, restoreOnOpen, viaText } from './entries'
 import { useLinkNames } from './fields'
 import { Badge, Loading, Notice, PageHeader, Panel, StatusBadge, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FieldSchema, FormHandle } from 'iight'
+import Form, { FieldSchema, FormHandle } from '@sorlo/core'
 import { Trash2 } from 'lucide-react'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -399,7 +399,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
         actions={
           !isCurrent &&
           !archived && (
-            <button type='button' className='iight-button iight-button--primary' onClick={restore}>
+            <button type='button' className='sorlo-button sorlo-button--primary' onClick={restore}>
               Restore
             </button>
           )
@@ -410,7 +410,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
           !archived && (
             <button
               type='button'
-              className='iight-button iight-button--danger'
+              className='sorlo-button sorlo-button--danger'
               aria-busy={busy === 'delete'}
               onClick={remove}
             >
@@ -445,7 +445,7 @@ export function VersionPage({ id, number, types }: { id: string; number: number;
             onKeyDown={(event) => event.key === 'Enter' && event.target instanceof HTMLInputElement && saveName()}
           >
             <Form ref={nameForm} schema={versionSchema} values={nameStart} onValuesChange={setName} />
-            <button type='button' className='iight-button' aria-busy={busy === 'name'} onClick={saveName}>
+            <button type='button' className='sorlo-button' aria-busy={busy === 'name'} onClick={saveName}>
               {busy === 'name' ? 'Saving…' : 'Save name'}
             </button>
           </div>

@@ -274,7 +274,7 @@ test('a preview key reads drafts with status=draft, with links to drafts, and ot
 
   expect(await deliver('/entries/blog?status=draft')).toEqual({
     status: 403,
-    body: { message: "This key can't read drafts. Make one that can with iight make:api-key --preview." },
+    body: { message: "This key can't read drafts. Make one that can with sorlo make:api-key --preview." },
   })
   expect((await deliver(`/entries/blog/${live.id}?status=draft`)).status).toBe(403)
   expect((await deliver('/media?status=draft')).status).toBe(403)
@@ -302,12 +302,12 @@ test('a preview key reads drafts with status=draft, with links to drafts, and ot
   expect(await author('&status=draft')).toMatchObject({ id: ada.id, publishedAt: null, values: { name: 'Ada' } })
 })
 
-test('iight make:api-key --preview makes a key that can read drafts', async () => {
+test('sorlo make:api-key --preview makes a key that can read drafts', async () => {
   // A site project with just enough config for the command
-  const dir = await mkdtemp(join(tmpdir(), 'iight-site-'))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
-  await writeFile(join(dir, 'iight.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
-  const bin = fileURLToPath(new URL('../bin/iight.js', import.meta.url))
+  await writeFile(join(dir, 'sorlo.config.ts'), `export default { database: { url: ${JSON.stringify(url)} } }\n`)
+  const bin = fileURLToPath(new URL('../bin/sorlo.js', import.meta.url))
 
   try {
     const made = async (args: Array<string>) => {

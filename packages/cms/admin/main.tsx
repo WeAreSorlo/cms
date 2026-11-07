@@ -25,12 +25,12 @@ import {
   UserPage,
 } from './users'
 import { VersionPage } from './versions'
-import 'iight/styles/base.scss'
-import 'iight/styles/layout.scss'
+import '@sorlo/core/styles/base.scss'
+import '@sorlo/core/styles/layout.scss'
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// The design system's reference page, at #/design. Only iight dev has it, so the built admin leaves it out.
+// The design system's reference page, at #/design. Only sorlo dev has it, so the built admin leaves it out.
 const Design = import.meta.env.DEV ? lazy(() => import('./design')) : undefined
 
 // The Chat page, in the assistant's own chunk

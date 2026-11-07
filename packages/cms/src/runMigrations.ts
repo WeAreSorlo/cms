@@ -21,7 +21,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { dirname, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-// Running migrations, as iight migrate does and, in iight dev, the admin's Migrations page (PLAN.md section 6)
+// Running migrations, as sorlo migrate does and, in sorlo dev, the admin's Migrations page (PLAN.md section 6)
 
 // What a run is doing: a migration, by name, or rebuilding entry_relations once content migrations have run, with how
 // many rows it has done of how many, which the CMS's own migrations don't count
@@ -86,12 +86,12 @@ export async function rebuildLinks(
   return 'rebuilt'
 }
 
-// What stopped a migration. Another run, such as iight migrate in a terminal, running the same migration first fails
+// What stopped a migration. Another run, such as sorlo migrate in a terminal, running the same migration first fails
 // this one on the migration's unique name, which the database's own message doesn't explain.
 function failureOf(name: string | undefined, error: unknown) {
   const { code, constraint } = (error ?? {}) as { code?: string; constraint?: string }
   return code === '23505' && constraint === 'migrations_name_key'
-    ? `${name} ran elsewhere while this run went, such as through npx iight migrate, so this run stopped there.`
+    ? `${name} ran elsewhere while this run went, such as through npx sorlo migrate, so this run stopped there.`
     : messageOf(error)
 }
 
@@ -173,7 +173,7 @@ interface Described {
   file?: ContentMigrationFile
 }
 
-// A migration as the Migrations page lists it, in the order iight migrate runs them
+// A migration as the Migrations page lists it, in the order sorlo migrate runs them
 type Listed = {
   name: string
   kind: 'cms' | 'content'
@@ -195,7 +195,7 @@ interface Run {
   finishedAt: Date | null
 }
 
-// The admin's Migrations page: every migration, which anyone signed in can list under iight start too, and in iight dev,
+// The admin's Migrations page: every migration, which anyone signed in can list under sorlo start too, and in sorlo dev,
 // where runnable is true, Run and Check entries. One run goes at a time, in the background, which the page follows.
 export function migrationRoutes(
   db: Kysely<Database>,
@@ -228,7 +228,7 @@ export function migrationRoutes(
   cms.catch(() => {})
   const cmsMigrations = () => cms
 
-  // Paths in a loader's messages are the site's own, which anyone signed in can read under iight start too, so they
+  // Paths in a loader's messages are the site's own, which anyone signed in can read under sorlo start too, so they
   // name files from the site's folder, such as migrations/2026_11_02_181947_blog.ts
   const site = dir && dirname(dir)
   // The folder as given and as the disk names it, such as /private/tmp for /tmp on macOS
@@ -291,7 +291,7 @@ export function migrationRoutes(
       .sort()
       .map((name) => ({ name, kind: 'cms', ...statusOf(name) }))
     for (const file of files) {
-      // One named like a CMS migration can't be told apart from it, so it waits, as iight migrate refuses it too
+      // One named like a CMS migration can't be told apart from it, so it waits, as sorlo migrate refuses it too
       if (Object.hasOwn(migrations, file.name)) {
         const problem = "It has the name of one of the CMS's migrations. Rename it."
         data.push({
@@ -339,13 +339,13 @@ export function migrationRoutes(
   const dev: MiddlewareHandler<AdminEnv> = async (_c, next) => {
     if (!runnable) {
       throw new HTTPException(403, {
-        message: 'Migrations run from the admin only in development, with iight dev. Run npx iight migrate.',
+        message: 'Migrations run from the admin only in development, with sorlo dev. Run npx sorlo migrate.',
       })
     }
     await next()
   }
 
-  // Runs every waiting migration, as iight migrate does, once it knows the page showed what's waiting now. It replies as
+  // Runs every waiting migration, as sorlo migrate does, once it knows the page showed what's waiting now. It replies as
   // the run starts, and the run goes on whether or not the page stays.
   app.post('/migrations/run', dev, async (c) => {
     if (busy) throw new HTTPException(409, { message: 'Migrations are already running.' })
@@ -412,7 +412,7 @@ export function migrationRoutes(
     }
   })
 
-  // What iight migrate --check lists: every saved entry's draft and live copy that doesn't pass, up to 100 of them
+  // What sorlo migrate --check lists: every saved entry's draft and live copy that doesn't pass, up to 100 of them
   app.get('/migrations/check', dev, async (c) => {
     const failures = await checkEntries(db, types)
     const titleOf = (entry: { type: string; values: Record<string, unknown> }) => {

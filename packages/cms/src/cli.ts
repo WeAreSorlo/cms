@@ -12,7 +12,7 @@ import { hashPassword } from './passwords'
 import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
 import { apiKeySchema, apiKeyScopes, resetSchema, userSchema } from './schemas'
 import { loadSchema } from './types'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 import { Kysely } from 'kysely'
 import { existsSync } from 'node:fs'
 import { type Server, createServer } from 'node:http'
@@ -222,7 +222,7 @@ async function dev(db: Kysely<Database>) {
 function builtAdmin() {
   const admin = fileURLToPath(new URL('../admin/dist', import.meta.url))
   if (!existsSync(join(admin, 'index.html'))) {
-    console.error("The admin hasn't been built. Run npm run build in @iight/cms first.")
+    console.error("The admin hasn't been built. Run npm run build in @sorlo/cms first.")
     process.exit(1)
   }
   return admin
@@ -235,7 +235,7 @@ async function start(db: Kysely<Database>) {
 
   const { types, groups } = await loadProjectSchema()
   if (config.url === undefined) {
-    console.warn("Set url in iight.config.ts, so file URLs and emailed links don't come from requests' Host headers.")
+    console.warn("Set url in sorlo.config.ts, so file URLs and emailed links don't come from requests' Host headers.")
   }
   // No editor, so the type editor is read-only, and the Migrations page lists migrations without running them
   const app = createApp(db, types, {
@@ -269,7 +269,7 @@ async function start(db: Kysely<Database>) {
   const port = Number(process.env.PORT) || 3000
   // serve makes an HTTP/1 server, since it isn't given HTTP/2's createServer
   const server = serve({ fetch: app.fetch, port, hostname: process.env.HOST || undefined }, () =>
-    console.log(`iight is running on port ${port}, with the admin at /admin/`),
+    console.log(`Sorlo is running on port ${port}, with the admin at /admin/`),
   ) as Server
   stopOnSignals(db, server, worker, working)
 }
@@ -353,7 +353,7 @@ async function setPassword(db: Kysely<Database>, [given = '']: Array<string>) {
   if (!user || user.removed_at) {
     console.error(
       !email
-        ? 'Give the email of the account, as in iight user:password ada@example.com.'
+        ? 'Give the email of the account, as in sorlo user:password ada@example.com.'
         : user
           ? `${email} was removed. Invite them again from the admin's Users page.`
           : `${email} has no account.`,
@@ -451,13 +451,13 @@ const command = Object.hasOwn(commands, name) ? commands[name] : undefined
 
 if (!command) {
   const list = Object.entries(commands).map(([name, { description }]) => `  ${name.padEnd(18)}${description}`)
-  console.log(['Usage: iight <command>', '', ...list].join('\n'))
+  console.log(['Usage: sorlo <command>', '', ...list].join('\n'))
   process.exit(name ? 1 : 0)
 }
 
-const configFile = resolve('iight.config.ts')
+const configFile = resolve('sorlo.config.ts')
 if (!existsSync(configFile)) {
-  console.error(`There's no iight.config.ts in ${process.cwd()}. Run iight from your site project.`)
+  console.error(`There's no sorlo.config.ts in ${process.cwd()}. Run sorlo from your site project.`)
   process.exit(1)
 }
 

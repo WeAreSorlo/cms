@@ -1,5 +1,5 @@
 import { idsOf } from '../src/fields'
-import { FieldSchema, isEmptyValue, normaliseConditions } from 'iight'
+import { FieldSchema, isEmptyValue, normaliseConditions } from '@sorlo/core'
 
 // What changed between two versions of an entry (PLAN.md section 20), from their values and the type's fields
 

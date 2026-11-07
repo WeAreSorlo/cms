@@ -43,7 +43,7 @@ import {
 } from './ui'
 import { AccountPanel, AccountTabs, Invite, InvitesTable, PeopleTable, Person, PersonPanel } from './users'
 import { ChangeList, JsonChanges } from './versions'
-import Form, { FieldSchema, FormHandle, Input, inputs } from 'iight'
+import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/core'
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Plus, Sheet, Trash2 } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
@@ -66,8 +66,8 @@ const colours = [
   '--cms-warning',
 ]
 const steps = ['xs', 'sm', 'base', 'lg', 'xl']
-const sizes = ['--iight-size-1', '--iight-size-2', '--iight-size-3', '--iight-size-4', '--cms-size-6', '--cms-size-8']
-const radii = ['--iight-size-1', '--iight-size-2', '--cms-radius-pill']
+const sizes = ['--sorlo-size-1', '--sorlo-size-2', '--sorlo-size-3', '--sorlo-size-4', '--cms-size-6', '--cms-size-8']
+const radii = ['--sorlo-size-1', '--sorlo-size-2', '--cms-radius-pill']
 const shadows = ['--cms-shadow-1', '--cms-shadow-2']
 // A dark shape on a transparent ground, so the squares behind it show, then the same chosen, then a file that isn't
 // a picture
@@ -226,14 +226,14 @@ function VersionPanel({ restore, remove, name, live }: Omit<(typeof versionPanel
       label='About this version'
       actions={
         restore && (
-          <button type='button' className='iight-button iight-button--primary' onClick={() => toast('Restoring')}>
+          <button type='button' className='sorlo-button sorlo-button--primary' onClick={() => toast('Restoring')}>
             Restore
           </button>
         )
       }
       footer={
         remove && (
-          <button type='button' className='iight-button iight-button--danger' onClick={() => toast('Asks first')}>
+          <button type='button' className='sorlo-button sorlo-button--danger' onClick={() => toast('Asks first')}>
             <Trash2 /> Delete version
           </button>
         )
@@ -252,7 +252,7 @@ function VersionPanel({ restore, remove, name, live }: Omit<(typeof versionPanel
       {name !== null && (
         <div className='cms-version-name'>
           <Form schema={versionSchema} values={{ name }} />
-          <button type='button' className='iight-button' onClick={() => toast('Named the version')}>
+          <button type='button' className='sorlo-button' onClick={() => toast('Named the version')}>
             Save name
           </button>
         </div>
@@ -294,7 +294,7 @@ function EntryPanel({ status, problem, open, drafts = true }: Omit<(typeof panel
   const button = (label: string, tone?: 'primary' | 'danger', icon?: ReactNode) => (
     <button
       type='button'
-      className={tone ? `iight-button iight-button--${tone}` : 'iight-button'}
+      className={tone ? `sorlo-button sorlo-button--${tone}` : 'sorlo-button'}
       onClick={() => toast(label)}
     >
       {icon} {label}
@@ -341,9 +341,9 @@ function EntryPanel({ status, problem, open, drafts = true }: Omit<(typeof panel
 }
 
 const buttons = [
-  ['Secondary', 'iight-button'],
-  ['Primary', 'iight-button iight-button--primary'],
-  ['Danger', 'iight-button iight-button--danger'],
+  ['Secondary', 'sorlo-button'],
+  ['Primary', 'sorlo-button sorlo-button--primary'],
+  ['Danger', 'sorlo-button sorlo-button--danger'],
 ]
 
 const choices = [
@@ -482,11 +482,11 @@ function ListPanel({ start }: { start: string }) {
       sheet='Filters'
       actions={
         <>
-          <button type='button' className='iight-button iight-button--primary' onClick={() => toast('Opens New')}>
+          <button type='button' className='sorlo-button sorlo-button--primary' onClick={() => toast('Opens New')}>
             <Plus /> New product
           </button>
           {!list.filtered && (
-            <button type='button' className='iight-button' onClick={() => toast('Opens the grid')}>
+            <button type='button' className='sorlo-button' onClick={() => toast('Opens the grid')}>
               <Sheet /> Bulk edit 1 entry
             </button>
           )}
@@ -497,13 +497,13 @@ function ListPanel({ start }: { start: string }) {
           {!list.filtered && (
             <button
               type='button'
-              className='iight-button iight-button--danger'
+              className='sorlo-button sorlo-button--danger'
               onClick={() => toast('Asks before archiving')}
             >
               <Archive /> Archive 1 entry
             </button>
           )}
-          <button type='button' className='iight-button' onClick={() => toast('Opens the archive')}>
+          <button type='button' className='sorlo-button' onClick={() => toast('Opens the archive')}>
             Open the archive
           </button>
         </>
@@ -974,7 +974,7 @@ const proposalMessages: Array<ChatMessage> = [
               file: null,
               notes: [
                 "Flagged: deletes the values of subtitle, which down can't bring back. Old versions keep them",
-                'Flagged: title is now required, so some entries may not pass. Run iight migrate --check',
+                'Flagged: title is now required, so some entries may not pass. Run sorlo migrate --check',
               ],
             },
           }),
@@ -1201,7 +1201,7 @@ const blogWaiting = waitingMigration('2026_11_02_181947_blog', {
     {
       kind: 'flag',
       line: 10,
-      text: 'headline is now required, so some entries may not pass. Run iight migrate --check',
+      text: 'headline is now required, so some entries may not pass. Run sorlo migrate --check',
     },
     { kind: 'todo', line: 12, text: 'price changed from text to number. Convert its values here, and back in down' },
   ],
@@ -1273,7 +1273,7 @@ const sampleCheck: Check = {
 
 const token = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
-// The design system's tokens and components in the current theme, for checking changes to them. iight dev serves it at
+// The design system's tokens and components in the current theme, for checking changes to them. sorlo dev serves it at
 // #/design, and the built admin leaves it out.
 export default function Design() {
   // Reads the tokens again whenever the theme changes, from the switch or from the OS
@@ -1319,7 +1319,7 @@ export default function Design() {
     <div className='cms-design'>
       <PageHeader title='Design system' />
       <p>
-        The admin's tokens and components in the current theme. Only <code>iight dev</code> shows this page, and{' '}
+        The admin's tokens and components in the current theme. Only <code>sorlo dev</code> shows this page, and{' '}
         <code>DESIGN.md</code> has the plan.
       </p>
 
@@ -1442,12 +1442,12 @@ export default function Design() {
         <IconButton label='Move down' disabled onClick={() => {}}>
           <ArrowDown />
         </IconButton>
-        <button type='button' className='iight-button' onClick={() => toast('Saved')}>
+        <button type='button' className='sorlo-button' onClick={() => toast('Saved')}>
           Show a toast
         </button>
         <button
           type='button'
-          className='iight-button'
+          className='sorlo-button'
           onClick={async () => {
             const sure = await confirm({
               title: 'Delete the sample for good?',
@@ -1649,7 +1649,7 @@ export default function Design() {
         onPage={(page) => toast(`Opens hundred ${page}`)}
       />
       <div className='actions'>
-        <button type='button' className='iight-button' onClick={refuse}>
+        <button type='button' className='sorlo-button' onClick={refuse}>
           Refuse the first row
         </button>
       </div>
@@ -1664,7 +1664,7 @@ export default function Design() {
           <ul className='cms-design__panels'>
             {['editable', 'read-only'].map((state) => (
               <li key={state}>
-                <h3>{state === 'editable' ? 'In iight dev' : 'Read-only'}</h3>
+                <h3>{state === 'editable' ? 'In sorlo dev' : 'Read-only'}</h3>
                 <Panel label='Details'>
                   <TypeGroups
                     fields={groupFields(state)}
@@ -1684,7 +1684,7 @@ export default function Design() {
         While migrations wait, a notice above every page but Migrations says what that stops: saving entries for the
         site's content migrations, and pages whose tables are behind for the CMS's own. The Migrations page lists what
         waits in the order Run runs it, each content migration with what it does in words, its flags, its TODOs and why
-        it doesn't load, then the ones that ran. In iight dev its panel has Run, which asks first when what waits
+        it doesn't load, then the ones that ran. In sorlo dev its panel has Run, which asks first when what waits
         deletes values, then Check entries once nothing waits. During a run, each migration says where it has got, and a
         line under Run says how far.
       </p>
@@ -1746,7 +1746,7 @@ export default function Design() {
         <div className='actions'>
           <button
             type='button'
-            className='iight-button'
+            className='sorlo-button'
             onClick={async () => {
               const sure = await confirm({
                 title: 'Run 4 migrations, deleting values?',
@@ -1848,7 +1848,7 @@ export default function Design() {
       <EmptyState
         icon={<Inbox />}
         action={
-          <button type='button' className='iight-button iight-button--primary' onClick={() => toast('Made one')}>
+          <button type='button' className='sorlo-button sorlo-button--primary' onClick={() => toast('Made one')}>
             Make one
           </button>
         }
@@ -1861,7 +1861,7 @@ export default function Design() {
       <h2>Core's inputs</h2>
       <Form schema={stateSchema} onValuesChange={(values) => setState(values.state)} />
       <div className='actions'>
-        <button type='button' className='iight-button' onClick={() => form.current?.validate()}>
+        <button type='button' className='sorlo-button' onClick={() => form.current?.validate()}>
           Check every input
         </button>
       </div>

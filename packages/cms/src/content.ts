@@ -335,7 +335,7 @@ export async function catchUp(type: string, values: Values, migrations: Array<Co
 }
 
 // Every saved entry and every live copy whose values no longer pass its type's checks, or whose type is gone, for
-// `iight migrate --check`. Drafts can be unfinished, so they pass what a save checks, and live copies what a publish
+// `sorlo migrate --check`. Drafts can be unfinished, so they pass what a save checks, and live copies what a publish
 // does. A failure is of an entry's draft, or of its live copy when published is true.
 export async function checkEntries(db: Kysely<Database>, types: Map<string, ContentType>) {
   type Failure = { entry: EntryRow | PublishedRow; published: boolean; messages: Record<string, Array<string>> }

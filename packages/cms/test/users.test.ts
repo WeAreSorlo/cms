@@ -12,7 +12,7 @@ import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 // limits on guessing
 
 const sent: Array<MailMessage> = []
-const mail = { from: 'iight <cms@example.com>', send: async (message: MailMessage) => void sent.push(message) }
+const mail = { from: 'Sorlo <cms@example.com>', send: async (message: MailMessage) => void sent.push(message) }
 const app = createApp(db, types, { url: 'https://cms.example.com', mail, mcp: true })
 let ada: { id: string; cookie: string }
 
@@ -40,7 +40,7 @@ async function session(userId: string) {
     .insertInto('sessions')
     .values({ id: uuidv7(), user_id: userId, token_hash: hashToken(token), expires_at: new Date(Date.now() + 60_000) })
     .execute()
-  return `iight_session=${token}`
+  return `sorlo_session=${token}`
 }
 
 // The admin API as someone signed in
@@ -93,7 +93,7 @@ test('an invite is a link shown once, emailed from the site’s address, which j
 
   expect(sent).toEqual([
     {
-      from: 'iight <cms@example.com>',
+      from: 'Sorlo <cms@example.com>',
       to: ['sam@example.com'],
       subject: 'Ada invited you to cms.example.com',
       text: `Ada invited you to edit content at cms.example.com. Choose your name and password within 7 days:\n\n${data.link}\n\nIf you weren't expecting this, you can ignore it.\n`,
@@ -183,7 +183,7 @@ test('without the site’s address, links start from the request’s and nothing
 
   // Anything but an address of the web is refused
   expect(() => createApp(db, types, { url: 'cms.example.com' })).toThrow(
-    "url in iight.config.ts needs to be the admin's address, such as https://cms.example.com.",
+    "url in sorlo.config.ts needs to be the admin's address, such as https://cms.example.com.",
   )
 })
 
@@ -192,7 +192,7 @@ test('removing someone keeps their row and name, and ends their sessions, passwo
   const second = await session(alex.id)
   const token = await db
     .insertInto('personal_tokens')
-    .values({ id: uuidv7(), user_id: alex.id, name: 'Claude Desktop', token_hash: hashToken('iightpat_alex') })
+    .values({ id: uuidv7(), user_id: alex.id, name: 'Claude Desktop', token_hash: hashToken('sorlopat_alex') })
     .returning('id')
     .executeTakeFirstOrThrow()
   await as(ada)('POST', `/users/${alex.id}/reset`)
@@ -319,7 +319,7 @@ test('an account save under way never undoes a reset that lands first', async ()
   expect((await saving!).status).toBe(401)
   const row = await db.selectFrom('users').select('password_hash').where('id', '=', gil.id).executeTakeFirstOrThrow()
   expect(row.password_hash).toBe('set by a reset link')
-  expect(await signedIn(`iight_session=${reset}`)).toBe(200)
+  expect(await signedIn(`sorlo_session=${reset}`)).toBe(200)
 })
 
 test('nobody makes a reset link for themselves, so a stolen session can’t change its password', async () => {
@@ -667,7 +667,7 @@ test('an IPv4 address written as IPv6 counts as itself, from a socket or through
   expect((await through('::ffff:198.51.100.8')).status).toBe(422)
 }, 30_000)
 
-test('sign-in counts the visitor a proxy iight.config.ts lists forwards for', async () => {
+test('sign-in counts the visitor a proxy sorlo.config.ts lists forwards for', async () => {
   const behind = createApp(db, types, { proxies: ['198.51.100.0/24'] })
   const guess = (visitor: string) =>
     behind.request(

@@ -95,7 +95,7 @@ export interface FormOptions {
 
 // Sends email with the site's own library or service
 export interface MailOptions {
-  // Who every email comes from, such as iight <cms@example.com>
+  // Who every email comes from, such as Sorlo <cms@example.com>
   from: string
   // Sends one email, such as with nodemailer's sendMail, which takes the message as it is. What it resolves goes in
   // the automation's runs, and what it throws fails the run, to be tried again.
@@ -131,7 +131,7 @@ export interface VersionOptions {
 // Every format of image, video and audio that a file's content can show, and PDFs
 export const defaultMediaTypes = ['image/*', 'video/*', 'audio/*', 'application/pdf']
 
-// Types a site project's iight.config.ts
+// Types a site project's sorlo.config.ts
 export const defineConfig = (config: Config) => config
 
 // Types a site project's content migrations

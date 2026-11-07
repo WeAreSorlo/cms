@@ -11,12 +11,12 @@ import { SubmissionRow, listSubmissions, parseSubmissionQuery } from './query'
 import { formSchema } from './schemas'
 import { checkFormFields } from './types'
 import type { HttpBindings } from '@hono/node-server'
+import type { FieldSchema } from '@sorlo/core'
 import { Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import type { FieldSchema } from 'iight'
 import { Kysely, RawBuilder, Selectable, sql } from 'kysely'
 import { BlockList, isIP } from 'node:net'
 import { isDeepStrictEqual } from 'node:util'
@@ -313,14 +313,14 @@ for (const [network, prefix] of [
 privateNetworks.addAddress('::1', 'ipv6')
 privateNetworks.addSubnet('fc00::', 7, 'ipv6')
 
-// The networks iight.config.ts's proxies lists, such as a CDN's, whose X-Forwarded-For is believed for one hop. One that
+// The networks sorlo.config.ts's proxies lists, such as a CDN's, whose X-Forwarded-For is believed for one hop. One that
 // holds every address believes whoever connects, which a site behind a host that publishes no addresses may choose, so
 // it's taken with a warning.
 export function proxyList(proxies: Array<string> = []) {
   const { list, wide } = networkList('proxies', proxies, '173.245.48.0/20')
   for (const { network } of wide) {
     console.warn(
-      `proxies in iight.config.ts has ${network}, which holds every address, so whoever connects can name any address ` +
+      `proxies in sorlo.config.ts has ${network}, which holds every address, so whoever connects can name any address ` +
         'in X-Forwarded-For. List it only if nothing reaches the CMS except through your proxies.',
     )
   }
@@ -453,15 +453,15 @@ export function publicFormRoutes(
 ) {
   const { posts = 10, minutes = 10 } = rateLimit
   if (!Number.isInteger(posts) || posts < 1 || !(minutes > 0)) {
-    throw new Error('forms.rateLimit in iight.config.ts needs a whole number of posts from 1, and minutes above 0.')
+    throw new Error('forms.rateLimit in sorlo.config.ts needs a whole number of posts from 1, and minutes above 0.')
   }
   if (maxItems !== Infinity && !(Number.isInteger(maxItems) && maxItems >= 1)) {
-    throw new Error('forms.maxItems in iight.config.ts needs a whole number from 1, or Infinity for no limit.')
+    throw new Error('forms.maxItems in sorlo.config.ts needs a whole number from 1, or Infinity for no limit.')
   }
   const limit = rateLimiter(posts, minutes * 60 * 1000)
   const app = new Hono()
 
-  // Any site's JavaScript can call them, unless iight.config.ts names the sites that can
+  // Any site's JavaScript can call them, unless sorlo.config.ts names the sites that can
   app.use('/forms/*', cors({ origin: origins ?? '*', exposeHeaders: ['Retry-After'] }))
 
   app.get('/forms/:form', async (c) => {

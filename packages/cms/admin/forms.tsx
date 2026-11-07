@@ -16,7 +16,7 @@ import {
   focusInvalid,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle } from 'iight'
+import Form, { FieldSchema, FormHandle } from '@sorlo/core'
 import {
   Archive,
   ArchiveRestore,
@@ -76,7 +76,7 @@ export function FormList() {
   }, [])
 
   const newForm = (
-    <a className='iight-button iight-button--primary' href='#/forms/new'>
+    <a className='sorlo-button sorlo-button--primary' href='#/forms/new'>
       <Plus /> New form
     </a>
   )
@@ -279,7 +279,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
             <button
               ref={form?.open === false ? undefined : primary}
               type='button'
-              className={`iight-button${form?.open === false ? '' : ' iight-button--primary'}`}
+              className={`sorlo-button${form?.open === false ? '' : ' sorlo-button--primary'}`}
               aria-busy={busy === 'save'}
               onClick={save}
             >
@@ -289,7 +289,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
               <button
                 ref={primary}
                 type='button'
-                className='iight-button iight-button--primary'
+                className='sorlo-button sorlo-button--primary'
                 aria-busy={busy === 'open'}
                 onClick={() => setOpen(true)}
               >
@@ -297,7 +297,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
               </button>
             )}
             {form && (
-              <a className='iight-button' href={`#/forms/${form.id}/inbox`}>
+              <a className='sorlo-button' href={`#/forms/${form.id}/inbox`}>
                 <InboxIcon /> Inbox
               </a>
             )}
@@ -305,7 +305,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
         }
         footer={
           form?.open && (
-            <button type='button' className='iight-button' aria-busy={busy === 'close'} onClick={() => setOpen(false)}>
+            <button type='button' className='sorlo-button' aria-busy={busy === 'close'} onClick={() => setOpen(false)}>
               {busy === 'close' ? 'Closing…' : 'Close form'}
             </button>
           )
@@ -322,7 +322,7 @@ export function FormEditor({ form: loaded }: { form?: FormRecord }) {
           </p>
           <textarea className='embed' aria-label='HTML to embed' readOnly rows={12} value={form.embed} />
           <div className='actions'>
-            <button type='button' className='iight-button' onClick={copy}>
+            <button type='button' className='sorlo-button' onClick={copy}>
               <Copy /> Copy
             </button>
             {copyProblem && (
@@ -445,7 +445,7 @@ export function Inbox({ id, view }: { id: string; view: View }) {
         label={form ? `${form.label}: ${views[view].toLowerCase()}` : views[view]}
         actions={
           form && (
-            <a className='iight-button' href={`#/forms/${id}`}>
+            <a className='sorlo-button' href={`#/forms/${id}`}>
               <Pencil /> Edit the form
             </a>
           )
@@ -534,21 +534,21 @@ export function Inbox({ id, view }: { id: string; view: View }) {
                 </dl>
                 <div className='actions'>
                   {view === 'inbox' && (
-                    <button type='button' className='iight-button' onClick={() => act('archive')}>
+                    <button type='button' className='sorlo-button' onClick={() => act('archive')}>
                       <Archive /> Archive
                     </button>
                   )}
                   {view === 'archive' && (
-                    <button type='button' className='iight-button' onClick={() => act('restore')}>
+                    <button type='button' className='sorlo-button' onClick={() => act('restore')}>
                       <ArchiveRestore /> Restore
                     </button>
                   )}
                   {open.spam ? (
-                    <button type='button' className='iight-button' onClick={() => act('not-spam')}>
+                    <button type='button' className='sorlo-button' onClick={() => act('not-spam')}>
                       <ShieldCheck /> Not spam
                     </button>
                   ) : (
-                    <button type='button' className='iight-button' onClick={() => act('spam')}>
+                    <button type='button' className='sorlo-button' onClick={() => act('spam')}>
                       <ShieldAlert /> Mark as spam
                     </button>
                   )}

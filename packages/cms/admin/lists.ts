@@ -1,5 +1,5 @@
 import { ruleKind } from '../src/schemas'
-import type { FieldSchema } from 'iight'
+import type { FieldSchema } from '@sorlo/core'
 
 // What a list asks the list API for besides its page: its sort, its search and its filter, which is core's conditions
 // input's value. The URL's query keeps the search and the filter, after the page's path, such as

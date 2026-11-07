@@ -23,7 +23,7 @@ const counted = new Kysely<Database>({
 })
 
 // The media routes need storage, though no test here writes to it
-const location = join(tmpdir(), 'iight-relations')
+const location = join(tmpdir(), 'sorlo-relations')
 const storage = { default: 'local', services: { local: () => new FSDriver({ location, visibility: 'public' }) } }
 const app = createApp(db, types, { storage })
 let cookie: string
@@ -340,7 +340,7 @@ test('one reply holds at most 2,000 linked entries and files, counting every pla
     expect((await deliver(path, createApp(db, types, { delivery: { maxLinks } }))).status).toBe(200)
   }
   expect(() => createApp(db, types, { delivery: { maxLinks: 0 } })).toThrow(
-    'delivery.maxLinks in iight.config.ts needs a whole number from 1, or Infinity for no limit.',
+    'delivery.maxLinks in sorlo.config.ts needs a whole number from 1, or Infinity for no limit.',
   )
 })
 
@@ -392,11 +392,11 @@ test('a with or depth the delivery API cannot use replies 400', async () => {
     )
   }
 
-  // A site sets its own default and maximum in iight.config.ts
+  // A site sets its own default and maximum in sorlo.config.ts
   const deeper = createApp(db, types, { delivery: { depth: 3, maxDepth: 8 } })
   expect((await deliver(`/entries/blog?${params(['author'])}&depth=8`, deeper)).status).toBe(200)
   expect(() => createApp(db, types, { delivery: { depth: 3, maxDepth: 2 } })).toThrow(
-    'delivery in iight.config.ts needs a whole number depth from 1 to its maxDepth.',
+    'delivery in sorlo.config.ts needs a whole number depth from 1 to its maxDepth.',
   )
 })
 

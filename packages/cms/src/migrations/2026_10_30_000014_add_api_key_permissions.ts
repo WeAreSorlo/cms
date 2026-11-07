@@ -4,7 +4,7 @@ import { Kysely, sql } from 'kysely'
 export async function up(db: Kysely<any>) {
   await db.schema
     .alterTable('api_keys')
-    // Null for keys from iight make:api-key
+    // Null for keys from sorlo make:api-key
     .addColumn('created_by', 'uuid', (col) => col.references('users.id').onDelete('set null'))
     .addColumn('last_used_at', 'timestamptz')
     .execute()

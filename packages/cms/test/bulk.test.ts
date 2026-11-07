@@ -315,7 +315,7 @@ test('the whole request replies 400 to a malformed body, 404 for an unknown type
   })
   expect(await bulk('blog', one, false, pending)).toEqual({
     status: 409,
-    body: { message: "Run iight migrate first. The content migration 2099_01_01_000000_blog hasn't run yet." },
+    body: { message: "Run sorlo migrate first. The content migration 2099_01_01_000000_blog hasn't run yet." },
   })
   expect(await versions(post.id)).toBe(1)
 })

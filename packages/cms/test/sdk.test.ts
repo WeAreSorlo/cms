@@ -6,7 +6,7 @@ import { typesFile } from '../src/typescript'
 import { db } from './database'
 import { blog, contactFields, setUp, types } from './fixtures'
 import { serve } from '@hono/node-server'
-import { IightError, createClient } from '@iight/sdk'
+import { SorloError, createClient } from '@sorlo/sdk'
 import { sql } from 'kysely'
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -247,16 +247,16 @@ test('a preview client reads drafts, sending status=draft with every query, whic
 
   await expect(createClient({ url, token: key, preview: true }).entries('blog').first()).rejects.toMatchObject({
     status: 403,
-    message: "This key can't read drafts. Make one that can with iight make:api-key --preview.",
+    message: "This key can't read drafts. Make one that can with sorlo make:api-key --preview.",
   })
 })
 
-test("a failed request throws an IightError with the status and the API's message", async () => {
+test("a failed request throws a SorloError with the status and the API's message", async () => {
   const failure = (promise: Promise<unknown>) => promise.catch((error) => error)
   const cms = createClient({ url, token: key })
 
   const unauthenticated = await failure(createClient({ url, token: 'nope' }).entries('blog').first())
-  expect(unauthenticated).toBeInstanceOf(IightError)
+  expect(unauthenticated).toBeInstanceOf(SorloError)
   expect(unauthenticated).toMatchObject({
     status: 401,
     message: 'Unauthenticated.',
@@ -291,7 +291,7 @@ test('submit() sends a form its values as JSON, with no key needed', async () =>
     .form('contact')
     .submit({ ...values, email: 'nope' })
     .catch((error) => error)
-  expect(invalid).toBeInstanceOf(IightError)
+  expect(invalid).toBeInstanceOf(SorloError)
   expect(invalid).toMatchObject({ status: 422, message: "The values don't pass the form's checks." })
   expect(invalid.body.fields.email).toEqual({ isValid: false, messages: ['A valid email address required.'] })
 
@@ -300,7 +300,7 @@ test('submit() sends a form its values as JSON, with no key needed', async () =>
 
 test('generates a type for each content type, shared group and form, registered with the SDK', async () => {
   // sdk.test-d.ts typechecks queries against this file, so it also shows the generated types compile
-  await expect(generated()).toMatchFileSnapshot('./iight-types.d.ts')
+  await expect(generated()).toMatchFileSnapshot('./sorlo-types.d.ts')
 
   // Each shared group is named, with its resolved shape when it holds links, and types that use it refer to it
   expect(generated()).toContain(
@@ -339,7 +339,7 @@ test('GET /types serves the generated types to keys with the types scope', async
   const refused = await fetch(`${url}/types`, { headers: { authorization: `Bearer ${key}` } })
   expect({ status: refused.status, body: await refused.json() }).toEqual({
     status: 403,
-    body: { message: "This key can't pull types. Make one that can with iight make:api-key --types." },
+    body: { message: "This key can't pull types. Make one that can with sorlo make:api-key --types." },
   })
 
   const typesKey = await createApiKey(db, 'Types', ['types'])
@@ -349,30 +349,30 @@ test('GET /types serves the generated types to keys with the types scope', async
 })
 
 test('types pull writes the types into a frontend, and --check fails when they are out of date', async () => {
-  const bin = fileURLToPath(new URL('../../sdk/bin/iight.js', import.meta.url))
-  const dir = await mkdtemp(join(tmpdir(), 'iight-frontend-'))
-  const file = join(dir, 'src/iight-types.d.ts')
+  const bin = fileURLToPath(new URL('../../sdk/bin/sorlo.js', import.meta.url))
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-frontend-'))
+  const file = join(dir, 'src/sorlo-types.d.ts')
   const typesKey = await createApiKey(db, 'Types', ['types'])
   const pull = (args: Array<string>, token = typesKey) =>
     promisify(execFile)(process.execPath, [bin, 'types', 'pull', ...args], {
       cwd: dir,
-      env: { ...process.env, IIGHT_URL: url, IIGHT_TOKEN: token },
+      env: { ...process.env, SORLO_URL: url, SORLO_TOKEN: token },
     })
 
   try {
     await expect(pull(['--check'])).rejects.toMatchObject({
       code: 1,
-      stderr: 'src/iight-types.d.ts is missing. Run npx iight types pull.\n',
+      stderr: 'src/sorlo-types.d.ts is missing. Run npx sorlo types pull.\n',
     })
 
-    expect((await pull([])).stdout).toBe('Wrote src/iight-types.d.ts.\n')
+    expect((await pull([])).stdout).toBe('Wrote src/sorlo-types.d.ts.\n')
     expect(await readFile(file, 'utf8')).toBe(generated())
-    expect((await pull(['--check'])).stdout).toBe('src/iight-types.d.ts is up to date.\n')
+    expect((await pull(['--check'])).stdout).toBe('src/sorlo-types.d.ts is up to date.\n')
 
     await writeFile(file, 'export {}\n')
     await expect(pull(['--check'])).rejects.toMatchObject({
       code: 1,
-      stderr: 'src/iight-types.d.ts is out of date. Run npx iight types pull.\n',
+      stderr: 'src/sorlo-types.d.ts is out of date. Run npx sorlo types pull.\n',
     })
 
     await expect(pull([], 'nope')).rejects.toMatchObject({

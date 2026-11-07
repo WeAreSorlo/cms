@@ -1,7 +1,7 @@
 import { form, media, relationship } from '../src/fields'
 import { maxNamed } from '../src/schemas'
 import type { ContentType, SharedGroup } from '../src/types'
-import { FieldSchema, Input, inputs } from 'iight'
+import { FieldSchema, Input, inputs } from '@sorlo/core'
 import { createContext, useContext, useEffect } from 'react'
 
 export type { ContentType, SharedGroup }

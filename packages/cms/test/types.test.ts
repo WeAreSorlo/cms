@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 
 let dir: string
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'iight-types-'))
+  dir = await mkdtemp(join(tmpdir(), 'sorlo-types-'))
 })
 afterEach(() => rm(dir, { recursive: true }))
 

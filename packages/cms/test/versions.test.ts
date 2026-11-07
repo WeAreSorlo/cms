@@ -12,7 +12,7 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 let cookie: string
 let userId: string
 // A second user, so a test can tell whose save or publish counted
-const bob = { id: uuidv7(), cookie: 'iight_session=bob-token' }
+const bob = { id: uuidv7(), cookie: 'sorlo_session=bob-token' }
 beforeAll(async () => {
   ;({ cookie, userId } = await setUp())
   await db
@@ -85,7 +85,7 @@ test('restoring a version first runs the content migrations that ran after it wa
   await rollback(db, contentMigrations(files))
   expect(await send(before, 'PUT', `/entries/${id}`, { values: { title: 'Hello', slug: 'hello' } })).toEqual({
     status: 409,
-    body: { message: "Run iight migrate first. The content migration 2026_10_28_120000_blog hasn't run yet." },
+    body: { message: "Run sorlo migrate first. The content migration 2026_10_28_120000_blog hasn't run yet." },
   })
   expect((await send(before, 'GET', `/entries/${id}/versions/1`)).body.data.values).toMatchObject({ title: 'Hello' })
   expect(await send(before, 'GET', `/entries/${id}/versions/2`)).toEqual({
@@ -322,10 +322,10 @@ test('the cap keeps the newest versions, besides the named ones and the live one
   expect(await numbers(old)).toEqual([6])
 })
 
-test('versions.keep in iight.config.ts must be a whole number from 1', () => {
+test('versions.keep in sorlo.config.ts must be a whole number from 1', () => {
   for (const keep of [0, -1, 1.5, '3', null]) {
     expect(() => createApp(db, types, { versions: { keep } as any })).toThrow(
-      'versions.keep in iight.config.ts needs a whole number from 1.',
+      'versions.keep in sorlo.config.ts needs a whole number from 1.',
     )
   }
   expect(() => createApp(db, types, { versions: { keep: 1 } })).not.toThrow()

@@ -2,7 +2,7 @@ import { apiKeySchema } from '../src/schemas'
 import { api, errorMessage, shortDate } from './api'
 import { CellText } from './entries'
 import { Badge, EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FormHandle } from 'iight'
+import Form, { FormHandle } from '@sorlo/core'
 import { CircleAlert, Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
@@ -12,7 +12,7 @@ interface ApiKey {
   name: string
   scopes: Array<string>
   createdAt: string
-  // Null for keys from iight make:api-key
+  // Null for keys from sorlo make:api-key
   createdBy: { id: string; name: string } | null
   lastUsedAt: string | null
   token?: string
@@ -29,7 +29,7 @@ const lastUsed = (key: ApiKey) => (key.lastUsedAt ? shortDate(key.lastUsedAt) : 
 let made: ApiKey | undefined
 
 // Every key for the delivery API, with what it can do, who made it and when it was last used, each opening on its
-// page. Anyone signed in can manage keys, under iight start too, since they're data rather than files.
+// page. Anyone signed in can manage keys, under sorlo start too, since they're data rather than files.
 export function KeyList() {
   const [keys, setKeys] = useState<Array<ApiKey>>()
   const [error, setError] = useState('')
@@ -41,7 +41,7 @@ export function KeyList() {
   }, [])
 
   const newKey = (
-    <a className='iight-button iight-button--primary' href='#/keys/new'>
+    <a className='sorlo-button sorlo-button--primary' href='#/keys/new'>
       <Plus /> New key
     </a>
   )
@@ -182,7 +182,7 @@ export function KeyEditor({ apiKey: loaded, token }: { apiKey?: ApiKey; token?: 
         actions={
           <button
             type='button'
-            className='iight-button iight-button--primary'
+            className='sorlo-button sorlo-button--primary'
             aria-busy={busy === 'save'}
             onClick={save}
           >
@@ -191,7 +191,7 @@ export function KeyEditor({ apiKey: loaded, token }: { apiKey?: ApiKey; token?: 
         }
         footer={
           apiKey && (
-            <button type='button' className='iight-button iight-button--danger' onClick={revoke}>
+            <button type='button' className='sorlo-button sorlo-button--danger' onClick={revoke}>
               <Trash2 /> Revoke
             </button>
           )
@@ -284,7 +284,7 @@ export function NewToken({
         onFocus={(event) => event.currentTarget.select()}
       />
       <div className='actions'>
-        <button type='button' className='iight-button' aria-label={`Copy the ${noun}`} onClick={copy}>
+        <button type='button' className='sorlo-button' aria-label={`Copy the ${noun}`} onClick={copy}>
           <Copy /> Copy
         </button>
         {problem && (

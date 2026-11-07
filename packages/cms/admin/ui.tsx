@@ -1,6 +1,6 @@
 import { Status, pathOf } from './api'
 import { filterOf } from './lists'
-import Form, { FieldSchema, Modal, ValidationReport, flattenValidationReport } from 'iight'
+import Form, { FieldSchema, Modal, ValidationReport, flattenValidationReport } from '@sorlo/core'
 import {
   ChevronLeft,
   ChevronRight,
@@ -62,8 +62,8 @@ export function ThemeSwitch() {
 
     // Without storage, the choice lasts until the page reloads
     try {
-      if (root.dataset.theme) localStorage.setItem('iight-theme', root.dataset.theme)
-      else localStorage.removeItem('iight-theme')
+      if (root.dataset.theme) localStorage.setItem('sorlo-theme', root.dataset.theme)
+      else localStorage.removeItem('sorlo-theme')
     } catch {}
   }
 
@@ -183,7 +183,7 @@ export function Panel({
               <button
                 ref={sheetButton}
                 type='button'
-                className='iight-button cms-panel__sheet'
+                className='sorlo-button cms-panel__sheet'
                 aria-expanded={open}
                 aria-controls={id}
                 onClick={() => setOpen(!open)}
@@ -329,7 +329,7 @@ export function ListFilters({
       <Form schema={schema} values={searchValues} onValuesChange={change} />
       <button
         type='button'
-        className='iight-button'
+        className='sorlo-button'
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen(!open)}
@@ -348,7 +348,7 @@ export function ListFilters({
         )}
       </div>
       {list.filtered && (
-        <button type='button' className='iight-button' onClick={clear}>
+        <button type='button' className='sorlo-button' onClick={clear}>
           <X /> Clear filters
         </button>
       )}
@@ -534,12 +534,12 @@ export async function focusInvalid(area: HTMLElement | null, action = 'saved', r
   const reported = report && new Set(Object.values(flattenValidationReport(report).messages).flat())
   const fails = (field: Element) =>
     !reported ||
-    [...field.querySelectorAll(':scope > .iight-messages > li')].some((item) => reported.has(item.textContent!))
+    [...field.querySelectorAll(':scope > .sorlo-messages > li')].some((item) => reported.has(item.textContent!))
 
   let invalid: Array<Element> = []
   for (let tries = 0; tries < 30 && !invalid.length; tries++) {
     await new Promise((resolve) => setTimeout(resolve, 16))
-    const failed = [...(area?.querySelectorAll('.iight-invalid') ?? [])].filter(fails)
+    const failed = [...(area?.querySelectorAll('.sorlo-invalid') ?? [])].filter(fails)
     invalid = failed.filter((field) => !failed.some((other) => other !== field && field.contains(other)))
   }
   invalid[0]?.querySelector<HTMLElement>('input, select, textarea, button')?.focus()
@@ -649,12 +649,12 @@ export function Confirmer({ children }: { children: ReactNode }) {
         onClose={() => answer(false)}
         footer={
           <div className='cms-dialog-actions'>
-            <button type='button' className='iight-button' onClick={() => answer(false)}>
+            <button type='button' className='sorlo-button' onClick={() => answer(false)}>
               Cancel
             </button>
             <button
               type='button'
-              className={`iight-button iight-button--${asking?.danger ? 'danger' : 'primary'}`}
+              className={`sorlo-button sorlo-button--${asking?.danger ? 'danger' : 'primary'}`}
               onClick={() => answer(true)}
             >
               {asking?.action}

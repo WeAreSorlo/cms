@@ -103,7 +103,7 @@ const seoFields = (use: string) => [
 
 // A site project's schema folder with these types and groups, by file name
 async function site(types: Record<string, unknown>, groups: Record<string, unknown> = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'iight-groups-'))
+  const root = await mkdtemp(join(tmpdir(), 'sorlo-groups-'))
   for (const [folder, files] of Object.entries({ types, groups })) {
     await mkdir(join(root, folder))
     for (const [file, value] of Object.entries(files)) {

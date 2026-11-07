@@ -64,7 +64,7 @@ test('signs in with a session cookie, then signs out', async () => {
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({ data: { id: expect.any(String), email: 'ada@example.com', name: 'Ada' } })
   expect(response.headers.get('set-cookie')).toMatch(
-    /^iight_session=[\w-]{43}; Path=\/; Expires=.+; HttpOnly; SameSite=Lax$/,
+    /^sorlo_session=[\w-]{43}; Path=\/; Expires=.+; HttpOnly; SameSite=Lax$/,
   )
 
   // Only a hash of the token is stored
@@ -137,9 +137,9 @@ test('replies { message } to unknown routes and server errors', async () => {
   expect(await notFound.json()).toEqual({ message: 'Not Found' })
 
   // Nothing listens on port 1, so the session lookup throws
-  const unreachable = createDb('postgres://iight:iight@127.0.0.1:1/iight')
+  const unreachable = createDb('postgres://sorlo:sorlo@127.0.0.1:1/sorlo')
   const log = vi.spyOn(console, 'error').mockImplementation(() => {})
-  const response = await createApp(unreachable).request('/api/session', { headers: { cookie: 'iight_session=x' } })
+  const response = await createApp(unreachable).request('/api/session', { headers: { cookie: 'sorlo_session=x' } })
 
   expect(response.status).toBe(500)
   expect(await response.json()).toEqual({ message: 'Server Error' })

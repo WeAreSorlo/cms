@@ -51,7 +51,7 @@ type App = typeof publishing
 let cookie: string
 let userId: string
 // A second person, whose tokens are theirs alone
-const bob = { id: uuidv7(), cookie: 'iight_session=bob-token' }
+const bob = { id: uuidv7(), cookie: 'sorlo_session=bob-token' }
 
 beforeAll(async () => {
   ;({ cookie, userId } = await setUp())
@@ -161,7 +161,7 @@ test("Publish changes is on offer only where the site allows it, brings Save dra
 
 test('only a Publish token, where the site allows it, gets the tools that publish, marked as reaching past the CMS', async () => {
   const insert = async (name: string, scopes: Array<string>) => {
-    const secret = `iightpat_${uuidv7()}`
+    const secret = `sorlopat_${uuidv7()}`
     await db
       .insertInto('personal_tokens')
       .values({ id: uuidv7(), user_id: userId, name, token_hash: hashToken(secret), scopes })
