@@ -1,4 +1,4 @@
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 
 // Rendered by the admin's sign-in page and checked by POST /api/session
 export const signInSchema: Array<FieldSchema> = [

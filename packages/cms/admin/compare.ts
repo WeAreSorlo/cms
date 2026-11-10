@@ -1,5 +1,5 @@
 import { idsOf } from '../src/fields'
-import { FieldSchema, isEmptyValue, normaliseConditions } from '@sorlo/core'
+import { FieldSchema, isEmptyValue, normaliseConditions } from '@sorlo/forms'
 
 // What changed between two versions of an entry, from their values and the type's fields
 

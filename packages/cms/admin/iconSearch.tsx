@@ -1,5 +1,5 @@
 import { EmptyState, Pages } from './ui'
-import Form, { FieldSchema } from '@sorlo/core'
+import Form, { FieldSchema } from '@sorlo/forms'
 import { Search } from 'lucide-react'
 import { DynamicIcon, iconNames } from 'lucide-react/dynamic'
 import { useState } from 'react'

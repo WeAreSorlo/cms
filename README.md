@@ -1,6 +1,6 @@
 # Sorlo CMS
 
-An open-source, schema-driven CMS built on [Sorlo core](https://github.com/WeAreSorlo/core). To work on Sorlo itself, see [CONTRIBUTING.md](CONTRIBUTING.md).
+An open-source, schema-driven CMS built on [Sorlo Forms](https://github.com/WeAreSorlo/forms). To work on Sorlo itself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## The Sorlo CLI
 
@@ -25,9 +25,9 @@ Both servers log a line as each request arrives and one as it's answered, such a
 
 ## Starting a site
 
-Nothing is on npm yet, so a site installs three packed tarballs from its own repo: `@sorlo/core`, `@sorlo/cms` and `@sorlo/sdk`. They're the files `npm publish` will upload, and any host or Docker build installs them with no token or registry.
+Nothing is on npm yet, so a site installs three packed tarballs from its own repo: `@sorlo/forms`, `@sorlo/cms` and `@sorlo/sdk`. They're the files `npm publish` will upload, and any host or Docker build installs them with no token or registry.
 
-1. Pack them into the new site's `vendor/` folder, in core and then in this workspace. Each package's `prepack` builds it first, and `npm pack` needs the folder to exist.
+1. Pack them into the new site's `vendor/` folder, in Sorlo Forms and then in this workspace. Each package's `prepack` builds it first, and `npm pack` needs the folder to exist.
 
    ```bash
    mkdir -p ~/Sites/example/vendor
@@ -38,7 +38,7 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
    npm pack --workspace @sorlo/sdk --workspace @sorlo/cms --pack-destination ~/Sites/example/vendor
    ```
 
-2. Give the site a `package.json` that installs them, with `overrides` pointing the CMS at the site's own core and SDK. `$@sorlo/core` means the version the site itself depends on.
+2. Give the site a `package.json` that installs them, with `overrides` pointing the CMS at the site's own Sorlo Forms and SDK. `$@sorlo/forms` means the version the site itself depends on.
 
    ```json
    {
@@ -53,11 +53,11 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
      "dependencies": {
        "@sorlo/cms": "file:vendor/sorlo-cms-0.1.0.tgz",
        "@sorlo/sdk": "file:vendor/sorlo-sdk-0.1.0.tgz",
-       "@sorlo/core": "file:vendor/sorlo-core-0.1.0.tgz",
+       "@sorlo/forms": "file:vendor/sorlo-forms-0.1.0.tgz",
        "flydrive": "^2.2.0"
      },
      "overrides": {
-       "@sorlo/core": "$@sorlo/core",
+       "@sorlo/forms": "$@sorlo/forms",
        "@sorlo/sdk": "$@sorlo/sdk"
      },
      "devDependencies": {

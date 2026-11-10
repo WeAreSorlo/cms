@@ -25,8 +25,8 @@ import {
   UserPage,
 } from './users'
 import { VersionPage } from './versions'
-import '@sorlo/core/styles/base.scss'
-import '@sorlo/core/styles/layout.scss'
+import '@sorlo/forms/styles/base.scss'
+import '@sorlo/forms/styles/layout.scss'
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 

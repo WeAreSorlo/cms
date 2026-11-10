@@ -16,7 +16,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/forms'
 import { KeyRound, LogOut, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 

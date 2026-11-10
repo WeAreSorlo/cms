@@ -21,7 +21,7 @@ const modes = { light, dark: { ...light, ...rules.get('.sorlo-theme-admin[data-t
 
 test("sets every token in core's contract", () => {
   const require = createRequire(import.meta.url)
-  const contract = readFileSync(require.resolve('@sorlo/core/styles/themes/default.scss'), 'utf8').match(
+  const contract = readFileSync(require.resolve('@sorlo/forms/styles/themes/default.scss'), 'utf8').match(
     /--sorlo-[\w-]+(?=:)/g,
   )!
 

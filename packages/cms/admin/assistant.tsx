@@ -19,7 +19,7 @@ import {
   useToast,
 } from './ui'
 import { ChangeList, JsonChanges, kinds } from './versions'
-import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/forms'
 import {
   ArrowUp,
   Check,

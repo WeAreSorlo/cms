@@ -3,7 +3,7 @@ import { api, errorMessage, shortDate } from './api'
 import { NewToken } from './keys'
 import { Badge, EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
 import { AccountTabs } from './users'
-import Form, { FormHandle } from '@sorlo/core'
+import Form, { FormHandle } from '@sorlo/forms'
 import { CircleAlert, Copy, Plug, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 

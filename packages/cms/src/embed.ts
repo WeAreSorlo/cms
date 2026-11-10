@@ -1,5 +1,5 @@
 import { normaliseConditions } from './core'
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 
 // The honeypot: a field that people never see, so a submission that fills it in is kept as spam
 export const honeypot = '_website'

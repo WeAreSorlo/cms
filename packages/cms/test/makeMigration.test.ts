@@ -1,7 +1,7 @@
 import { ContentMigrationFile, catchUp } from '../src/content'
 import { makeMigration } from '../src/makeMigration'
 import { type ContentType, type SharedGroup, expandFields } from '../src/types'
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

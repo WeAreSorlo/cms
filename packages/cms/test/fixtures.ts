@@ -3,7 +3,7 @@ import { loadMigrations, migrate, migrationsDir } from '../src/migrator'
 import { hashToken } from '../src/passwords'
 import type { ContentType } from '../src/types'
 import { db, resetDb } from './database'
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 
 // One content type of each structure
 export const blog: ContentType = {

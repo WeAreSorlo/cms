@@ -33,7 +33,7 @@ import { cmsInputs, formsOf, serverInputs } from './relations'
 import { mediaSchema } from './schemas'
 import { TypeSaver, createId, migrationFor, typeFrom } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
-import type { FieldSchema, Input } from '@sorlo/core'
+import type { FieldSchema, Input } from '@sorlo/forms'
 import { DriveManager } from 'flydrive'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, SqlBool, sql } from 'kysely'
@@ -383,7 +383,7 @@ const maxReplaced = 100
 const formFields = z
   .array(z.record(z.string(), z.unknown()))
   .describe(
-    "The form's fields as Sorlo core schemas, as list_forms shows them: each with a name, a type of core's inputs, " +
+    "The form's fields as Sorlo Forms schemas, as list_forms shows them: each with a name, a type of core's inputs, " +
       'such as text, email, textarea, select or checkbox, a label, and required and options as it needs.',
   )
 
@@ -492,7 +492,7 @@ async function sentProblems(fields: unknown, types: Record<string, Input>, path 
 // the group, so a use whose fields differ from the group's is refused.
 function filed(fields: unknown, groups: Map<string, SharedGroup>, problems: Array<string>) {
   const byId = new Map([...groups.values()].map((group) => [group.id, group]))
-  if (!listOf(fields).every(isObject)) problems.push('fields: each field must be an object, a Sorlo core schema.')
+  if (!listOf(fields).every(isObject)) problems.push('fields: each field must be an object, a Sorlo Forms schema.')
   const sent = listOf(fields).filter(isObject) as Array<FieldSchema>
   mapFields(sent, (field) => {
     const group = isUse(field) && Array.isArray(field.options?.fields) && byId.get(field.options!.group)
@@ -721,7 +721,7 @@ const typeName = z
 const typeFields = z
   .array(z.record(z.string(), z.unknown()))
   .describe(
-    'Fields as Sorlo core schemas, as list_field_types describes them: each with a type, a name, which is its key in ' +
+    'Fields as Sorlo Forms schemas, as list_field_types describes them: each with a type, a name, which is its key in ' +
       "an entry's values, a label, and the settings and options it needs, with the fields inside groups, repeaters " +
       'and flexible layouts in their options. A new field needs no id, which it gets when proposed.',
   )
@@ -746,7 +746,7 @@ export const tools = [
     name: 'list_content_types',
     description:
       "Lists the site's content types, such as blog posts or pages, each with its structure (a collection, " +
-      'hierarchical for pages under parents, or a singleton with one entry) and its fields as Sorlo core schemas: ' +
+      'hierarchical for pages under parents, or a singleton with one entry) and its fields as Sorlo Forms schemas: ' +
       "each field's name, type, label, whether it's required, and its options and the fields inside it, with shared " +
       'groups expanded into their fields. Call it first, to learn the type and field names the other tools take and ' +
       `what each field holds. ${asData}`,
@@ -872,7 +872,7 @@ export const tools = [
   tool({
     name: 'list_forms',
     description:
-      "Lists the site's forms, each with its id, name, label, version and fields as Sorlo core schemas. Use it to see " +
+      "Lists the site's forms, each with its id, name, label, version and fields as Sorlo Forms schemas. Use it to see " +
       "what a form asks visitors and how it checks their answers. Its submissions can't be read here, since they hold " +
       `visitors' personal data. ${asData}`,
     input: z.object({
@@ -1539,7 +1539,7 @@ export const tools = [
     description:
       "Lists the field types a content type's fields can have, as the type editor offers them: each one's type, " +
       'what it is for, which of the common settings it takes, described once in settings (name, label, required, ' +
-      'instructions, width and conditions), and its options as Sorlo core schemas, with the choices they take, such ' +
+      'instructions, width and conditions), and its options as Sorlo Forms schemas, with the choices they take, such ' +
       'as the content types a relationship links to, by id. Also the shared groups, by id, which a type uses with a ' +
       'shared field. Call it before create_content_type and update_content_type. A field shows only when its ' +
       'conditions match: [{ "rules": [{ "field": "<a field beside it>", "operator": "equals", "value": "…" }] }] ' +
@@ -1563,7 +1563,7 @@ export const tools = [
   tool({
     name: 'create_content_type',
     description:
-      'Proposes a new content type, such as job openings, with its settings and its fields as Sorlo core schemas, as ' +
+      'Proposes a new content type, such as job openings, with its settings and its fields as Sorlo Forms schemas, as ' +
       'list_field_types describes them. Give it a titleField, and for entries with their own pages a slug, an ' +
       'identifier field whose source is the title field, as its slugField. A use of a shared group is a field ' +
       '{ "type": "shared", "name": "seo", "label": "SEO", "options": { "group": "<its id>" } }, whose fields come ' +
@@ -1620,7 +1620,7 @@ export const tools = [
       fields: typeFields
         .optional()
         .describe(
-          'Only the top-level fields to add or change, each whole with the fields inside it, as Sorlo core schemas. ' +
+          'Only the top-level fields to add or change, each whole with the fields inside it, as Sorlo Forms schemas. ' +
             'A field keeps the id list_content_types gives it, and a new one needs none.',
         ),
       remove: z.array(z.string()).min(1).optional().describe('Top-level fields to take out, by name.'),

@@ -13,7 +13,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, baseInputSchemaFields } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle, baseInputSchemaFields } from '@sorlo/forms'
 import { History, Mail, Pencil, Plus, RefreshCw, Trash2, Workflow } from 'lucide-react'
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 

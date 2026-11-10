@@ -43,7 +43,7 @@ import {
 } from './ui'
 import { AccountPanel, AccountTabs, Invite, InvitesTable, PeopleTable, Person, PersonPanel } from './users'
 import { ChangeList, JsonChanges } from './versions'
-import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/forms'
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Inbox, Plus, Sheet, Trash2 } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 

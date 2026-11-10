@@ -8,7 +8,7 @@ import {
   parentField,
   toJson,
 } from '../admin/compare'
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 import { expect, test } from 'vitest'
 
 // Comparing versions: what changed between two versions' values, worked out in the admin

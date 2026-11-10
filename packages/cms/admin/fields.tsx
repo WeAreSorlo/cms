@@ -2,7 +2,7 @@ import { form, holdsOne, idsOf, media, relationship, relationshipOptions, shared
 import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
 import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
-import Form, { FieldSchema, Input, inputs, useFieldContext } from '@sorlo/core'
+import Form, { FieldSchema, Input, inputs, useFieldContext } from '@sorlo/forms'
 import { CircleAlert, Search, X } from 'lucide-react'
 import { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
 

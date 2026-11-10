@@ -25,7 +25,7 @@ import Form, {
   flattenValidationReport,
   inputs as coreInputs,
   validateValues,
-} from '@sorlo/core'
+} from '@sorlo/forms'
 import { Columns3, Sheet } from 'lucide-react'
 import {
   FocusEvent,

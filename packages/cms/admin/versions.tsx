@@ -16,7 +16,7 @@ import { Change, compare, compareParent, diffLines, diffWords, linksOf, parentFi
 import { Version, restoreOnOpen, viaText } from './entries'
 import { useLinkNames } from './fields'
 import { Badge, Loading, Notice, PageHeader, Panel, StatusBadge, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FieldSchema, FormHandle } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle } from '@sorlo/forms'
 import { Trash2 } from 'lucide-react'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 

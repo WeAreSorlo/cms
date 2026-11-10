@@ -51,7 +51,7 @@ import {
   useListQuery,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/forms'
 import {
   Archive,
   ArchiveRestore,

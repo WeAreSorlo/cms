@@ -1,7 +1,7 @@
 import type { ChatFile, ChatMessage, ReplyNotice } from '../src/chats'
 import type { Proposal } from '../src/proposals'
 import { api, errorMessage, pathOf } from './api'
-import type { ValidationReport } from '@sorlo/core'
+import type { ValidationReport } from '@sorlo/forms'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
 export type { ChatFile, ChatMessage, Proposal }

@@ -2,7 +2,7 @@ import { inputs, normaliseConditions, schemaToTypeScript } from './core'
 import { holdsOne, isLink, linkFields, someField } from './fields'
 import { allowedTypes, cmsInputs } from './relations'
 import { type ContentType, type SharedGroup, expandFields } from './types'
-import type { FieldSchema, Input, InputTypeValue } from '@sorlo/core'
+import type { FieldSchema, Input, InputTypeValue } from '@sorlo/forms'
 
 // The TypeScript types of the entries the delivery API returns and the values forms take, which GET /types serves to
 // `npx sorlo types pull`. They register with @sorlo/sdk, so its queries and submissions are typed without generics

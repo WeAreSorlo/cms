@@ -2,7 +2,7 @@ import { apiKeySchema } from '../src/schemas'
 import { api, errorMessage, shortDate } from './api'
 import { CellText } from './entries'
 import { Badge, EmptyState, Loading, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FormHandle } from '@sorlo/core'
+import Form, { FormHandle } from '@sorlo/forms'
 import { CircleAlert, Copy, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 

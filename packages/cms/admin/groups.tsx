@@ -3,7 +3,7 @@ import { groupSchema } from '../src/schemas'
 import { ContentType, GroupsContext, SharedGroup, TypesContext, api, errorMessage } from './api'
 import { useInputs } from './fields'
 import { Dialog, EmptyState, Notice, PageHeader, Panel, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FieldSchema, FormHandle } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle } from '@sorlo/forms'
 import { Component, Plus, Trash2 } from 'lucide-react'
 import { MouseEvent, useContext, useRef, useState } from 'react'
 

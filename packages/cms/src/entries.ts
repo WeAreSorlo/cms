@@ -7,7 +7,7 @@ import { EntryRow, StatusRow, entryIds, listEntries, parseQuery, toAdminEntry, u
 import { cmsInputs, saveRelations, serverInputs } from './relations'
 import { EventName, maxTicked, versionSchema } from './schemas'
 import type { ContentType } from './types'
-import type { FieldSchema, InputSchema, ValidationReport } from '@sorlo/core'
+import type { FieldSchema, InputSchema, ValidationReport } from '@sorlo/forms'
 import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, sql } from 'kysely'

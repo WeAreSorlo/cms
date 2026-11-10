@@ -1,5 +1,5 @@
 import type { EventName } from './schemas'
-import type { ConditionGroup, FieldSchema } from '@sorlo/core'
+import type { ConditionGroup, FieldSchema } from '@sorlo/forms'
 import { ColumnType, Generated, Kysely, PostgresDialect } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { Pool } from 'pg'

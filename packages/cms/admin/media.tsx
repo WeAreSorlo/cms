@@ -18,7 +18,7 @@ import {
   useListQuery,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle, Modal } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle, Modal } from '@sorlo/forms'
 import {
   CircleAlert,
   FileAudio,

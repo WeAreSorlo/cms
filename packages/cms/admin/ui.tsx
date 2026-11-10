@@ -1,6 +1,6 @@
 import { Status, pathOf } from './api'
 import { filterOf } from './lists'
-import Form, { FieldSchema, Modal, ValidationReport, flattenValidationReport } from '@sorlo/core'
+import Form, { FieldSchema, Modal, ValidationReport, flattenValidationReport } from '@sorlo/forms'
 import {
   ChevronLeft,
   ChevronRight,

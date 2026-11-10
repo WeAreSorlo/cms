@@ -6,7 +6,7 @@ import { toJson } from './compare'
 import { iconInput, useInputs } from './fields'
 import { MakeShared, TypeGroups, UseShared } from './groups'
 import { Badge, EmptyState, Notice, PageHeader, Panel, TypeIcon, focusInvalid, useConfirm, useToast } from './ui'
-import Form, { FieldSchema, FormHandle } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle } from '@sorlo/forms'
 import { Blocks, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 

@@ -1,5 +1,5 @@
 import type { ContentType, SharedGroup } from './types'
-import type { FieldSchema, InputSchema, InputValidateValue } from '@sorlo/core'
+import type { FieldSchema, InputSchema, InputValidateValue } from '@sorlo/forms'
 
 // The CMS's own inputs, which store IDs: relationship links to entries, media to files in the media library and form
 // to one of the forms, and the Shared group field. Nothing here loads core or server code, so the admin imports them

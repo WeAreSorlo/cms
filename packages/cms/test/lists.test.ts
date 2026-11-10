@@ -4,7 +4,7 @@ import { listEntries, parseQuery } from '../src/query'
 import type { ContentType } from '../src/types'
 import { db } from './database'
 import { setUp } from './fixtures'
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 import { afterAll, expect, test } from 'vitest'
 
 // A list's filter: core's conditions over a type's fields, as the list API's where

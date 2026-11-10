@@ -1,7 +1,7 @@
 import { sharedDepth } from './content'
 import { mapFields } from './fields'
 import type { ContentType } from './types'
-import type { FieldSchema } from '@sorlo/core'
+import type { FieldSchema } from '@sorlo/forms'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'

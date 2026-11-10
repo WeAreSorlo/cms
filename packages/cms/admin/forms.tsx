@@ -16,7 +16,7 @@ import {
   focusInvalid,
   useToast,
 } from './ui'
-import Form, { FieldSchema, FormHandle } from '@sorlo/core'
+import Form, { FieldSchema, FormHandle } from '@sorlo/forms'
 import {
   Archive,
   ArchiveRestore,

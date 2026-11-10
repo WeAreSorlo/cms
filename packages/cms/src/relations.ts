@@ -4,7 +4,7 @@ import { allows, form, holdsOne, idsOf, isLink, linkFields, media, relationship,
 import { toMedia } from './media'
 import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
-import type { FieldSchema, Input, InputPickFields, InputPickValue, InputSchema } from '@sorlo/core'
+import type { FieldSchema, Input, InputPickFields, InputPickValue, InputSchema } from '@sorlo/forms'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, SqlBool, sql } from 'kysely'
 
