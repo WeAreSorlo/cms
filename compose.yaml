@@ -11,17 +11,19 @@ services:
     volumes:
       - postgres:/var/lib/postgresql/data
     configs:
-      - source: test-database
-        target: /docker-entrypoint-initdb.d/test-database.sql
+      - source: databases
+        target: /docker-entrypoint-initdb.d/databases.sql
     healthcheck:
       test: ['CMD', 'pg_isready', '-U', 'sorlo', '-d', 'sorlo']
       interval: 1s
       retries: 30
 
 configs:
-  # Runs once, when the volume is first created
-  test-database:
-    content: CREATE DATABASE sorlo_test;
+  # Runs once, when the volume is first created: the tests' database and the starter's
+  databases:
+    content: |
+      CREATE DATABASE sorlo_test;
+      CREATE DATABASE sorlo_starter;
 
 volumes:
   postgres:

@@ -4,11 +4,11 @@ An open-source, schema-driven CMS built on Sorlo core. `PLAN.md` holds the archi
 
 ## Layout
 
-| Folder         | What it is                                                                          |
-| -------------- | ----------------------------------------------------------------------------------- |
-| `packages/cms` | `@sorlo/cms`: the Hono server (`src/`), the admin UI (`admin/`) and the `sorlo` CLI |
-| `packages/sdk` | `@sorlo/sdk`: the typed client for the delivery API, and `sorlo types pull`         |
-| `playground`   | A site project for development, with its `sorlo.config.ts`                          |
+| Folder             | What it is                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------- |
+| `packages/cms`     | `@sorlo/cms`: the Hono server (`src/`), the admin UI (`admin/`) and the `sorlo` CLI |
+| `packages/sdk`     | `@sorlo/sdk`: the typed client for the delivery API, and `sorlo types pull`         |
+| `examples/starter` | A minimal site project, for development and as the starting point for new sites     |
 
 ## Getting started
 
@@ -18,19 +18,33 @@ You need Node 22.18 or later, which runs a site's TypeScript itself, and Docker.
 npm install
 npm run build       # the SDK and the CMS into their dist folders, and the admin into admin/dist
 npm run db          # Postgres 17 on localhost:5432
-cd playground
+cd examples/starter
 npx sorlo migrate
 npx sorlo make:user
 npx sorlo make:api-key --types   # a key for the delivery API that can pull types
-cd ..
+cd ../..
 npm run dev         # builds the server code again, then runs sorlo dev: the admin is at http://localhost:3000/admin/
 ```
 
-`npm run db` also creates a `sorlo_test` database for the tests, but only when it first creates the Postgres volume.
+`npm run db` also creates a `sorlo_test` database for the tests and `sorlo_starter` for the starter, but only when it first creates the Postgres volume. On an older volume, add the starter's with `docker compose exec postgres createdb -U sorlo sorlo_starter`.
 
-The packages point at their `dist` folders, as a site gets them, so the playground runs what's built. `npm run dev` in the workspace builds the SDK's and the CMS's server code first, with tsup, so restart it after changing either. The admin is the exception: in this workspace `sorlo dev` serves it from its source through Vite, which reloads it as you edit.
+The packages point at their `dist` folders, as a site gets them, so the starter runs what's built. `npm run dev` in the workspace builds the SDK's and the CMS's server code first, with tsup, so restart it after changing either. The admin is the exception: in this workspace `sorlo dev` serves it from its source through Vite, which reloads it as you edit.
 
 In this workspace's `sorlo dev`, `/admin/#/design` shows the admin's design system: its tokens, their contrast in the current theme, and every core input. `DESIGN.md` has the plan. Sites, whose admin is the built one, don't have the page.
+
+### A site of your own
+
+A site outside this workspace can run on its packages too. Link them with folder dependencies, build the server code before `sorlo dev`, and keep the `.npmrc` line from [Starting a site](#starting-a-site):
+
+```json
+"scripts": { "dev": "npm run build:server --prefix ../cms && sorlo dev" },
+"dependencies": {
+  "@sorlo/cms": "file:../cms/packages/cms",
+  "@sorlo/sdk": "file:../cms/packages/sdk"
+}
+```
+
+npm links each package's folder rather than copying it, so the packages' own dependencies come from this workspace, and `sorlo dev` serves the admin from its source through Vite, as it does here.
 
 ## The Sorlo CLI
 
@@ -103,7 +117,7 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
    @sorlo:registry=https://registry.invalid/
    ```
 
-4. Add a `sorlo.config.ts` like the playground's, with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
+4. Add a `sorlo.config.ts` like the starter's, with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
 
    ```json
    {
@@ -184,7 +198,7 @@ storage
 
 - **`GET /health`** needs no key or session. It replies `200 {"status":"ok"}` while the database answers, and otherwise `503 {"message":"The database can't be reached."}`, logging why.
 - **A database that restarts** ends the CMS's connections to it, which the CMS logs, one line for each, as `A database connection ended: …`, and replaces as it needs them. A transaction that held one fails, and a run of the worker's waits to be tried again.
-- **Media** can stay on the local disk, as the playground's do, for one instance, with a volume at `/site/storage`. The image makes that folder the server's, so a new Docker volume starts writable, but a host's own volume can arrive owned by root and need a `chown`. More than one instance, or a host without volumes, needs a bucket, through FlyDrive's S3 driver, for which the site installs `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`. The bucket can stay private, since the CMS streams every file through `/media/<id>/<name>`. Cloudflare R2 also needs `supportsACL: false`. Each file's row records its disk, so a site moving to a bucket keeps both disks set up until its files have moved.
+- **Media** can stay on the local disk, as the starter's do, for one instance, with a volume at `/site/storage`. The image makes that folder the server's, so a new Docker volume starts writable, but a host's own volume can arrive owned by root and need a `chown`. More than one instance, or a host without volumes, needs a bucket, through FlyDrive's S3 driver, for which the site installs `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`. The bucket can stay private, since the CMS streams every file through `/media/<id>/<name>`. Cloudflare R2 also needs `supportsACL: false`. Each file's row records its disk, so a site moving to a bucket keeps both disks set up until its files have moved.
 
   ```ts
   import { S3Driver } from 'flydrive/drivers/s3'
@@ -221,7 +235,7 @@ What a host provides:
 
 ## Content types
 
-Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `playground/schema/types`. `sorlo dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a file by hand. The type editor reloads the types itself.
+Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in `examples/starter/schema/types`. `sorlo dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a file by hand. The type editor reloads the types itself.
 
 | Key                 | What it holds                                                                                                                        |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -608,7 +622,7 @@ export default defineConfig({
 | `automations.attempts`   | How many times an action is tried before it's given up, 6 if not given                                                                                                                                                                   |
 | `webhooks.allowNetworks` | The internal networks webhooks may reach, such as `10.0.0.0/8` for a site's own services, or an address such as `127.0.0.1`                                                                                                              |
 
-The playground's `send` prints each email in the terminal, and it allows webhooks to this machine.
+The starter's `send` prints each email in the terminal, and it allows webhooks to this machine.
 
 ## People
 
@@ -1172,10 +1186,10 @@ The `token` is optional, since submitting needs none, but entries do. A site's o
 
 `npx sorlo types pull` writes `src/sorlo-types.d.ts` from `GET /types`, reading the CMS's address from `SORLO_URL` and a key with the `types` permission from `SORLO_TOKEN`. It declares each content type's values and entry, such as `BlogValues` and `EntryBlog`, the fields `with` can resolve, such as `BlogResolvedValues`, and each form's values, such as `ContactUsFormValues`, and registers them with the SDK. Each shared group's values get a type of their own, such as `GroupSeo`, and `GroupSeoResolved<Depth>`, every field with its links resolved, when it holds relationship or media fields. The types that use it refer to them, so one component can take a group's values from every type that has it. Forms change in the admin, so pull again after changing one. Commit the file, so builds don't need the CMS, and leave it unformatted. In CI, `node_modules/.bin/sorlo types pull --check` fails when the file is out of date, and runs the frontend's own `sorlo` rather than whatever `npx` might find on npm. Each entry type builds on the SDK's `Entry`, writing only what its type narrows, so what the SDK adds to every entry reaches the file without another pull. A file pulled before 29 October 2026 doesn't, and needs pulling once more: with the newer SDK, it types every query as `never`.
 
-A project with both packages, such as the playground, gets the CMS's `sorlo` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx sorlo make:api-key --types`:
+A project with both packages, such as the starter, gets the CMS's `sorlo` command, which passes `types` on to the SDK. With `npm run dev` running and a key from `npx sorlo make:api-key --types`:
 
 ```bash
-cd playground
+cd examples/starter
 export SORLO_URL=http://localhost:3000 SORLO_TOKEN=<key>
 npm run types      # pulls src/sorlo-types.d.ts
 npm run frontend   # runs src/frontend.ts, a typed script

@@ -1,0 +1,22 @@
+{
+  "name": "starter",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "sorlo dev",
+    "start": "sorlo start",
+    "migrate": "sorlo migrate",
+    "types": "sorlo types pull",
+    "frontend": "node src/frontend.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sorlo/cms": "*",
+    "@sorlo/sdk": "*",
+    "flydrive": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}

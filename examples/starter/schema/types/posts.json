@@ -1,0 +1,24 @@
+{
+  "id": "typ_s7k2p9qa",
+  "name": "posts",
+  "label": "Posts",
+  "singular": "Post",
+  "structure": "collection",
+  "icon": "newspaper",
+  "titleField": "title",
+  "slugField": "slug",
+  "listColumns": ["title", "published_at"],
+  "fields": [
+    { "id": "fld_t4w8n2xe", "type": "text", "name": "title", "label": "Title", "required": true },
+    {
+      "id": "fld_s9q3m7vd",
+      "type": "identifier",
+      "name": "slug",
+      "label": "Slug",
+      "required": true,
+      "options": { "source": "title" }
+    },
+    { "id": "fld_p6j1r5kc", "type": "date", "name": "published_at", "label": "Published" },
+    { "id": "fld_b2y8h4lz", "type": "textarea", "name": "body", "label": "Body" }
+  ]
+}

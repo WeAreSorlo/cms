@@ -4,16 +4,17 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "playground"
+    "examples/*"
   ],
   "scripts": {
     "db": "docker compose up -d --wait",
-    "dev": "npm exec --workspace @sorlo/sdk --workspace @sorlo/cms -- tsup && npm run dev --workspace playground",
+    "build:server": "npm exec --workspace @sorlo/sdk --workspace @sorlo/cms -- tsup",
+    "dev": "npm run build:server && npm run dev --workspace starter",
     "build": "npm run build --workspace @sorlo/sdk && npm run build --workspace @sorlo/cms",
     "test": "npm test --workspace @sorlo/cms",
-    "typecheck": "npm exec --workspace @sorlo/sdk --workspace @sorlo/cms -- tsup && npm run typecheck --workspaces --if-present",
-    "format": "prettier packages playground --check",
-    "format:fix": "prettier packages playground --write"
+    "typecheck": "npm run build:server && npm run typecheck --workspaces --if-present",
+    "format": "prettier packages examples --check",
+    "format:fix": "prettier packages examples --write"
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^5.2.2",

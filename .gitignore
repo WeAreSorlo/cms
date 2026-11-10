@@ -1,4 +1,5 @@
 node_modules
 dist
 .env
-playground/storage
+examples/*/storage
+examples/*/src/sorlo-types.d.ts
