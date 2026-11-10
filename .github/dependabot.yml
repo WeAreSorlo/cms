@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # The root's lockfile covers every workspace. Until Sorlo Forms is on npm, these updates fail, since Dependabot can't
+  # reach the file: path that @sorlo/cms links it from
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # A release waits a week before Dependabot offers it
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']

@@ -1,7 +1,24 @@
 {
   "name": "@sorlo/cms",
   "version": "0.1.0",
-  "description": "The Sorlo CMS: server, admin UI and CLI",
+  "description": "An open-source, schema-driven CMS: its server, admin and CLI",
+  "keywords": [
+    "cms",
+    "headless-cms",
+    "content-management",
+    "schema",
+    "postgres",
+    "hono",
+    "mcp",
+    "sorlo"
+  ],
+  "homepage": "https://github.com/WeAreSorlo/cms#readme",
+  "bugs": "https://github.com/WeAreSorlo/cms/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WeAreSorlo/cms.git",
+    "directory": "packages/cms"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -20,6 +37,10 @@
   ],
   "engines": {
     "node": ">=22.18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "build": "tsup && vite build --config admin/vite.config.ts",

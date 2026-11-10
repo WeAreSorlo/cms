@@ -12,7 +12,14 @@ This repo holds the CMS, `@sorlo/cms`, and its SDK, `@sorlo/sdk`. The form libra
 
 ## Getting started
 
-You need Node 22.18 or later, which runs a site's TypeScript itself, and Docker. Node 24 is what the site image uses. Clone [Sorlo Forms](https://github.com/WeAreSorlo/forms) beside this repo first, as `../core`, since the CMS links it from there until it's on npm: `git clone https://github.com/WeAreSorlo/forms.git ../core`.
+You need Node 22.18 or later, which runs a site's TypeScript itself, and Docker. Node 24 is what the site image uses. Clone [Sorlo Forms](https://github.com/WeAreSorlo/forms) beside this repo first, as `../core`, and build it, since the CMS links it from there until it's on npm, and its `dist` isn't in git:
+
+```bash
+git clone https://github.com/WeAreSorlo/forms.git ../core
+(cd ../core && npm install && npm run build)
+```
+
+Then, in this repo:
 
 ```bash
 npm install
@@ -34,7 +41,7 @@ In this workspace's `sorlo dev`, `/admin/#/design` shows the admin's design syst
 
 ### A site of your own
 
-A site outside this workspace can run on its packages too. Link them with folder dependencies, build the server code before `sorlo dev`, and keep the `.npmrc` line from [Starting a site](README.md#starting-a-site):
+A site outside this workspace can run on its packages too. Link them with folder dependencies, build the server code before `sorlo dev`, and keep the `.npmrc` line from [Starting a site](docs/starting-a-site.md):
 
 ```json
 "scripts": { "dev": "npm run build:server --prefix ../cms && sorlo dev" },
@@ -69,8 +76,37 @@ The admin's Vite config dedupes `react`, `react-dom`, `react-i18next` and `i18ne
 
 `npm test` runs against the `sorlo_test` database, so start Postgres first. It builds the SDK and the CMS's server code first, since the CLI's tests run the built `sorlo` command and the SDK's tests import the built SDK, and like the CLI it needs Node 22.18 or later. It also typechecks the `*.test-d.ts` files, which show the SDK rejecting wrong field names and values. There's also `npm run typecheck` for every package, and `npm run format` (or `format:fix`).
 
+CI, in `.github/workflows/ci.yml`, runs the format check, the typecheck, the build and the tests on Node 24, against a Postgres 17 service, for every push to `main` and every pull request. It checks out Sorlo Forms beside the repo, as `core`, and builds it. While WeAreSorlo/forms is private, it reads it with a deploy key: a read-only one in that repo's settings under Deploy keys, whose private half is this repo's Actions secret `FORMS_DEPLOY_KEY`. Once it's public, the secret can go.
+
 ## Pull requests
 
 - Run `npm run format`, `npm run typecheck` and `npm test` first.
 - Open an issue before changing what the APIs accept or return, since sites and the SDK depend on their shape.
-- Keep each pull request to one change, with tests for what it adds or fixes.
+- Keep each pull request to one change, with tests for what it adds or fixes, and a changeset if sites will notice it.
+
+## Changesets
+
+A change that sites will notice comes with a changeset, which sets the next version and writes the changelog. Run `npx changeset`, choose patch, minor or major, and describe the change for the changelog. It writes a file in `.changeset/` to commit with the change. Changes to tests, docs or CI need none.
+
+The CMS and the SDK share one version, since the CMS writes the types the SDK reads, so a changeset for either releases both.
+
+## Releasing
+
+The release workflow, `.github/workflows/release.yml`, runs from the Actions tab, with Run workflow, until the packages are on npm, and on every push to `main` from then on:
+
+- While changesets are waiting, it opens or updates a "Version Packages" pull request, which bumps both versions, writes each package's `CHANGELOG.md` and deletes the changesets.
+- Once that pull request is merged, it runs the tests, packs the tarballs and publishes them to npm, with provenance, then tags them, such as `@sorlo/cms@0.2.0`, and makes GitHub releases.
+
+It publishes through npm's trusted publishing, so no npm token is stored anywhere. Only the publish job can get a short-lived one, and the job before it, with no publish rights, runs the tests and packs the tarballs. To version without the pull request, run `npm run version-packages`, then commit and push.
+
+GitHub doesn't start workflows for pull requests made with its own token, so CI doesn't run on the "Version Packages" pull request. It only changes the versions, the changelogs and the lockfile.
+
+### The first publish
+
+npm sets up trusted publishing only for a package that already exists, so the first version of each is published by hand, once:
+
+1. Make the repository public, since provenance needs a public repository. Then, in its settings, turn on private vulnerability reporting and Dependabot alerts under Advanced Security, and "Allow GitHub Actions to create and approve pull requests" under Actions → General.
+2. Publish Sorlo Forms first, as its own CONTRIBUTING.md says. Then point the CMS at it on npm: in `packages/cms/package.json`, `@sorlo/forms` becomes `^0.1.0` in place of `file:../../../core`, and `@sorlo/sdk` becomes `^0.1.0` in place of `*`, which a published package can't keep. Run `npm install`, and add `push: branches: [main]` to the release workflow's `on`.
+3. Publish from a clean checkout of `main`, with `npm login`, the SDK before the CMS, which depends on it: `npm publish --workspace @sorlo/sdk --provenance=false`, then `npm publish --workspace @sorlo/cms --provenance=false`. `publishConfig` asks for provenance, which npm can make only in CI, and the flag overrides it this once. To tag them as the workflow tags later releases, run `npx changeset git-tag` and `git push --tags`.
+4. Add each package's trusted publisher on npmjs.com, in the package's settings under Trusted Publisher: GitHub Actions, organization `WeAreSorlo`, repository `cms`, workflow `release.yml`, no environment, with `npm publish` allowed, since Changesets can't use staged publishing yet. `npm trust github @sorlo/sdk --file release.yml --repo WeAreSorlo/cms --allow-publish`, and the same for `@sorlo/cms`, does it from the command line. npm expires the setup unless its first publish comes within 2 days, so add it when a release is ready to merge.
+5. Once a release has gone out through the workflow, choose "Require two-factor authentication and disallow tokens" under each package's Publishing access.

@@ -2,6 +2,21 @@
   "name": "@sorlo/sdk",
   "version": "0.1.0",
   "description": "A typed client for the Sorlo CMS's delivery API, and sorlo types pull",
+  "keywords": [
+    "cms",
+    "headless-cms",
+    "sdk",
+    "api-client",
+    "typescript",
+    "sorlo"
+  ],
+  "homepage": "https://github.com/WeAreSorlo/cms/blob/main/docs/sdk.md",
+  "bugs": "https://github.com/WeAreSorlo/cms/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WeAreSorlo/cms.git",
+    "directory": "packages/sdk"
+  },
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -18,6 +33,10 @@
     "bin",
     "dist"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsup",
     "prepack": "npm run build",
