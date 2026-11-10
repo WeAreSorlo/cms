@@ -26,6 +26,17 @@ const posts = await cms
 
 ## Forms
 
+`cms.form('contact_us').get()` resolves a form as the CMS serves it, `{ id, name, label, version, fields, open }`, which the SDK types as `SorloForm`. Its `fields` are the schema of a [Sorlo Forms](https://github.com/WeAreSorlo/forms) `Form`, so a frontend renders the form with no cast. A closed form still serves its fields, with `open` false, so a page can say it's closed. A form that doesn't exist throws a `SorloError` with status 404, and no key is needed.
+
+```tsx
+import Form from '@sorlo/forms'
+
+export async function Contact() {
+  const form = await cms.form('contact_us').get()
+  return <Form schema={form.fields} />
+}
+```
+
 `cms.form('contact_us').submit(values)` sends a form's values as JSON, typed by the form's fields, and resolves the submission as it was stored, `{ id, version, values, createdAt }`. Values that don't pass throw a `SorloError` with status 422, whose `body` is the validation report, for the `applyReport` of a Sorlo Forms `Form`.
 
 ```ts
@@ -46,7 +57,7 @@ A project with both packages, such as the starter, gets the CMS's `sorlo` comman
 
 ```bash
 cd examples/starter
-export SORLO_URL=http://localhost:3000 SORLO_TOKEN=<key>
+export SORLO_URL=http://localhost:4100 SORLO_TOKEN=<key>
 npm run types      # pulls src/sorlo-types.d.ts
 npm run frontend   # runs src/frontend.ts, a typed script
 ```

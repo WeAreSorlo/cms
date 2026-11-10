@@ -9,11 +9,13 @@ import type {
   GroupOgResolved,
   GroupSeo,
 } from './sorlo-types'
+import type { FieldSchema } from '@sorlo/forms'
 import {
   type Draft,
   type Entry,
   type Media,
   type Paginated,
+  type SorloForm,
   type Submission,
   type With,
   createClient,
@@ -192,6 +194,11 @@ test('submit() takes the values a form takes, and resolves what was stored', () 
   contact.submit({ name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' }, size: 'big' })
   // @ts-expect-error topics takes the form's choices
   contact.submit({ name: 'Ada', email: 'ada@example.com', address: { town: 'Leeds' }, topics: ['jobs'] })
+})
+
+test("get() resolves a form whose fields Sorlo Forms' Form takes as its schema", () => {
+  expectTypeOf(cms.form('contact').get()).resolves.toEqualTypeOf<SorloForm>()
+  expectTypeOf<SorloForm['fields']>().toExtend<Array<FieldSchema>>()
 })
 
 test('a preview client types drafts, whose fields can be empty and which may never have been published', () => {

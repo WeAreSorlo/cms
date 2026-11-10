@@ -13,6 +13,19 @@ export const userSchema: Array<FieldSchema> = [
   { name: 'password', label: 'Password', type: 'password', required: true, options: { minLength: 8 } },
 ]
 
+// The first account, made in the admin while nobody has one, and checked by POST /api/session/setup, with the code the
+// server printed. The admin leaves the code out of the form when its link brought one.
+export const setupSchema: Array<FieldSchema> = [
+  ...userSchema,
+  {
+    name: 'code',
+    label: 'Setup code',
+    type: 'text',
+    required: true,
+    instructions: 'The server printed it in its log as it started, in the link to this page.',
+  },
+]
+
 // The address to invite, on the admin's Users page and checked by POST /api/invites. Forgot your password? asks for an
 // address the same way, checked by POST /api/session/forgot.
 export const inviteSchema: Array<FieldSchema> = [{ name: 'email', label: 'Email', type: 'email', required: true }]

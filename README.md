@@ -27,12 +27,10 @@ cd core && npm install && npm run build && cd ../cms
 npm install
 npm run build
 npm run db               # Postgres 17 on localhost:5432
-cd examples/starter
-npx sorlo migrate
-npx sorlo make:user
-cd ../..
-npm run dev              # the admin is at http://localhost:3000/admin/
+npm run dev              # migrates, then the admin is at http://localhost:4100/admin/
 ```
+
+`npm run dev` prints a link for making the first account. Open it, and choose your name, email and password.
 
 For a site of your own, [Starting a site](docs/starting-a-site.md) installs the packages from packed tarballs, and [Deploying](docs/deploying.md) takes it live.
 

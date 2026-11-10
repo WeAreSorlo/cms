@@ -50,6 +50,20 @@ type Registered = [keyof EntryTypes] extends [never] ? Record<string, Entry> : E
 // Without pulled types, any form name works and takes any values
 type RegisteredForms = [keyof FormTypes] extends [never] ? Record<string, Record<string, unknown>> : FormTypes
 
+// A form as the CMS serves it, for rendering with Sorlo Forms. It's named so it doesn't clash with Sorlo Forms' Form.
+export interface SorloForm {
+  id: string
+  name: string
+  label: string
+  // The version of its fields that submissions are checked against
+  version: number
+  // Its fields, for the schema of a Sorlo Forms Form. The SDK doesn't depend on Sorlo Forms, so they're typed loosely,
+  // in a way that Form's schema takes.
+  fields: Array<{ name: string; type: string; [setting: string]: any }>
+  // Whether it takes submissions. A closed form still serves its fields.
+  open: boolean
+}
+
 // A submission as the CMS stored it
 export interface Submission<V> {
   id: string
@@ -316,6 +330,9 @@ export function createClient<Preview extends boolean = false>({
 
     // A form, by its name, such as cms.form('contact')
     form: <F extends keyof RegisteredForms & string>(form: F) => ({
+      // Its label, its fields for Sorlo Forms' Form, and whether it's open
+      get: async (): Promise<SorloForm> => (await request(`/v1/forms/${encodeURIComponent(form)}`)).data,
+
       // Sends the values, resolving the submission as it was stored. Values that don't pass throw a SorloError with
       // status 422, whose body is core's report, for a core form's applyReport.
       submit: async (values: RegisteredForms[F]): Promise<Submission<RegisteredForms[F]>> =>

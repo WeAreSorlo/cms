@@ -4,9 +4,10 @@ How to build a site on Sorlo, in the order you'll need it. To work on Sorlo itse
 
 ## Getting started
 
-- [Starting a site](starting-a-site.md): a site project, its config and its first user
+- [Starting a site](starting-a-site.md): a site project, its config and its first account
 - [The Sorlo CLI](cli.md): every `sorlo` command, where the servers listen, and how they stop
 - [Deploying](deploying.md): the site's image, migrations on each deploy, what a host provides, and proxies
+- [Exporting and importing](export-and-import.md): a site's content as a folder, such as a starter's sample content
 
 ## Modelling content
 
@@ -15,13 +16,13 @@ How to build a site on Sorlo, in the order you'll need it. To work on Sorlo itse
 
 ## Editing
 
-- [Drafts and publishing](drafts-and-publishing.md): drafts, live copies and previews
+- [Drafts and publishing](drafts-and-publishing.md): drafts, live copies, previews and the Preview button
 - [Versions](versions.md): each entry's history, comparing and restoring
 - [Bulk editing](bulk-editing.md): many entries in a grid, and archiving or restoring them together
 - [Media](media.md): the media library, its storage and what it takes
 - [Forms](forms.md): forms, their submissions and their spam
 - [Automations](automations.md): emails and webhooks when content changes
-- [People](people.md): inviting, removing and signing in
+- [People](people.md): the first account, inviting, removing and signing in
 
 ## Building a frontend
 

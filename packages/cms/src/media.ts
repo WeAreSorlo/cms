@@ -175,6 +175,25 @@ export async function findMedia(db: Kysely<Database>, id: string) {
 // A failed upload, as core's report for a field named file
 const rejected = (message: string) => ({ isValid: false, fields: { file: { isValid: false, messages: [message] } } })
 
+// A file's details from its content, as an upload and sorlo import store it, or why it can't be stored: a type the
+// content can't show, or one the media library doesn't take
+export async function checkFile(bytes: Buffer, name: string, types: Array<string>) {
+  const type = await detect(bytes)
+  if (!type) return { problem: "This file's type can't be told from its content, so it can't be uploaded." }
+  if (!allows(types, type.mime)) {
+    return { problem: `${type.ext.toUpperCase()} files can't be uploaded. Allowed: ${types.join(', ')}.` }
+  }
+  return {
+    file: {
+      ext: type.ext,
+      name: safeName(name, type.ext),
+      mime: type.mime,
+      size: bytes.length,
+      ...(await dimensions(bytes, type.mime)),
+    },
+  }
+}
+
 // The media library's admin API, whose routes createApp signs in, and the public route that serves its files
 export function mediaRoutes(
   db: Kysely<Database>,
@@ -215,32 +234,20 @@ export function mediaRoutes(
       if (file.size > maxFileSize) return c.json(rejected(tooLarge), 422)
 
       const bytes = Buffer.from(await file.arrayBuffer())
-      const type = await detect(bytes)
-      if (!type)
-        return c.json(rejected("This file's type can't be told from its content, so it can't be uploaded."), 422)
-      if (!allows(types, type.mime)) {
-        return c.json(rejected(`${type.ext.toUpperCase()} files can't be uploaded. Allowed: ${types.join(', ')}.`), 422)
-      }
+      const checked = await checkFile(bytes, file.name, types)
+      if (!checked.file) return c.json(rejected(checked.problem), 422)
+      const { ext, ...details } = checked.file
 
       // The key comes from the ID and the real type, so the file's name never reaches the disk
       const id = uuidv7()
       const disk = String(storage.default)
-      const path = `${id}.${type.ext}`
+      const path = `${id}.${ext}`
 
       // A file that can't be stored rolls its row back
       const row = await db.transaction().execute(async (trx) => {
         const row = await trx
           .insertInto('media')
-          .values({
-            id,
-            disk,
-            path,
-            name: safeName(file.name, type.ext),
-            mime: type.mime,
-            size: bytes.length,
-            ...(await dimensions(bytes, type.mime)),
-            created_by: c.var.user.id,
-          })
+          .values({ id, disk, path, ...details, created_by: c.var.user.id })
           .returningAll()
           .executeTakeFirstOrThrow()
         await addEvents(trx, 'media.created', [{ media: toAdminMedia(row, origin(c)) }])

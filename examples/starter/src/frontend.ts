@@ -3,7 +3,7 @@ import { createClient } from '@sorlo/sdk'
 // A frontend's side of the CMS. `npm run types` pulls src/sorlo-types.d.ts from the running CMS, which then types each
 // entry's values
 const cms = createClient({
-  url: process.env.SORLO_URL ?? 'http://localhost:3000',
+  url: process.env.SORLO_URL ?? 'http://localhost:4100',
   token: process.env.SORLO_TOKEN ?? '',
 })
 

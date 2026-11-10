@@ -2,7 +2,7 @@
 
 Forms live in the database rather than in `schema/`, since marketers make them in production. The admin's Forms page creates and edits them with the Sorlo Forms schema builder, which offers every one of its inputs. Each form has a label and a `name`, such as `contact_us`, which the SDK and the generated types call it by.
 
-A site shows a form by pasting the HTML on the form's page into one of its own, or by rendering the fields that [`GET /v1/forms/:form`](api.md#the-delivery-api) replies with [Sorlo Forms](https://github.com/WeAreSorlo/forms). Either posts to the form, as [Submissions](#submissions) describes, the second through the [SDK](sdk.md) if you like.
+A site shows a form by pasting the HTML on the form's page into one of its own, or by rendering the fields that [`GET /v1/forms/:form`](api.md#the-delivery-api) replies with [Sorlo Forms](https://github.com/WeAreSorlo/forms). The [SDK](sdk.md#forms)'s `cms.form(name).get()` fetches those fields. Either way posts to the form, as [Submissions](#submissions) describes, the second through the SDK's `submit()` if you like.
 
 - Each change to a form's fields saves a new version, and each submission records the version it was checked against, so the inbox shows it with that version's fields. Changing only the label or name keeps the version.
 - Each form has an inbox of its submissions, newest first, with Spam and Archive views. Archived submissions can be restored, and any submission can be marked as spam by hand, such as one that got past the honeypot, or as not spam, such as a person's that filled it in.

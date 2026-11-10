@@ -11,7 +11,9 @@ import { loadMigrations, migrationsDir, ranMigrations, readMigrations, rollback,
 import { hashPassword } from './passwords'
 import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
 import { apiKeySchema, apiKeyScopes, resetSchema, userSchema } from './schemas'
+import { Refused, exportContent, importContent, summary } from './transfer'
 import { loadSchema } from './types'
+import { firstAccount } from './users'
 import type { FieldSchema } from '@sorlo/forms'
 import { Kysely } from 'kysely'
 import { existsSync } from 'node:fs'
@@ -30,33 +32,9 @@ const commands: Record<string, Command> = {
     description: "Run pending migrations, or with --check, list entries that don't pass",
     run: async (db, args) => {
       if (args.includes('--check')) return check(db)
-      const { cms, content, files } = await loadAllMigrations()
-
-      // A TODO left in a waiting migration means its stub, which changes nothing, would run. Its text is the one its
-      // module was loaded from, so what's checked is what runs.
-      const ran = new Set((await ranMigrations(db)).map((row) => row.name))
-      const todos = files
-        .filter((file) => !ran.has(file.name))
-        .flatMap((file) => todosIn(file.name, notesOf(file.text)))
-      if (todos.length) {
-        console.error([...todos, 'Finish each TODO, then delete its TODO comment, and migrate again.'].join('\n'))
-        process.exitCode = 1
-        return
-      }
-
-      const { ran: names, failed, links } = await runMigrations(db, { cms, content, links: projectLinks })
-      if (names.length) console.log(names.map((name) => `Migrated ${name}`).join('\n'))
-      if (links === 'rebuilt') console.log('Rebuilt the links between entries.')
-      if (failed) {
-        const what = failed.name
-          ? `${failed.name} failed and changed nothing, and the migrations after it didn't run.`
-          : failed.during === 'links'
-            ? 'Rebuilding the links between entries failed. The next migrate, or start of the server, rebuilds them.'
-            : 'The migrations stopped before the next one started, so it and those after it still wait.'
-        console.error(what, failed.error)
-        process.exitCode = 1
-      } else if (!names.length && !links) console.log('Nothing to migrate.')
-      if (links === 'waiting') console.log(linksWait)
+      const result = await migrateAll(db, 'migrate again')
+      if (result === 'refused' || result === 'failed') process.exitCode = 1
+      if (result === 'idle') console.log('Nothing to migrate.')
     },
   },
   'migrate:rollback': {
@@ -105,6 +83,38 @@ const commands: Record<string, Command> = {
         console.log(updated ? 'Nothing needs a migration. Updated migrations/.snapshot.json.' : 'Nothing has changed.')
     },
   },
+  export: {
+    description: 'Write the content to a folder, content unless named, for sorlo import',
+    run: (db, [folder = 'content']) =>
+      transfer('exported', async () => {
+        const { content } = await loadAllMigrations()
+        const { moved, secrets } = await exportContent(db, config.storage, resolve(folder), content)
+        console.log(`Exported ${summary(moved)} to ${folder.replace(/\/+$/, '')}/.`)
+        if (secrets.length) {
+          console.log(
+            [
+              "These hold webhooks' signing secrets or headers, as automations have them:",
+              ...secrets.map((file) => `  ${file}`),
+              'Keep the folder private, or blank them before committing it. Import makes a new signing secret for a webhook without one.',
+            ].join('\n'),
+          )
+        }
+      }),
+  },
+  import: {
+    description: 'Load an export, from content unless named, into a site with no content yet',
+    run: (db, [folder = 'content']) =>
+      transfer('imported', async () => {
+        const { content } = await loadAllMigrations()
+        const moved = await importContent(db, resolve(folder), {
+          types: await loadProjectTypes(),
+          migrations: content,
+          storage: config.storage,
+          media: config.media,
+        })
+        console.log(`Imported ${summary(moved)} from ${folder.replace(/\/+$/, '')}/.`)
+      }),
+  },
   'make:user': { description: 'Create an admin user', run: makeUser },
   'user:password': { description: "Set someone's password, signing them out everywhere", run: setPassword },
   'make:api-key': {
@@ -122,6 +132,17 @@ const loadProjectSchema = () =>
 
 const loadProjectTypes = async () => (await loadProjectSchema()).types
 
+// Runs an export or an import, printing why it was refused, which changed nothing, rather than a stack trace
+async function transfer(what: 'exported' | 'imported', work: () => Promise<void>) {
+  try {
+    await work()
+  } catch (error) {
+    if (!(error instanceof Refused)) throw error
+    console.error(`${error.message}\nNothing was ${what}.`)
+    process.exitCode = 1
+  }
+}
+
 // The CMS's migrations and the site project's content migrations, which share the migrations table, with the files the
 // content migrations were loaded from
 async function loadAllMigrations() {
@@ -137,6 +158,52 @@ async function loadAllMigrations() {
 const projectLinks = { dir: resolve('migrations'), types: loadProjectTypes }
 
 const linksWait = 'The links between entries are rebuilt once every content migration has run.'
+
+// Run every waiting migration as one batch, as sorlo migrate does and sorlo dev as it starts, printing what happened:
+// refused for a TODO left in a waiting migration, which runs none, failed, ran, or idle for nothing to do. next is
+// how to run them once the TODOs are done.
+async function migrateAll(db: Kysely<Database>, next: string) {
+  const { cms, content, files } = await loadAllMigrations()
+
+  // A TODO left in a waiting migration means its stub, which changes nothing, would run. Its text is the one its
+  // module was loaded from, so what's checked is what runs.
+  const ran = new Set((await ranMigrations(db)).map((row) => row.name))
+  const todos = files.filter((file) => !ran.has(file.name)).flatMap((file) => todosIn(file.name, notesOf(file.text)))
+  if (todos.length) {
+    console.error([...todos, `Finish each TODO, then delete its TODO comment, and ${next}.`].join('\n'))
+    return 'refused'
+  }
+
+  const { ran: names, failed, links } = await runMigrations(db, { cms, content, links: projectLinks })
+  if (names.length) console.log(names.map((name) => `Migrated ${name}`).join('\n'))
+  if (links === 'rebuilt') console.log('Rebuilt the links between entries.')
+  if (failed) {
+    const what = failed.name
+      ? `${failed.name} failed and changed nothing, and the migrations after it didn't run.`
+      : failed.during === 'links'
+        ? 'Rebuilding the links between entries failed. The next migrate, or start of the server, rebuilds them.'
+        : 'The migrations stopped before the next one started, so it and those after it still wait.'
+    console.error(what, failed.error)
+  }
+  if (links === 'waiting') console.log(linksWait)
+  return failed ? 'failed' : names.length || links ? 'ran' : 'idle'
+}
+
+// Where both servers listen unless PORT names another, clear of the 3000 that frontends usually take
+const defaultPort = 4100
+
+// Listens, or stops with what to do when the port is taken, rather than a stack trace
+function listen(server: Server, port: number, host: string | undefined, listening: () => void) {
+  server.once('error', (error: NodeJS.ErrnoException) => {
+    if (error.code !== 'EADDRINUSE') throw error
+    console.error(
+      `Port ${port} is in use, by another Sorlo server or something else. Stop it, or choose another port with PORT, ` +
+        `such as PORT=${port + 1}.`,
+    )
+    process.exit(1)
+  })
+  server.listen(port, host, listening)
+}
 
 // List every entry whose values no longer pass, in its draft or its live copy, such as after a field's choices
 // narrowed, failing if there are any
@@ -164,7 +231,15 @@ async function dev(db: Kysely<Database>) {
   const { types, groups } = await loadProjectSchema()
   const dirs = { types: resolve('schema/types'), migrations: resolve('migrations') }
 
-  const port = Number(process.env.PORT) || 3000
+  // What sorlo migrate would run, first. The server starts whatever happens, so the Migrations page can show what
+  // still waits, and a database that isn't up yet gets a line rather than a stack trace.
+  await migrateAll(db, 'run them from the Migrations page').catch((error) =>
+    console.error(`Couldn't run the migrations: ${error instanceof Error ? error.message : error}`),
+  )
+
+  const port = Number(process.env.PORT) || defaultPort
+  const admin = `http://localhost:${port}/admin/`
+  const setup = firstAccount(admin)
   const server = createServer()
   // Vite serves the admin from its source, which only the CMS's own workspace has. A site's is the built one.
   const viteConfig = fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url))
@@ -191,6 +266,8 @@ async function dev(db: Kysely<Database>) {
     url: config.url,
     mail: config.mail,
     proxies: config.proxies,
+    firstAccount: setup,
+    previews: config.previews,
     admin: vite ? undefined : builtAdmin(),
     log: true,
   })
@@ -212,9 +289,10 @@ async function dev(db: Kysely<Database>) {
   })
   // Only this machine, unless HOST names another address, such as 0.0.0.0 in a container. Not localhost, which Node can
   // bind to ::1 alone, refusing 127.0.0.1. An empty HOST, as a .env can leave it, names none.
-  server.listen(port, process.env.HOST || '127.0.0.1', () =>
-    console.log(`The admin is running at http://localhost:${port}/admin/`),
-  )
+  listen(server, port, process.env.HOST || '127.0.0.1', async () => {
+    console.log(`The admin is running at ${admin}`)
+    if (await nobodyYet(db)) setup.show()
+  })
   stopOnSignals(db, server, worker, working, vite)
 }
 
@@ -230,13 +308,17 @@ function builtAdmin() {
 
 // The production server: the admin as npm run build wrote it, and types that change only through git
 async function start(db: Kysely<Database>) {
-  const { serve } = await import('@hono/node-server')
+  const { createAdaptorServer } = await import('@hono/node-server')
   const admin = builtAdmin()
 
   const { types, groups } = await loadProjectSchema()
   if (config.url === undefined) {
     console.warn("Set url in sorlo.config.ts, so file URLs and emailed links don't come from requests' Host headers.")
   }
+  // The first account's link starts from the site's address, or else from wherever the person reaches the server
+  const setup = firstAccount(
+    config.url && URL.canParse(config.url) ? `${new URL(config.url).origin}/admin/` : '/admin/',
+  )
   // No editor, so the type editor is read-only, and the Migrations page lists migrations without running them
   const app = createApp(db, types, {
     siteMigrations: resolve('migrations'),
@@ -253,6 +335,8 @@ async function start(db: Kysely<Database>) {
     url: config.url,
     mail: config.mail,
     proxies: config.proxies,
+    firstAccount: setup,
+    previews: config.previews,
     log: true,
   })
 
@@ -266,13 +350,29 @@ async function start(db: Kysely<Database>) {
 
   // Every interface, as a container needs, unless HOST names one, such as 127.0.0.1 behind a proxy on the same
   // machine. An empty HOST names none.
-  const port = Number(process.env.PORT) || 3000
-  // serve makes an HTTP/1 server, since it isn't given HTTP/2's createServer
-  const server = serve({ fetch: app.fetch, port, hostname: process.env.HOST || undefined }, () =>
-    console.log(`Sorlo is running on port ${port}, with the admin at /admin/`),
-  ) as Server
+  const port = Number(process.env.PORT) || defaultPort
+  const hostname = process.env.HOST || undefined
+  // An HTTP/1 server, since it isn't given HTTP/2's createServer
+  const server = createAdaptorServer({ fetch: app.fetch, hostname }) as Server
+  listen(server, port, hostname, async () => {
+    console.log(`Sorlo is running on port ${port}, with the admin at /admin/`)
+    if (await nobodyYet(db)) setup.show()
+  })
   stopOnSignals(db, server, worker, working)
 }
+
+// Whether nobody has an account yet, so the first can be made in the admin. A database that can't say, such as one
+// without its tables yet, counts as having people, since its admin can't make anyone.
+const nobodyYet = (db: Kysely<Database>) =>
+  db
+    .selectFrom('users')
+    .select('id')
+    .limit(1)
+    .executeTakeFirst()
+    .then(
+      (user) => !user,
+      () => false,
+    )
 
 // Stops on SIGTERM, as hosts stop a container, or SIGINT, as Ctrl-C does: no new connections, the worker's run
 // finished, such as a webhook it's waiting for, what's still open after 5 seconds ended, such as a chat's streaming

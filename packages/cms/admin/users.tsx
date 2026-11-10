@@ -1,4 +1,12 @@
-import { accountSchema, inviteSchema, joinSchema, resetSchema, signInSchema } from '../src/schemas'
+import {
+  accountSchema,
+  inviteSchema,
+  joinSchema,
+  resetSchema,
+  setupSchema,
+  signInSchema,
+  userSchema,
+} from '../src/schemas'
 import { api, count, errorMessage, shortDate } from './api'
 import { CellText } from './entries'
 import { NewToken } from './keys'
@@ -191,6 +199,40 @@ export function SignIn({ onSignIn }: { onSignIn: (user: SignedIn) => void }) {
         if (status === 200) return onSignIn(body.data)
         if (status === 422) return { report: body }
         if (status === 429) return { problem: body.message }
+        throw new Error(body?.message)
+      }}
+    />
+  )
+}
+
+// The first account, while nobody has one, with the code the server printed as it started. The link it printed
+// brings the code, so then the form asks only for the name, email and password. Once someone else has made it, sign-in
+// takes over.
+export function SetupPage({
+  code,
+  onSignIn,
+  onClosed,
+}: {
+  code?: string
+  onSignIn: (user: SignedIn) => void
+  onClosed: () => void
+}) {
+  return (
+    <AccessPage
+      title='Make the first account'
+      intro={<p>Nobody has an account here yet. You'll be the first, and can invite others from Users.</p>}
+      schema={code ? userSchema : setupSchema}
+      action='Make the account'
+      working='Making it…'
+      failure="Couldn't make the account. Try again in a moment."
+      onSend={async (values) => {
+        const { status, body } = await post('/session/setup', code ? { ...values, code } : values)
+        if (status === 200) return onSignIn(body.data)
+        // The form has no code field when the link brought the code
+        if (status === 422 && code && body?.fields?.code?.isValid === false)
+          return { problem: body.fields.code.messages[0] }
+        if (status === 422) return { report: body }
+        if (status === 409) return onClosed()
         throw new Error(body?.message)
       }}
     />

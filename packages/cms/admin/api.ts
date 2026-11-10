@@ -12,6 +12,14 @@ export const TypesContext = createContext(new Map<string, ContentType>())
 // The site's shared groups by name, as their files have them, for the type editor
 export const GroupsContext = createContext(new Map<string, SharedGroup>())
 
+// The names of the types whose editor has a Preview button, from previews in sorlo.config.ts
+export const PreviewsContext = createContext<Array<string>>([])
+
+// Who saved or published a version, or The CLI for no one, since sorlo import and sorlo migrate record no one, as API
+// keys made by sorlo make:api-key do
+// shortcut: a version whose person was deleted, before removal kept people's rows, says the CLI too
+export const personOf = (person: { name: string } | null) => person?.name ?? 'The CLI'
+
 // A page's place in the URL's hash, without the query after it, which holds a list's search and filters
 export const pathOf = (hash: string) => hash.split('?')[0]
 

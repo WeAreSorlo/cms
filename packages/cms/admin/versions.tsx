@@ -8,6 +8,7 @@ import {
   date,
   errorMessage,
   formatValue,
+  personOf,
   shortDate,
   titleOf,
   usePageView,
@@ -34,11 +35,11 @@ export const nameOf = (version: Version) => version.name ?? `Version ${version.n
 
 // Who last published a version, and through which MCP token or with the assistant, and when
 const publishedBy = (version: Version) =>
-  `${version.publishedBy?.name ?? 'Deleted user'}${viaText(version.publishedVia)} · ${shortDate(version.publishedAt!)}`
+  `${personOf(version.publishedBy)}${viaText(version.publishedVia)} · ${shortDate(version.publishedAt!)}`
 
 // Who saved a version, and through which MCP token or with the assistant, and when
 const savedBy = (version: Version) =>
-  `${version.createdBy?.name ?? 'Deleted user'}${viaText(version.via)} · ${shortDate(version.createdAt)}`
+  `${personOf(version.createdBy)}${viaText(version.via)} · ${shortDate(version.createdAt)}`
 
 // A value as text: entries' titles and files' names, Yes or No for a box, and otherwise what the lists show
 function valueText(field: FieldSchema, value: unknown, links: Record<string, string | null>) {

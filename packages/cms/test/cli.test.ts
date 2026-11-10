@@ -1,7 +1,9 @@
+import { uuidv7 } from '../src/db'
 import { hashToken, verifyPassword } from '../src/passwords'
-import { db, url } from './database'
-import { setUp } from './fixtures'
+import { db, resetDb, url } from './database'
+import { contactFields, setUp } from './fixtures'
 import { ChildProcess, execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { AddressInfo, createServer } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
@@ -222,6 +224,173 @@ test('dev stops cleanly on SIGTERM, as start does when a host stops its containe
       }
       expect(await exited, signals.join(', ')).toBe(0)
       expect(stdout).toContain('Stopping…\nStopped.\n')
+    }
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+// A site project on the test database, with its media on a disk in it, for commands that use storage
+async function siteWithStorage() {
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
+  const driver = import.meta.resolve('flydrive/drivers/fs')
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(
+    join(dir, 'sorlo.config.ts'),
+    [
+      `import { FSDriver } from ${JSON.stringify(driver)}`,
+      'export default {',
+      `  database: { url: ${JSON.stringify(url)} },`,
+      "  storage: { default: 'local', services: { local: () => new FSDriver({ location: new URL('./storage/', import.meta.url), visibility: 'public' }) } },",
+      '}',
+      '',
+    ].join('\n'),
+  )
+  await mkdir(join(dir, 'schema/types'), { recursive: true })
+  return dir
+}
+
+// A command in a site project, settled as its exit code and what it printed
+const run = (dir: string, args: Array<string>) =>
+  promisify(execFile)(process.execPath, [bin, ...args], { cwd: dir }).then(
+    ({ stdout, stderr }) => ({ code: 0, stdout, stderr }),
+    ({ code, stdout, stderr }) => ({ code, stdout, stderr }),
+  )
+
+test('export and import say what they moved, and why they changed nothing', async () => {
+  await setUp()
+  const fields = JSON.stringify(contactFields)
+  const form = { id: uuidv7(), name: 'contact', label: 'Contact us', fields, version: 1 }
+  await db.insertInto('forms').values(form).execute()
+  await db.insertInto('form_versions').values({ form_id: form.id, number: 1, fields }).execute()
+  const dir = await siteWithStorage()
+  try {
+    expect(await run(dir, ['export'])).toEqual({
+      code: 0,
+      stdout: 'Exported 0 entries, 0 files, 1 form and 0 automations to content/.\n',
+      stderr: '',
+    })
+    expect(await run(dir, ['import'])).toEqual({
+      code: 1,
+      stdout: '',
+      stderr:
+        'This site has forms already. Import only goes into a site without any entries, media, forms or automations.\n' +
+        'Nothing was imported.\n',
+    })
+
+    await db.deleteFrom('forms').execute()
+    expect(await run(dir, ['import', 'content/'])).toEqual({
+      code: 0,
+      stdout: 'Imported 0 entries, 0 files, 1 form and 0 automations from content/.\n',
+      stderr: '',
+    })
+    expect(await run(dir, ['export', '.'])).toEqual({
+      code: 1,
+      stdout: '',
+      stderr:
+        "./ holds files that aren't an export. Choose an empty folder or an earlier export.\nNothing was exported.\n",
+    })
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+// sorlo dev or start on a port, settled once it says where it's running or exits
+const serve = (dir: string, command: 'dev' | 'start', port: number) => {
+  const { HOST, ...env } = process.env
+  const child = spawn(process.execPath, [bin, command], { cwd: dir, env: { ...env, PORT: String(port) } })
+  let stdout = ''
+  let stderr = ''
+  child.stdout.on('data', (data) => (stdout += data))
+  child.stderr.on('data', (data) => (stderr += data))
+  const started = new Promise<{ code: number | null }>((resolve) => {
+    child.stdout.on('data', () => /The admin is running|Sorlo is running/.test(stdout) && resolve({ code: null }))
+    child.once('exit', (code) => resolve({ code }))
+  })
+  return { child, started, output: () => ({ stdout, stderr }) }
+}
+
+test('dev runs what migrate would as it starts, then prints the link that makes the first account', async () => {
+  await resetDb()
+  const dir = await siteWithStorage()
+  const port = await freePort()
+  const dev = serve(dir, 'dev', port)
+  try {
+    expect(await dev.started).toEqual({ code: null })
+    // The link follows the line saying where the admin is, once nobody is found
+    for (let tries = 0; !dev.output().stdout.includes('No one has an account yet'); tries++) {
+      if (tries > 100) throw new Error(dev.output().stdout)
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    const { stdout } = dev.output()
+    expect(stdout).toContain('Migrated 2026_10_28_000000_create_users_table\n')
+    const [, link, code] = stdout.match(/Make the first at (\S+#\/setup\/(\S+))\n/)!
+    expect(link).toBe(`http://localhost:${port}/admin/#/setup/${code}`)
+
+    const made = await fetch(`http://127.0.0.1:${port}/api/session/setup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Ada', email: 'ada@example.com', password: 'correct horse', code }),
+    })
+    expect(made.status).toBe(200)
+  } finally {
+    dev.child.kill()
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+test('dev starts with a TODO left in a waiting migration, running none of them, as migrate refuses to', async () => {
+  await resetDb()
+  const dir = await siteWithStorage()
+  await mkdir(join(dir, 'migrations'))
+  await writeFile(
+    join(dir, 'migrations/2099_12_31_000000_todo.ts'),
+    ['export const up = () => {', '  // TODO: convert the values', '}', 'export const down = () => {}', ''].join('\n'),
+  )
+  const dev = serve(dir, 'dev', await freePort())
+  try {
+    expect(await dev.started).toEqual({ code: null })
+    // Vite's own warnings can follow, in this workspace
+    expect(dev.output().stderr).toMatch(/^2099_12_31_000000_todo still has a TODO, at line 2: convert the values\.\n/)
+    expect(dev.output().stderr).toContain(
+      'Finish each TODO, then delete its TODO comment, and run them from the Migrations page.\n',
+    )
+    expect(dev.output().stdout).not.toContain('Migrated')
+  } finally {
+    dev.child.kill()
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+// start serves the built admin, which npm run build makes
+const built = existsSync(fileURLToPath(new URL('../admin/dist/index.html', import.meta.url)))
+
+test('a port in use stops dev and start with what to do, rather than a stack trace', async () => {
+  await setUp()
+  const dir = await siteWithStorage()
+  // Taken where each listens: dev on 127.0.0.1, and start on every address
+  const commands: Array<['dev' | 'start', string | undefined]> = [['dev', '127.0.0.1']]
+  if (built) commands.push(['start', undefined])
+  try {
+    for (const [command, host] of commands) {
+      const taken = createServer()
+      const port = await new Promise<number>((resolve) =>
+        taken.listen(0, host, () => resolve((taken.address() as AddressInfo).port)),
+      )
+      const server = serve(dir, command, port)
+      try {
+        expect(await server.started, command).toEqual({ code: 1 })
+        // After any warnings of Vite's, in this workspace, and with no stack trace
+        const { stderr } = server.output()
+        expect(stderr, command).toContain(
+          `Port ${port} is in use, by another Sorlo server or something else. Stop it, or choose another port with ` +
+            `PORT, such as PORT=${port + 1}.\n`,
+        )
+        expect(stderr, command).not.toMatch(/^\s+at /m)
+      } finally {
+        server.child.kill()
+        taken.close()
+      }
     }
   } finally {
     await rm(dir, { recursive: true })

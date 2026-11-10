@@ -29,6 +29,30 @@ export interface Config {
   // Turns on the admin's assistant and its Chat page, which read the site's content with a model from this provider,
   // billed to its account. Off if not given.
   ai?: AiOptions
+  // The editor's Preview button for each content type, by its name: the address of a page on the site, or a function
+  // giving one from the entry's saved draft, or nothing for no preview of that entry. Types left out have no button.
+  // It runs on the server, so an address can carry a secret from the environment for the site's preview route.
+  previews?: Record<string, Preview | null | undefined>
+}
+
+export type Preview = string | ((context: { entry: DraftEntry }) => PreviewUrl | Promise<PreviewUrl>)
+
+// An http or https address, or nothing for no preview
+export type PreviewUrl = string | null | undefined
+
+// An entry's saved draft, as the delivery API replies it to a preview key: its values can be unfinished, and one that
+// has never been live has no publishedAt
+export interface DraftEntry {
+  id: string
+  type: string
+  slug: string | null
+  uri: string | null
+  parentId: string | null
+  position: number | null
+  values: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+  publishedAt: string | null
 }
 
 // What MCP tokens can be given besides reading and Save drafts

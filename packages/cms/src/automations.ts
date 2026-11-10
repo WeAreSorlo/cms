@@ -63,6 +63,38 @@ const runsFor = (row: AutomationRow, form: { id: string; name: string; label: st
   )
 }
 
+// An automation's settings from what was sent, as saving one checks them, with each action's settings filled in, such
+// as a new webhook's signing secret, or core's report. Rules test the fields of the types and forms as they are now,
+// which the type editor and the admin change, and only the data of the events it's triggered by.
+export async function checkAutomation(db: Kysely<Database>, types: Map<string, ContentType>, body: any) {
+  const forms = await db.selectFrom('forms').select(['id', 'label', 'fields']).execute()
+  const triggers = Array.isArray(body?.triggers) ? body.triggers : []
+  const schema = automationSchema(baseInputSchemaFields(), types.values(), forms, triggers)
+  const picked = pickValues(schema, body ?? {}, inputs)
+  const values: Record<string, any> = {
+    ...picked,
+    actions: (picked.actions ?? []).map((block: any) => actions[block._layout]?.prepare?.(block) ?? block),
+  }
+  const report = await validateServerValues(schema, values, inputs)
+  if (!report.isValid) return { report }
+
+  // Checks core has no inputs for, such as a webhook's header names, shown on the actions
+  const problems = values.actions.flatMap((block: any, index: number) =>
+    (actions[block._layout].check?.(block) ?? []).map((problem) => `Action ${index + 1}: ${problem}`),
+  )
+  if (problems.length) {
+    return { report: { isValid: false, fields: { ...report.fields, actions: { isValid: false, messages: problems } } } }
+  }
+  return {
+    values: {
+      name: values.name as string,
+      triggers: JSON.stringify(values.triggers),
+      conditions: JSON.stringify(values.conditions ?? []),
+      actions: JSON.stringify(values.actions),
+    },
+  }
+}
+
 // The admin API for automations and their runs. Every route needs a session, which createApp checks.
 export function automationRoutes(db: Kysely<Database>, types: Map<string, ContentType>) {
   const app = new Hono<AdminEnv>()
@@ -76,39 +108,11 @@ export function automationRoutes(db: Kysely<Database>, types: Map<string, Conten
   }
 
   const save = async (c: Context<AdminEnv>, existing?: AutomationRow) => {
-    const body = await c.req.json().catch(() => ({}))
-    // Rules test the fields of the types and forms as they are now, which the type editor and the admin change, and
-    // only the data of the events it's triggered by
-    const forms = await db.selectFrom('forms').select(['id', 'label', 'fields']).execute()
-    const triggers = Array.isArray(body?.triggers) ? body.triggers : []
-    const schema = automationSchema(baseInputSchemaFields(), types.values(), forms, triggers)
-    const picked = pickValues(schema, body ?? {}, inputs)
-    const values: Record<string, any> = {
-      ...picked,
-      actions: (picked.actions ?? []).map((block: any) => actions[block._layout]?.prepare?.(block) ?? block),
-    }
-    const report = await validateServerValues(schema, values, inputs)
-    if (!report.isValid) return c.json(report, 422)
-
-    // Checks core has no inputs for, such as a webhook's header names, shown on the actions
-    const problems = values.actions.flatMap((block: any, index: number) =>
-      (actions[block._layout].check?.(block) ?? []).map((problem) => `Action ${index + 1}: ${problem}`),
-    )
-    if (problems.length) {
-      return c.json(
-        { isValid: false, fields: { ...report.fields, actions: { isValid: false, messages: problems } } },
-        422,
-      )
-    }
+    const checked = await checkAutomation(db, types, await c.req.json().catch(() => ({})))
+    if (checked.report) return c.json(checked.report, 422)
 
     const user = c.var.user.id
-    const saved = {
-      name: values.name,
-      triggers: JSON.stringify(values.triggers),
-      conditions: JSON.stringify(values.conditions ?? []),
-      actions: JSON.stringify(values.actions),
-      updated_by: user,
-    }
+    const saved = { ...checked.values, updated_by: user }
     const row = existing
       ? await db
           .updateTable('automations')

@@ -1,6 +1,6 @@
 # People
 
-Everyone who signs in to the admin is on its Users page, from Users in the nav. There are no roles yet, so each of them can do anything there, inviting and removing the others included. `npx sorlo make:user` makes the first.
+Everyone who signs in to the admin is on its Users page, from Users in the nav. There are no roles yet, so each of them can do anything there, inviting and removing the others included. The first person makes their own account in the admin, as [The first account](#the-first-account) describes.
 
 ```ts
 export default defineConfig({
@@ -11,7 +11,26 @@ export default defineConfig({
 })
 ```
 
+## The first account
+
+While nobody has an account, the admin shows Make the first account in place of sign-in: a name, an email and a password, and then you're signed in. A code guards it, so whoever finds a fresh site first can't take it. Each server makes one as it starts, and prints it in a link that fills it in:
+
+```
+The admin is running at http://localhost:4100/admin/
+No one has an account yet. Make the first at http://localhost:4100/admin/#/setup/K7QX-M2PD-9VHT-4CWA
+```
+
+- **The code sits in the link's fragment,** which browsers never send, so it stays out of access logs. Opened any other way, the page asks for the code. A wrong one is refused before the password is hashed, so guesses cost the server little, and 80 random bits need no limit on them.
+- **Under `sorlo start`,** the link starts from `url`. Without it, the line gives the link's path, `/admin/#/setup/<code>`, to open on the site's address. Hosts show the log in their dashboards.
+- **The code changes each time the server starts,** and each instance has its own, which only it takes, so make the first account while one instance runs.
+- **The first account closes it for good,** since removed people keep their rows, and two people trying at once make one account between them.
+- **`npx sorlo make:user`** makes an account from the terminal instead, such as in a script.
+
+## Settings
+
 `url` is the admin's public address. Links in emails start from it, never from a request's Host header, which anyone can set, so a forged one can't send someone's reset link to another site. Invites and reset links are emailed only with both `url` and [`mail`](automations.md#runs-and-retries) set. Without them, the admin shows each link once, to copy and pass on. `url` takes an `http://` or `https://` address, and `sorlo dev` and `sorlo start` won't start with anything else. The starter's comes from `APP_URL`, as [Starting a site](starting-a-site.md) suggests. File URLs start from it too, whatever Host or `X-Forwarded-Proto` a request sends, and `sorlo start` warns when it isn't set.
+
+## The Users page
 
 - **The list** shows everyone who can sign in, by name, with when each last used the admin, written at most once a minute, and when they joined, then the invites waiting. Removed users, in its panel's footer, lists those removed, latest first.
 - **Inviting** gives a link that works once, for 7 days. The page shows it once, with Copy, since only its hash is kept, and emails it too where the site sends email, saying whether it went. Inviting an address that has an invite already makes a new link and stops the old one, which is what an invite's New link does, and Delete revokes one. An address with an account can't be invited. The link opens a page like sign-in's, where the person chooses their name and a password of at least 8 characters, then is signed in, with the email they were invited at.

@@ -25,17 +25,21 @@ Then, in this repo:
 npm install
 npm run build       # the SDK and the CMS into their dist folders, and the admin into admin/dist
 npm run db          # Postgres 17 on localhost:5432
+npm run dev         # builds the server code again, then runs sorlo dev: the admin is at http://localhost:4100/admin/
+```
+
+`sorlo dev` runs the migrations as it starts, then prints a link for making the first account, as [People](docs/people.md#the-first-account) describes. Then, in another terminal, make a key for the delivery API that can pull types:
+
+```bash
 cd examples/starter
-npx sorlo migrate
-npx sorlo make:user
-npx sorlo make:api-key --types   # a key for the delivery API that can pull types
-cd ../..
-npm run dev         # builds the server code again, then runs sorlo dev: the admin is at http://localhost:3000/admin/
+npx sorlo make:api-key --types
 ```
 
 `npm run db` also creates a `sorlo_test` database for the tests and `sorlo_starter` for the starter, but only when it first creates the Postgres volume. On an older volume, add the starter's with `docker compose exec postgres createdb -U sorlo sorlo_starter`.
 
 The packages point at their `dist` folders, as a site gets them, so the starter runs what's built. `npm run dev` in the workspace builds the SDK's and the CMS's server code first, with tsup, so restart it after changing either. The admin is the exception: in this workspace `sorlo dev` serves it from its source through Vite, which reloads it as you edit.
+
+The starter's `sorlo.config.ts` sets [`previews`](docs/drafts-and-publishing.md#the-preview-button) for posts, so their editor has a Preview button, which opens a frontend on port 3000 that the starter doesn't have. `npx sorlo export` and `npx sorlo import` in `examples/starter` move its content to and from a folder, as [Exporting and importing](docs/export-and-import.md) describes.
 
 In this workspace's `sorlo dev`, `/admin/#/design` shows the admin's design system: its tokens, their contrast in the current theme, and every Sorlo Forms input. Sites, whose admin is the built one, don't have the page.
 

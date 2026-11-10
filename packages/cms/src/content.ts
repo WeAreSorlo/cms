@@ -325,13 +325,24 @@ export function contentMigrations(
 export async function catchUp(type: string, values: Values, migrations: Array<ContentMigration>) {
   const steps = (await Promise.all(migrations.map(stepsOf))).flat()
   for (const step of [...steps].reverse()) if (step.rename === type) type = step.type
+  return walk(steps, type, values).values
+}
 
+// Values that a type then named type had, through the steps in turn, with the name the type has after them
+function walk(steps: Array<Step>, type: string, values: Values) {
   for (const step of steps) {
     if (step.type !== type) continue
     if (step.rename !== undefined) type = step.rename
     else values = step.change!(values)
   }
-  return values
+  return { type, values }
+}
+
+// Brings values from before the migrations up to date with their ups, as sorlo import does with an export made before
+// them, from the name the type had in the export to the name it has now
+export async function catchUpFrom(migrations: Array<ContentMigration>) {
+  const steps = (await Promise.all(migrations.map(stepsOf))).flat()
+  return (type: string, values: Values) => walk(steps, type, values)
 }
 
 // Every saved entry and every live copy whose values no longer pass its type's checks, or whose type is gone, for

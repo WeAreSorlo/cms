@@ -36,10 +36,10 @@ export default defineConfig({
 With `DATABASE_URL` in the project's `.env`:
 
 ```bash
-npx sorlo migrate
-npx sorlo make:user
-npx sorlo dev        # the admin is at http://localhost:3000/admin/
+npx sorlo dev        # migrates, then the admin is at http://localhost:4100/admin/
 ```
+
+`sorlo dev` prints a link for making the first account.
 
 In `sorlo dev`, the admin's Content types page writes each type's file in `schema/types`, such as `schema/types/posts.json`, with the content migration for each change. A frontend reads the content through [`@sorlo/sdk`](https://www.npmjs.com/package/@sorlo/sdk), typed from the CMS's types.
 

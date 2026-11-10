@@ -298,6 +298,25 @@ test('submit() sends a form its values as JSON, with no key needed', async () =>
   await expect(createClient({ url }).entries('blog').first()).rejects.toMatchObject({ status: 401 })
 })
 
+test("get() replies a form's label and fields, for Sorlo Forms, with no key needed", async () => {
+  expect(await createClient({ url }).form('contact').get()).toEqual({
+    id: expect.any(String),
+    name: 'contact',
+    label: 'Contact us',
+    version: 1,
+    fields: contactFields,
+    open: true,
+  })
+  await expect(
+    createClient({ url })
+      .form('survey' as 'contact')
+      .get(),
+  ).rejects.toMatchObject({
+    status: 404,
+    message: 'Not Found',
+  })
+})
+
 test('generates a type for each content type, shared group and form, registered with the SDK', async () => {
   // sdk.test-d.ts typechecks queries against this file, so it also shows the generated types compile
   await expect(generated()).toMatchFileSnapshot('./sorlo-types.d.ts')

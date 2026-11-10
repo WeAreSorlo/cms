@@ -2,6 +2,7 @@ import { maxTicked } from '../src/schemas'
 import {
   ContentType,
   Entry,
+  PreviewsContext,
   SectionContext,
   TypesContext,
   allEntries,
@@ -13,6 +14,7 @@ import {
   formatValue,
   listView,
   matchingOf,
+  personOf,
   shortDate,
   titleOf,
   tree,
@@ -59,6 +61,7 @@ import {
   ArrowUp,
   ChevronsUpDown,
   CircleAlert,
+  ExternalLink,
   Plus,
   SearchX,
   Sheet,
@@ -763,12 +766,12 @@ export function Versions({
               </div>
               {version.name && <div className='cms-versions__by'>Version {version.number}</div>}
               <div className='cms-versions__by'>
-                {version.createdBy?.name ?? 'Deleted user'}
+                {personOf(version.createdBy)}
                 {viaText(version.via)} · {shortDate(version.createdAt)}
               </div>
               {drafts && version.publishedAt && (
                 <div className='cms-versions__by'>
-                  Published by {version.publishedBy?.name ?? 'Deleted user'}
+                  Published by {personOf(version.publishedBy)}
                   {viaText(version.publishedVia)} · {shortDate(version.publishedAt, false)}
                 </div>
               )}
@@ -1029,6 +1032,14 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
   const archived = !!entry?.archivedAt
 
+  // Opens the saved draft on the site in a new tab, through the CMS, which works out its address as the tab opens
+  const previews = useContext(PreviewsContext)
+  const preview = entry && !archived && previews.includes(type.name) && (
+    <a className='sorlo-button' href={`/api/entries/${entry.id}/preview`} target='_blank' rel='noopener'>
+      <ExternalLink /> Preview<span className='cms-visually-hidden'>, the last save, in a new tab</span>
+    </a>
+  )
+
   return (
     <div>
       <PageHeader
@@ -1090,6 +1101,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
             </button>
           ) : drafts ? (
             <>
+              {preview}
               <button type='button' className='sorlo-button' aria-busy={busy === 'save'} onClick={() => save(false)}>
                 {busy === 'save' ? 'Saving…' : 'Save draft'}
               </button>
@@ -1104,15 +1116,18 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
               </button>
             </>
           ) : (
-            <button
-              ref={primaryButton}
-              type='button'
-              className='sorlo-button sorlo-button--primary'
-              aria-busy={busy === 'save'}
-              onClick={() => save(false)}
-            >
-              {busy === 'save' ? 'Saving…' : 'Save'}
-            </button>
+            <>
+              {preview}
+              <button
+                ref={primaryButton}
+                type='button'
+                className='sorlo-button sorlo-button--primary'
+                aria-busy={busy === 'save'}
+                onClick={() => save(false)}
+              >
+                {busy === 'save' ? 'Saving…' : 'Save'}
+              </button>
+            </>
           )
         }
         footer={

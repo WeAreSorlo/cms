@@ -3,7 +3,7 @@
 A site's frontend reads its content from the delivery API with an API key. Make one on the admin's API keys page, or with `npx sorlo make:api-key`, then ask for a type's entries:
 
 ```bash
-curl -H "Authorization: Bearer <key>" http://localhost:3000/v1/entries/blog
+curl -H "Authorization: Bearer <key>" http://localhost:4100/v1/entries/blog
 ```
 
 The [SDK](sdk.md) makes the same requests with types pulled from the CMS. The admin has an API of its own, which [the admin API](admin-api.md) describes.
@@ -119,7 +119,7 @@ A media file has the `url` that serves it, on [`url`](people.md)'s address, or w
   "height": 1067,
   "alt": "Twelve people on a beach, waving",
   "caption": "The team at the offsite",
-  "url": "http://localhost:3000/media/0192f0c4-…/team-photo.jpg",
+  "url": "http://localhost:4100/media/0192f0c4-…/team-photo.jpg",
   "createdAt": "2026-10-28T12:00:00.000Z",
   "updatedAt": "2026-10-28T12:00:00.000Z"
 }

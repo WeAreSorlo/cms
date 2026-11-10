@@ -1,11 +1,20 @@
-import type { DeliveryOptions, FormOptions, MailOptions, McpOptions, MediaOptions, Storage, VersionOptions } from '.'
+import type {
+  DeliveryOptions,
+  FormOptions,
+  MailOptions,
+  McpOptions,
+  MediaOptions,
+  Preview,
+  Storage,
+  VersionOptions,
+} from '.'
 import type { AiProvider } from './ai'
 import { automationRoutes } from './automations'
 import { chatRoutes } from './chats'
 import { type ContentMigrationFile, loadContentMigrations } from './content'
 import { Database } from './db'
 import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
-import { AdminEnv, entryRoutes } from './entries'
+import { AdminEnv, checkPreviews, entryRoutes } from './entries'
 import { formRoutes, proxyList, publicFormRoutes } from './forms'
 import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
@@ -14,7 +23,7 @@ import { migrationRoutes } from './runMigrations'
 import { EditorDirs, typeRoutes, typeSaver } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
 import { typesFile } from './typescript'
-import { markActive, peopleLimits, sessionCookie, sessionRoutes, userRoutes } from './users'
+import { FirstAccount, markActive, peopleLimits, sessionCookie, sessionRoutes, userRoutes } from './users'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie } from 'hono/cookie'
@@ -63,6 +72,11 @@ export interface AppOptions {
   mail?: MailOptions
   // The networks of the proxies in front of the CMS, beyond loopback and private ones, from sorlo.config.ts
   proxies?: Array<string>
+  // The code the servers print for making the first account in the admin while nobody has one. Without it, only sorlo
+  // make:user makes the first.
+  firstAccount?: FirstAccount
+  // The editor's Preview button for each type, from sorlo.config.ts
+  previews?: Record<string, Preview | null | undefined>
   // Whether to log each request, as the servers do
   log?: boolean
 }
@@ -87,11 +101,14 @@ export function createApp(
     url,
     mail,
     proxies,
+    firstAccount,
+    previews = {},
     log = false,
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5, maxLinks = 2000 } = delivery ?? {}
   const publish = typeof mcp === 'object' && mcp.publish === true
+  checkPreviews(previews, types)
   const app = new Hono<AdminEnv>()
   // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
   const saver = editor && typeSaver(db, types, groups, editor)
@@ -118,7 +135,7 @@ export function createApp(
   // Whose X-Forwarded-For the form limit, the address a submission records and the people limits believe
   const trusted = proxyList(proxies)
   // The limits sign-in and your account's current password share
-  const people = { url: site?.origin, mail, limits: peopleLimits(), proxies: trusted }
+  const people = { url: site?.origin, mail, limits: peopleLimits(), proxies: trusted, firstAccount }
 
   // Every error except a failed validation replies { message }, as Laravel does
   app.notFound((c) => c.json({ message: 'Not Found' }, 404))
@@ -159,7 +176,7 @@ export function createApp(
     app.use('/admin/*', serveStatic({ root: admin, rewriteRequestPath: (path) => path.slice('/admin'.length) }))
   }
 
-  // Sign in, join with an invite, and ask for and use a reset link, which need no session
+  // Sign in, make the first account, join with an invite, and ask for and use a reset link, which need no session
   app.route('/api', sessionRoutes(db, people))
 
   // The user whose session cookie came with the request, marked as using the admin. Someone removed has no sessions
@@ -218,9 +235,14 @@ export function createApp(
   if (ai) app.use('/api/chats/*', signedIn)
   app.route(
     '/api',
-    typeRoutes(types, groups, saver, { mcp: !!mcp && { publish }, ai: !!ai, mail: !!(people.url && mail) }),
+    typeRoutes(types, groups, saver, {
+      mcp: !!mcp && { publish },
+      ai: !!ai,
+      mail: !!(people.url && mail),
+      previews: Object.keys(previews).filter((name) => previews[name] != null),
+    }),
   )
-  app.route('/api', entryRoutes(db, types, migrations, versions))
+  app.route('/api', entryRoutes(db, types, migrations, versions, previews))
   // Migrations run from the admin only where the type editor is, in sorlo dev
   app.route(
     '/api',

@@ -6,13 +6,13 @@ import type { AdminEnv } from './entries'
 import { clientIp, limitKey, rateLimiter } from './forms'
 import { origin } from './media'
 import { hashPassword, hashToken, verifyPassword } from './passwords'
-import { accountSchema, inviteSchema, joinSchema, resetSchema, signInSchema } from './schemas'
+import { accountSchema, inviteSchema, joinSchema, resetSchema, setupSchema, signInSchema } from './schemas'
 import { Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { getCookie, setCookie } from 'hono/cookie'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, sql } from 'kysely'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import type { BlockList } from 'node:net'
 
 // People, and how they get a session: sign-in, invites, reset links and each person's account. The
@@ -25,6 +25,8 @@ const sessionLength = 30 * 24 * 60 * 60 * 1000
 const inviteLength = 7 * 24 * 60 * 60 * 1000
 const resetLength = 60 * 60 * 1000
 
+const setupClosed = 'Someone has made the first account already, so sign in.'
+const wrongCode = "This isn't the code the server printed. It changes each time the server starts, so take the newest."
 const inviteGone = 'This invite has expired or been used. Ask for a new one.'
 const resetGone = 'This link has expired or been used. Ask for a new one.'
 const emailTaken = 'This email already has an account.'
@@ -52,6 +54,45 @@ export interface PeopleOptions {
   limits: ReturnType<typeof peopleLimits>
   // The networks whose X-Forwarded-For the limits believe, from proxyList
   proxies: BlockList
+  // The code that making the first account in the admin needs. Without it, only sorlo make:user makes one.
+  firstAccount?: FirstAccount
+}
+
+// The code that making the first account needs while nobody has one, which a server makes as it starts and prints,
+// so whoever finds a fresh site first can't take it
+export interface FirstAccount {
+  code: string
+  // Prints the link to the page that makes it, once
+  show: () => void
+}
+
+// Capitals and digits, without 0, O, 1 and I, which look alike
+const codeCharacters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+// A first account's code, 80 random bits in four groups, such as K7QX-M2PD-9VHT-4CWA, with its link printed for the
+// admin at an address, such as http://localhost:4100/admin/, or its path, /admin/, where the site's address isn't known.
+// The code goes in the link's fragment, which browsers never send, so it stays out of access logs.
+export function firstAccount(admin: string): FirstAccount {
+  const groups = Array.from({ length: 4 }, () => Array.from({ length: 4 }, () => codeCharacters[randomInt(32)]))
+  const code = groups.map((group) => group.join('')).join('-')
+  let shown = false
+  return {
+    code,
+    show: () => {
+      if (shown) return
+      shown = true
+      const link = `${admin}#/setup/${code}`
+      const where = admin.startsWith('/') ? `on this server's address at ${link}` : `at ${link}`
+      console.log(`No one has an account yet. Make the first ${where}`)
+    },
+  }
+}
+
+// Whether a code typed or brought by a link is the server's, whatever its case, spaces or dashes
+const sameCode = (sent: string, code: string) => {
+  const given = Buffer.from(sent.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+  const wanted = Buffer.from(code.replace(/-/g, ''))
+  return given.length === wanted.length && timingSafeEqual(given, wanted)
 }
 
 // A link to one of the admin's pages for links. The token goes in the URL's fragment, which browsers never send to a
@@ -200,7 +241,7 @@ function resetEmail(to: string, url: string, link: string) {
 // The routes under /api/session that need no session: signing in, joining with an invite, and asking for and using a
 // reset link. Anyone can post to them, so each body is limited before it's read, and each link is looked up before any
 // password is hashed, so a made-up one costs no scrypt.
-export function sessionRoutes(db: Kysely<Database>, { url, mail, limits, proxies }: PeopleOptions) {
+export function sessionRoutes(db: Kysely<Database>, { url, mail, limits, proxies, firstAccount }: PeopleOptions) {
   const app = new Hono()
   const limit = bodyLimit({
     maxSize: 64 * 1024,
@@ -208,6 +249,45 @@ export function sessionRoutes(db: Kysely<Database>, { url, mail, limits, proxies
   })
   // How many of Forgot your password?'s links wait to be looked up and emailed after their replies
   let emailing = 0
+
+  // Removed people keep their rows, so once anyone has had an account, nobody makes the first again
+  const nobody = async (trx: Kysely<Database> = db) =>
+    !(await trx.selectFrom('users').select('id').limit(1).executeTakeFirst())
+
+  // Whether the admin shows the page that makes the first account rather than sign-in
+  app.get('/session/setup', async (c) => {
+    const open = !!firstAccount && (await nobody())
+    // A server that started with people and has none now, which only SQL can do, hasn't printed its code yet
+    if (open) firstAccount.show()
+    return c.json({ data: { open } })
+  })
+
+  // The first account, while nobody has one, with the code the server printed as it started, then signed in. The code
+  // is checked before the password is hashed, so a guess costs no scrypt, and 80 bits need no limit on guesses.
+  app.post('/session/setup', limit, async (c) => {
+    if (!firstAccount || !(await nobody())) return c.json({ message: setupClosed }, 409)
+    const values = pickValues(setupSchema, await c.req.json().catch(() => ({})), inputs)
+    const report = await validateServerValues(setupSchema, values, inputs)
+    const wrong = !!values.code && !sameCode(values.code, firstAccount.code)
+    if (!report.isValid || wrong) {
+      const fields = wrong ? { ...report.fields, code: { isValid: false, messages: [wrongCode] } } : report.fields
+      return c.json({ isValid: false, fields }, 422)
+    }
+
+    const passwordHash = await hashPassword(values.password)
+    const made = await db.transaction().execute(async (trx) => {
+      // Two at once make one account
+      await sql`select pg_advisory_xact_lock(hashtext('sorlo first account'))`.execute(trx)
+      if (!(await nobody(trx))) return
+      const user = await trx
+        .insertInto('users')
+        .values({ id: uuidv7(), name: values.name, email: values.email.toLowerCase(), password_hash: passwordHash })
+        .returning(['id', 'email', 'name'])
+        .executeTakeFirstOrThrow()
+      return { user, session: await newSession(trx, user.id) }
+    })
+    return made ? signedIn(c, made.session, made.user) : c.json({ message: setupClosed }, 409)
+  })
 
   // Sign in. Attempts count by email and address together, so one person's typos don't lock out an office behind one
   // address, and nobody can lock someone out from elsewhere.

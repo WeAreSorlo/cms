@@ -1,9 +1,20 @@
-import type { VersionOptions } from '.'
+import type { Preview, VersionOptions } from '.'
 import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
 import { inputs, isEmptyValue, pickValues, validateServerValues, validationError } from './core'
 import { Database, isUuid, uuidv7 } from './db'
+import { page } from './embed'
 import { addEvents } from './events'
-import { EntryRow, StatusRow, entryIds, listEntries, parseQuery, toAdminEntry, usedBy, withStatus } from './query'
+import {
+  EntryRow,
+  StatusRow,
+  entryIds,
+  listEntries,
+  parseQuery,
+  toAdminEntry,
+  toEntry,
+  usedBy,
+  withStatus,
+} from './query'
 import { cmsInputs, saveRelations, serverInputs } from './relations'
 import { EventName, maxTicked, versionSchema } from './schemas'
 import type { ContentType } from './types'
@@ -217,9 +228,9 @@ const viaOf = (chat: string | null, title: string | null, token: string | null, 
   chat ? { kind: 'chat' as const, id: chat, name: title } : token ? { kind: 'token' as const, id: token, name } : null
 
 // An entry's versions, newest first, or the one with the given number: its name, who saved it and when, and when it
-// last went live and who published it then. Only saves and publishes record a user, so a version with none was saved
-// or published by a user deleted since. via is the assistant's chat or the MCP token it was saved through, and
-// publishedVia the one its last publish came through.
+// last went live and who published it then. Only people's saves and publishes record a user, so a version with none
+// came from sorlo import or sorlo migrate, or a user deleted before removal kept people's rows. via is the assistant's
+// chat or the MCP token it was saved through, and publishedVia the one its last publish came through.
 export async function listVersions(db: Kysely<Database>, id: string, number?: number) {
   const rows = await db
     .selectFrom('entry_versions')
@@ -602,12 +613,34 @@ export function entrySaver(
   return { checkInputs, checkParent, migrated, saveEntry }
 }
 
+// Whether a Preview button can follow an address: http or https only, so one built from an entry's values can never
+// run script
+const followable = (url: unknown): url is string =>
+  typeof url === 'string' && URL.canParse(url) && /^https?:$/.test(new URL(url).protocol)
+
+// previews in sorlo.config.ts, as the servers start: each an http or https address, a function giving one, or nothing
+export function checkPreviews(previews: Record<string, Preview | null | undefined>, types: Map<string, ContentType>) {
+  for (const [name, preview] of Object.entries(previews)) {
+    if (preview == null) continue
+    if (typeof preview !== 'function' && !followable(preview)) {
+      throw new Error(
+        `previews.${name} in sorlo.config.ts needs to be an http or https address, or a function giving one.`,
+      )
+    }
+    // Advice rather than a refusal, since the type editor can add the type
+    if (!types.has(name))
+      console.warn(`previews.${name} in sorlo.config.ts names no content type, so nothing has a Preview button.`)
+  }
+}
+
 // The admin API for entries. Every route needs a session, which createApp checks
 export function entryRoutes(
   db: Kysely<Database>,
   types: Map<string, ContentType>,
   migrations: () => Promise<Record<string, ContentMigrationFile>>,
   { keep }: Partial<VersionOptions> = {},
+  // The editor's Preview button for each type, from sorlo.config.ts
+  previews: Record<string, Preview | null | undefined> = {},
 ) {
   if (keep !== undefined && (!Number.isInteger(keep) || keep < 1)) {
     throw new Error('versions.keep in sorlo.config.ts needs a whole number from 1.')
@@ -861,6 +894,33 @@ export function entryRoutes(
   })
 
   app.get('/entries/:id', (c) => reply(c, c.req.param('id')))
+
+  // The editor's Preview, a link that opens a new tab here: the address previews gives the entry's saved draft, as the
+  // delivery API replies it to a preview key, worked out as the tab opens, so one that expires still works, and
+  // followed. The address never sits in the admin's page. Previews leave archived entries out, as delivery does.
+  app.get('/entries/:id/preview', async (c) => {
+    const { row } = await find(c.req.param('id'))
+    const preview = previews[row.type]
+    const none = (status: 404 | 500, text: string) =>
+      c.html(page('No preview', `<p>${text}</p>`), status, {
+        'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
+      })
+    const missing = "There's no preview of this entry on the site."
+    if (preview == null || row.archived_at) return none(404, missing)
+    try {
+      // Through JSON, so its dates are strings, as the site's preview route sees them
+      const entry = JSON.parse(JSON.stringify(toEntry(row)))
+      const url = typeof preview === 'function' ? await preview({ entry }) : preview
+      // Such as entry.slug && an address, before a draft has its slug
+      if (!url) return none(404, missing)
+      if (followable(url)) return c.redirect(new URL(url).href, 302)
+      // Not the address itself, which can hold a secret
+      console.error(`previews.${row.type} in sorlo.config.ts gave an address that isn't http or https.`)
+    } catch (error) {
+      console.error(`previews.${row.type} in sorlo.config.ts failed:`, error)
+    }
+    return none(500, "The address of this entry's preview couldn't be worked out. The server's log says why.")
+  })
 
   app.put('/entries/:id', async (c) => {
     const { row, type } = await find(c.req.param('id'))

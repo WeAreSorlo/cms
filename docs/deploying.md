@@ -16,7 +16,7 @@ COPY . .
 # The local disk's folder, which a volume keeps
 RUN mkdir -p storage && chown node:node storage
 USER node
-EXPOSE 3000
+EXPOSE 4100
 # The command itself rather than npm, so SIGTERM reaches it
 CMD ["node_modules/.bin/sorlo", "start"]
 ```
@@ -42,6 +42,7 @@ storage
 
   It exits 1 when a waiting migration has a TODO or one fails, which stops the deploy. A run stopped partway keeps the migrations it finished, and the next one carries on. Two at once are safe, since the second stops on the migration's unique name, but that fails its deploy.
 
+- **The first account** is made in the admin with the link `sorlo start` prints in the log, while nobody has an account, as [People](people.md#the-first-account) describes. Each instance prints its own code, which only it takes, so make it while one instance runs.
 - **`GET /health`** needs no key or session. It replies `200 {"status":"ok"}` while the database answers, and otherwise `503 {"message":"The database can't be reached."}`, logging why.
 - **A database that restarts** ends the CMS's connections to it, which the CMS logs, one line for each, as `A database connection ended: …`, and replaces as it needs them. A transaction that held one fails, and a run of the worker's waits to be tried again.
 - **Media** can stay on the local disk, as the starter's do, for one instance, with a volume at `/site/storage`. The image makes that folder the server's, so a new Docker volume starts writable, but a host's own volume can arrive owned by root and need a `chown`. More than one instance, or a host without volumes, needs a bucket, through FlyDrive's S3 driver, for which the site installs `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`. The bucket can stay private, since the CMS streams every file through `/media/<id>/<name>`. Cloudflare R2 also needs `supportsACL: false`. Each file's row records its disk, so a site moving to a bucket keeps both disks set up until its files have moved.

@@ -71,10 +71,10 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
 
    ```bash
    npm install
-   npx sorlo migrate
-   npx sorlo make:user
-   npm run dev          # the admin is at http://localhost:3000/admin/
+   npm run dev          # migrates, then the admin is at http://localhost:4100/admin/
    ```
+
+   `sorlo dev` runs the migrations as it starts, then prints a link for making the first account, as [People](people.md#the-first-account) describes. Open it, and choose your name, email and password.
 
 `schema/types` and `migrations` can start missing. Commit `vendor/`, `package.json` and `package-lock.json`.
 

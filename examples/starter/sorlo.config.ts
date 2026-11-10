@@ -22,4 +22,9 @@ export default defineConfig({
   },
   // Lets webhooks reach test servers on this machine
   webhooks: { allowNetworks: ['127.0.0.0/8', '::1'] },
+  // The editor's Preview button, opening a post's saved draft on the site, here a frontend on port 3000. A site's
+  // preview route checks a secret the address carries, such as from process.env, then turns on its draft mode.
+  previews: {
+    posts: ({ entry }) => (entry.slug ? `http://localhost:3000/api/preview?path=/blog/${entry.slug}` : undefined),
+  },
 })

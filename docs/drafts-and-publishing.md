@@ -14,3 +14,29 @@ Every entry has a draft, and once it's published, a live copy, which is what the
 ## Previews
 
 A preview reads drafts in place of live copies, for a site's preview mode. It needs a key with the `preview` [permission](api.md#api-keys), which can add `status=draft` to any delivery route. It then reads every entry that isn't archived, published or not, with links resolved to drafts. Other keys get a 403 for it. Plain keys can sit in frontends, since they only ever see what's live, but keep preview keys on a server. The SDK's `createClient({ preview: true })` sends `status=draft` with every query.
+
+## The Preview button
+
+`previews` in `sorlo.config.ts` gives an entry's editor a Preview button, which opens the entry's saved draft on the site in a new tab. For each content type, by its name, it's the address of a page on the site, or a function giving one from the entry, or nothing for no preview of that entry. Types left out have no button.
+
+```ts
+// sorlo.config.ts
+export default defineConfig({
+  // ...
+  previews: {
+    // The same address for every entry, such as a singleton's page
+    home: `https://example.com/api/preview?secret=${process.env.PREVIEW_SECRET}&path=/`,
+    // An address for each entry, or nothing before it has a slug
+    posts: ({ entry }) =>
+      entry.slug && `https://example.com/api/preview?secret=${process.env.PREVIEW_SECRET}&path=/blog/${entry.slug}`,
+  },
+})
+```
+
+- **The function gets the saved draft** as the delivery API replies it to a preview key, `entry` in `{ entry }`: its `id`, `type`, `slug`, `uri`, `parentId`, `position`, `values`, `createdAt`, `updatedAt` and `publishedAt`, dates as ISO strings. Its values can be unfinished, and `publishedAt` is null for an entry that has never been live. `DraftEntry` is its type. The function can be async, such as to sign a short-lived token, and it runs on the server, so the address can carry a secret from the environment.
+- **Preview shows what's saved,** since the site reads drafts from the CMS, so changes need Save draft first.
+- **The address is worked out as the tab opens.** The button is a link to the CMS's [`/api/entries/:id/preview`](admin-api.md), which runs the setting and redirects to its address, so an expiring one works and the address never sits in the admin's page. When there's no address, or the function fails, which the server's log explains, the tab says there's no preview.
+- **Only http and https addresses are followed,** so an address built from an entry's values can never run script. A string that's anything else stops the servers from starting, and a type that doesn't exist gets a warning as they start.
+- **Archived entries** have no button, since previews leave them out.
+
+The site's preview route checks the secret, turns on its draft mode, such as Next's, then redirects to the page, which reads the draft with a preview key, as [Previews](#previews) describes. It opens in a tab of its own, so the site needs nothing to let the admin frame it.

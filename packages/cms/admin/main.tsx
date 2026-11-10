@@ -1,5 +1,5 @@
 import './admin.scss'
-import { ContentType, GroupsContext, SharedGroup, TypesContext, api, pathOf } from './api'
+import { ContentType, GroupsContext, PreviewsContext, SharedGroup, TypesContext, api, pathOf } from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage, TypeGone } from './entries'
@@ -19,6 +19,7 @@ import {
   JoinPage,
   RemovedUsers,
   ResetPage,
+  SetupPage,
   SignIn,
   SignedIn,
   UserList,
@@ -138,6 +139,8 @@ function Page({
 function App() {
   // Undefined until we know whether a session exists
   const [user, setUser] = useState<null | SignedIn>()
+  // Whether nobody has an account yet, so the first is made in place of signing in
+  const [setup, setSetup] = useState(false)
   const [types, setTypes] = useState<Map<string, ContentType>>()
   const [groups, setGroups] = useState(new Map<string, SharedGroup>())
   const [editable, setEditable] = useState(false)
@@ -147,6 +150,8 @@ function App() {
   const [ai, setAi] = useState(false)
   // Whether the site emails invites and reset links
   const [mail, setMail] = useState(false)
+  // The types whose editor has a Preview button
+  const [previews, setPreviews] = useState<Array<string>>([])
 
   // The one copy of the URL's hash, so the shell and the page see each change in the same render
   const [hash, setHash] = useState(location.hash)
@@ -163,9 +168,16 @@ function App() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/session')
-      .then(async (response) => setUser(response.ok ? (await response.json()).data : null))
-      .catch(() => setUser(null))
+    const load = async () => {
+      const response = await fetch('/api/session')
+      if (response.ok) return setUser((await response.json()).data)
+      const reply = await fetch('/api/session/setup')
+        .then((setup) => setup.json())
+        .catch(() => null)
+      setSetup(reply?.data?.open === true)
+      setUser(null)
+    }
+    load().catch(() => setUser(null))
   }, [])
 
   // Loaded again after each change in the type editor or through the assistant, with the shared groups
@@ -178,6 +190,7 @@ function App() {
     setMcp(body.mcp)
     setAi(body.ai)
     setMail(body.mail)
+    setPreviews(body.previews)
     return loaded
   }, [])
 
@@ -206,6 +219,11 @@ function App() {
   if (access === 'forgot') return <ForgotPage />
 
   if (user === undefined) return null
+  // The link the server prints for the first account brings its code, as #/setup/<code>
+  if (user === null && setup) {
+    const code = access === 'setup' ? token : undefined
+    return <SetupPage code={code} onSignIn={signedInTo('#/')} onClosed={() => setSetup(false)} />
+  }
   if (user === null) return <SignIn onSignIn={signedInTo()} />
   if (!types) return null
 
@@ -213,30 +231,32 @@ function App() {
   return (
     <TypesContext.Provider value={types}>
       <GroupsContext.Provider value={groups}>
-        <Shell
-          hash={hash}
-          types={types}
-          user={user}
-          editable={editable}
-          mcp={!!mcp}
-          ai={ai}
-          onSignOut={signOut}
-          onTypes={reloadTypes}
-          arriving={arriving}
-        >
-          <Page
+        <PreviewsContext.Provider value={previews}>
+          <Shell
             hash={hash}
             types={types}
-            groups={groups}
+            user={user}
             editable={editable}
-            mcp={mcp}
+            mcp={!!mcp}
             ai={ai}
-            mail={mail}
-            me={user.id}
-            reloadTypes={reloadTypes}
-            onUser={setUser}
-          />
-        </Shell>
+            onSignOut={signOut}
+            onTypes={reloadTypes}
+            arriving={arriving}
+          >
+            <Page
+              hash={hash}
+              types={types}
+              groups={groups}
+              editable={editable}
+              mcp={mcp}
+              ai={ai}
+              mail={mail}
+              me={user.id}
+              reloadTypes={reloadTypes}
+              onUser={setUser}
+            />
+          </Shell>
+        </PreviewsContext.Provider>
       </GroupsContext.Provider>
     </TypesContext.Provider>
   )

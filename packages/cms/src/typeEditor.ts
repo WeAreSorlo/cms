@@ -401,14 +401,29 @@ export function typeRoutes(
   types: Map<string, ContentType>,
   groups = new Map<string, SharedGroup>(),
   saver?: TypeSaver,
-  // Whether /mcp, with whether tokens can publish, and the assistant are on, and whether the site emails invites and
-  // reset links, which the admin reads here with editable, since the shell waits for this reply
-  { mcp = false, ai = false, mail = false }: { mcp?: false | { publish: boolean }; ai?: boolean; mail?: boolean } = {},
+  // Whether /mcp, with whether tokens can publish, and the assistant are on, whether the site emails invites and reset
+  // links, and the types with a Preview button, which the admin reads here with editable, since the shell waits for
+  // this reply
+  {
+    mcp = false,
+    ai = false,
+    mail = false,
+    previews = [],
+  }: { mcp?: false | { publish: boolean }; ai?: boolean; mail?: boolean; previews?: Array<string> } = {},
 ) {
   const app = new Hono<AdminEnv>()
 
+  // Only the types there are now, which the type editor can change
   app.get('/types', (c) =>
-    c.json({ data: [...types.values()], groups: [...groups.values()], editable: !!saver, mcp, ai, mail }),
+    c.json({
+      data: [...types.values()],
+      groups: [...groups.values()],
+      editable: !!saver,
+      mcp,
+      ai,
+      mail,
+      previews: previews.filter((name) => types.has(name)),
+    }),
   )
 
   const editable =
