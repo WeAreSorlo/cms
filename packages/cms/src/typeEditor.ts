@@ -112,7 +112,7 @@ const refill = <T>(map: Map<string, T>, from: Iterable<[string, T]>) => {
 }
 
 // Checking and saving content types and shared groups in the site project's folders, as the type editor's routes and
-// the assistant's Apply do (PLAN.md sections 4, 19 and 21). One change runs at a time, so two can't interleave their
+// the assistant's Apply do. One change runs at a time, so two can't interleave their
 // files and migrations.
 export function typeSaver(
   db: Kysely<Database>,
@@ -395,8 +395,8 @@ export function migrationFor(before: ContentType, after: ContentType, groups: Ma
 export type TypeSaver = ReturnType<typeof typeSaver>
 
 // The admin API for content types and shared groups. Given the type editor's saves, as sorlo dev gives them, it can
-// also create, change and delete them, writing their files and a content migration for each change (PLAN.md sections
-// 4 and 19). Without them, they're read-only and change through git.
+// also create, change and delete them, writing their files and a content migration for each change. Without them,
+// they're read-only and change through git.
 export function typeRoutes(
   types: Map<string, ContentType>,
   groups = new Map<string, SharedGroup>(),

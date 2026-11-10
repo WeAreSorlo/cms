@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// The parent each version was saved under, so a page's moves show in its history (PLAN.md section 20). It's no foreign
+// The parent each version was saved under, so a page's moves show in its history. It's no foreign
 // key, so a version keeps the ID of a parent deleted since.
 export async function up(db: Kysely<any>) {
   await db.schema.alterTable('entry_versions').addColumn('parent_id', 'uuid').execute()

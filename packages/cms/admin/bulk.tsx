@@ -41,7 +41,7 @@ import {
   useState,
 } from 'react'
 
-// Bulk editing (PLAN.md section 18): the entries ticked in a list as a grid, a row for each and a column for each
+// Bulk editing: the entries ticked in a list as a grid, a row for each and a column for each
 // field, edited cell by cell and saved together
 
 // A column: one of the type's fields, or a field of a group inside it, found by its path of names, such as seo.title

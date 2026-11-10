@@ -17,7 +17,7 @@ import { Insertable, Kysely, Selectable, sql } from 'kysely'
 import { isDeepStrictEqual } from 'node:util'
 
 // The changes the assistant proposes in a chat, which the person applies, saving drafts as themselves, or applies and
-// publishes, or skips (PLAN.md section 21). They live in a table of their own, since a chat's messages are only ever
+// publishes, or skips. They live in a table of their own, since a chat's messages are only ever
 // added to, and what became of them reaches the model with the person's next message.
 
 export type ProposalRow = Selectable<Database['proposals']>

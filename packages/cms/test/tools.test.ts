@@ -7,7 +7,6 @@ import { blog, contactFields, setUp, types } from './fixtures'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 
 // The CMS's tools for AI, called as the MCP server and the assistant call them, each within its reply's cap
-// (PLAN.md section 21)
 
 const app = createApp(db, types)
 let cookie: string

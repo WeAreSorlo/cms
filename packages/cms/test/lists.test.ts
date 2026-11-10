@@ -7,7 +7,7 @@ import { setUp } from './fixtures'
 import type { FieldSchema } from '@sorlo/core'
 import { afterAll, expect, test } from 'vitest'
 
-// A list's filter (PLAN.md section 21): core's conditions over a type's fields, as the list API's where
+// A list's filter: core's conditions over a type's fields, as the list API's where
 
 const fields: Array<FieldSchema> = [
   { id: 'fld_title', type: 'text', name: 'title', label: 'Title' },

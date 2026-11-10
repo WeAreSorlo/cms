@@ -3,7 +3,7 @@ import { Badge, EmptyState, Notice, PageHeader, Panel, focusHeading, useConfirm,
 import { CircleCheck } from 'lucide-react'
 import { ReactNode, createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 
-// The admin's Migrations page and the notice above every other page while migrations wait (PLAN.md section 6). Anyone
+// The admin's Migrations page and the notice above every other page while migrations wait. Anyone
 // signed in sees what waits, and in sorlo dev, where the type editor is, Run runs it as sorlo migrate does.
 
 // A migration as GET /api/migrations lists it, in the order sorlo migrate runs them

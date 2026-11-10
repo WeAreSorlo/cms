@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Proposals of content types, which the assistant makes in development (PLAN.md section 21): target_id holds a type's
+// Proposals of content types, which the assistant makes in development: target_id holds a type's
 // typ_ id, which isn't a uuid, and wrote the content migration Apply wrote for one. before and after become json, which
 // keeps their keys in order, so Apply writes a type's file with its fields' keys as they were rather than as jsonb
 // sorts them, and a small change makes a small diff.

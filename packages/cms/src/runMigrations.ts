@@ -21,7 +21,7 @@ import { existsSync, realpathSync } from 'node:fs'
 import { dirname, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-// Running migrations, as sorlo migrate does and, in sorlo dev, the admin's Migrations page (PLAN.md section 6)
+// Running migrations, as sorlo migrate does and, in sorlo dev, the admin's Migrations page
 
 // What a run is doing: a migration, by name, or rebuilding entry_relations once content migrations have run, with how
 // many rows it has done of how many, which the CMS's own migrations don't count

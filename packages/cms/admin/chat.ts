@@ -67,8 +67,8 @@ export interface Unsent {
   problem?: string
 }
 
-// The assistant, which the shell keeps across pages, so the Chat page and the panel show the same chat (PLAN.md
-// section 21). A new chat is made when its first message is sent.
+// The assistant, which the shell keeps across pages, so the Chat page and the panel show the same chat. A new chat is
+// made when its first message is sent.
 export interface Assistant {
   // The person's chats, latest first, a page at a time
   chats: Array<Chat>

@@ -15,7 +15,7 @@ import { Kysely, sql } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import type { BlockList } from 'node:net'
 
-// People, and how they get a session (PLAN.md section 5): sign-in, invites, reset links and each person's account. The
+// People, and how they get a session: sign-in, invites, reset links and each person's account. The
 // routes under /api/session need no session, since they're how someone gets one, and the rest need one.
 
 export const sessionCookie = 'sorlo_session'
@@ -31,8 +31,8 @@ const emailTaken = 'This email already has an account.'
 const forgotSent =
   "If that email has an account here, we've sent it a link to choose a new password. It works for an hour."
 
-// What sign-in and Forgot your password? allow, counted for each email from each address together (PLAN.md section
-// 16): 10 sign-ins in 10 minutes without a success, which clears them, and 10 asks for a link, within Forgot's 20 asks
+// What sign-in and Forgot your password? allow, counted for each email from each address together: 10 sign-ins in 10
+// minutes without a success, which clears them, and 10 asks for a link, within Forgot's 20 asks
 // a minute from each address, whatever the emails
 export const peopleLimits = () => ({
   signIns: rateLimiter(10, 10 * 60_000),
@@ -414,7 +414,7 @@ export function sessionRoutes(db: Kysely<Database>, { url, mail, limits, proxies
 }
 
 // The people routes behind the session: the Users page, invites, and your own account. Anyone signed in can invite,
-// remove and make reset links, until roles exist (PLAN.md section 5).
+// remove and make reset links, until roles exist.
 export function userRoutes(db: Kysely<Database>, { url, mail, limits, proxies }: PeopleOptions) {
   const app = new Hono<AdminEnv>()
 

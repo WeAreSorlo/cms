@@ -20,7 +20,7 @@ import { createRequire } from 'node:module'
 
 // The MCP server at /mcp, where AI clients such as Claude Code, Cursor and VS Code read the site's content through the
 // CMS's tools, with Save drafts change it, and with Publish changes publish it, with the personal tokens people make on
-// the admin's MCP tokens page (PLAN.md section 21)
+// the admin's MCP tokens page
 
 const { version } = createRequire(import.meta.url)('../package.json')
 
@@ -158,7 +158,7 @@ export function mcpRoutes(
         .where('revoked_at', 'is', null)
         .executeTakeFirst())
 
-    // A plain bearer challenge, naming no OAuth metadata, since the CMS has no OAuth for MCP (PLAN.md section 21) and
+    // A plain bearer challenge, naming no OAuth metadata, since the CMS has no OAuth for MCP and
     // a client that does OAuth would go looking for it
     if (!found) {
       c.header('WWW-Authenticate', sent ? 'Bearer error="invalid_token"' : 'Bearer')

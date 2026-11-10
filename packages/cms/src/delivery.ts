@@ -158,7 +158,7 @@ export function keyRoutes(db: Kysely<Database>) {
 type DeliveryEnv = { Variables: { draft: boolean } }
 
 // The read-only delivery API, for clients with an API key. It serves live entries and media, and drafts to a preview
-// key that asks for them with status=draft (PLAN.md section 17).
+// key that asks for them with status=draft.
 export function deliveryRoutes(
   db: Kysely<Database>,
   types: Map<string, ContentType>,

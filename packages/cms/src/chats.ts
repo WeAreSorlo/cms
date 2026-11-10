@@ -21,7 +21,7 @@ import { Insertable, Kysely, Selectable, sql } from 'kysely'
 import { z } from 'zod'
 
 // The admin's assistant: each person's chats, the loop that answers a message with the CMS's tools, what the model is
-// told, and the changes it proposes, which the person applies or skips (PLAN.md section 21). It reads and proposes as
+// told, and the changes it proposes, which the person applies or skips. It reads and proposes as
 // the person who asks, and applying saves drafts as them.
 
 // The most rounds of tool calls one reply takes. Each round can run several tools at once.

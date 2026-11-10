@@ -50,7 +50,7 @@ export const accountSchema = (email: string): Array<FieldSchema> => [
   },
 ]
 
-// What a key can do besides reading live content and media (PLAN.md section 16), each a flag of sorlo make:api-key
+// What a key can do besides reading live content and media, each a flag of sorlo make:api-key
 export const apiKeyScopes = [
   { value: 'preview', label: 'Preview: read drafts, with status=draft' },
   { value: 'types', label: 'Types: pull TypeScript types for the SDK, from GET /types' },
@@ -71,7 +71,7 @@ export const apiKeySchema: Array<FieldSchema> = [
   },
 ]
 
-// What a personal token can do besides reading (PLAN.md section 21). Publish changes comes with Save drafts, and only
+// What a personal token can do besides reading. Publish changes comes with Save drafts, and only
 // where the site's config lets tokens publish.
 export const tokenScopes = [
   { value: 'drafts', label: 'Save drafts' },
@@ -185,7 +185,7 @@ export const formSchema: Array<FieldSchema> = [
   },
 ]
 
-// The events that trigger automations, each written by the change it names (PLAN.md section 11)
+// The events that trigger automations, each written by the change it names
 export const events = [
   { value: 'entry.created', label: 'Entry created' },
   { value: 'entry.updated', label: 'Entry updated' },

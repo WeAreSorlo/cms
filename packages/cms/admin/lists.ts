@@ -115,8 +115,7 @@ export function whereOf(fields: Map<string, FieldSchema>, filter: Array<unknown>
 
 // The entries ticked in a list, such as blog or its archive, blog/archive, in the order they were ticked, with what the
 // last Select all found and the archive or restore under way. The admin keeps them until the tab reloads, so they
-// outlast a visit to the grid, an entry or the archive, and a list that shows again shows its run as it stands
-// (PLAN.md section 18).
+// outlast a visit to the grid, an entry or the archive, and a list that shows again shows its run as it stands.
 export interface Ticks {
   ticked: Set<string>
   // The archive, search and filter it was for, and the ids it found, so the list knows while every entry it holds is

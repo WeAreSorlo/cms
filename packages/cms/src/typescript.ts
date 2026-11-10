@@ -6,10 +6,10 @@ import type { FieldSchema, Input, InputTypeValue } from '@sorlo/core'
 
 // The TypeScript types of the entries the delivery API returns and the values forms take, which GET /types serves to
 // `npx sorlo types pull`. They register with @sorlo/sdk, so its queries and submissions are typed without generics
-// (PLAN.md section 9). Each type's values come twice, from two inputs maps: as they're stored, with IDs for links, and
+//. Each type's values come twice, from two inputs maps: as they're stored, with IDs for links, and
 // as with() returns the fields that hold links, resolved Depth levels deep. depth is how many levels a query gets when
 // it doesn't say. Each shared group's values are a type of their own, such as GroupSeo, and GroupSeoResolved<Depth>
-// when they hold links, which the types that use it refer to (PLAN.md section 19).
+// when they hold links, which the types that use it refer to.
 export function typesFile(
   types: Map<string, ContentType>,
   depth = 2,

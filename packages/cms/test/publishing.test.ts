@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
-// Drafts and publishing (PLAN.md section 17): the live copies the delivery API serves, and previews of drafts
+// Drafts and publishing: the live copies the delivery API serves, and previews of drafts
 
 const app = createApp(db, types)
 let cookie: string

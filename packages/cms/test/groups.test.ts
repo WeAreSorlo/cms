@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
-// Shared groups (PLAN.md section 19): their files and checks, how types expand their uses, and entries saved, checked,
+// Shared groups: their files and checks, how types expand their uses, and entries saved, checked,
 // linked and delivered through them
 
 // Sharing fields, which the SEO group uses too

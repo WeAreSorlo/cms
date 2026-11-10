@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Managing people (PLAN.md section 5): when each person last used the admin, who invited and who removed them, the
+// Managing people: when each person last used the admin, who invited and who removed them, the
 // invites waiting to be accepted, and each person's reset link. Removing someone keeps their row, so everything that
 // points at them keeps their name.
 export async function up(db: Kysely<any>) {

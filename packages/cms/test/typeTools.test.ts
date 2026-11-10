@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
-// The assistant's tools for content types (PLAN.md section 21): offered only where the type editor is on, as in sorlo
+// The assistant's tools for content types: offered only where the type editor is on, as in sorlo
 // dev, they propose new types and changes to them, checked as the type editor and its schema builder check them, and
 // Apply writes the type's file and its content migration as the type editor's Save does, never running sorlo migrate.
 

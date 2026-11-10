@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, expect, test, vi } from 'vitest'
 
-// API keys on the admin's API keys page, and what each scope lets a key do (PLAN.md section 16)
+// API keys on the admin's API keys page, and what each scope lets a key do
 
 const app = createApp(db, types)
 let cookie: string

@@ -13,7 +13,7 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 // The server says it's the CMS's package at its version
 const { version } = createRequire(import.meta.url)('../package.json')
 
-// Personal tokens on the admin's MCP tokens page, and the MCP server at /mcp that they open (PLAN.md section 21)
+// Personal tokens on the admin's MCP tokens page, and the MCP server at /mcp that they open
 
 const app = createApp(db, types, { mcp: true })
 let cookie: string

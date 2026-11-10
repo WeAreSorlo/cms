@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 
-// Publish changes on MCP tokens (PLAN.md section 21). Where a site's config allows it, a token can also have the tools
+// Publish changes on MCP tokens. Where a site's config allows it, a token can also have the tools
 // that publish, publish_entries and open_form, while the draft tools never go live. A publish runs every check the
 // editor's Publish runs, publishes only what the model read, never brings back what a person took off the site, and
 // records the token on the version it makes live.

@@ -343,7 +343,7 @@ async function makeUser(db: Kysely<Database>) {
   console.log(`Created ${email}, who can now sign in at /admin/.`)
 }
 
-// The way back in for a site whose only person forgot their password and that sends no email (PLAN.md section 5).
+// The way back in for a site whose only person forgot their password and that sends no email.
 // Someone removed comes back by invite instead.
 async function setPassword(db: Kysely<Database>, [given = '']: Array<string>) {
   const email = given.trim().toLowerCase()

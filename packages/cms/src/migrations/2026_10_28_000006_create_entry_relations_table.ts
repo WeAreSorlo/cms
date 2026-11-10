@@ -1,7 +1,7 @@
 import { Kysely } from 'kysely'
 
 // What each entry's relationship and media fields link to, rebuilt on every save, since JSON can't hold foreign keys
-// (PLAN.md section 5). A target is an entry or a media file, and their UUIDv7s never clash.
+//. A target is an entry or a media file, and their UUIDv7s never clash.
 export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('entry_relations')

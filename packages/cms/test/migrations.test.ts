@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
-// The admin's Migrations page (PLAN.md section 6): every migration listed, with what each waiting one does, and in sorlo
+// The admin's Migrations page: every migration listed, with what each waiting one does, and in sorlo
 // dev, where the type editor is, Run, which runs them as sorlo migrate does, and Check entries, which is
 // sorlo migrate --check.
 

@@ -6,7 +6,7 @@ import { serverInputs } from './relations'
 import type { ContentType } from './types'
 import { Kysely, sql } from 'kysely'
 
-// Content migrations change the values inside entries when a content type changes (PLAN.md section 6). An up or down
+// Content migrations change the values inside entries when a content type changes. An up or down
 // only declares changes to one entry at a time, so they can run on every entry in the database, or on an old version's
 // values when it's restored.
 
@@ -171,7 +171,7 @@ export async function callsOf(migration: ContentMigration) {
 
 const batchSize = 500
 
-// Both hold entries' values: the drafts, and the live copies of those that are published (PLAN.md section 17)
+// Both hold entries' values: the drafts, and the live copies of those that are published
 const tables = ['entries', 'published_entries'] as const
 
 // Call each with every row a query finds, a batch at a time in ID order, the query taking the last ID of the batch

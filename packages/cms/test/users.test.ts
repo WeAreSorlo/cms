@@ -8,7 +8,7 @@ import { setUp, types } from './fixtures'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest'
 
-// Managing people (PLAN.md section 5): invites, removal, reset links, Forgot your password?, your account and the
+// Managing people: invites, removal, reset links, Forgot your password?, your account and the
 // limits on guessing
 
 const sent: Array<MailMessage> = []

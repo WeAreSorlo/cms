@@ -7,7 +7,7 @@ import Form, { FieldSchema, FormHandle } from '@sorlo/core'
 import { Component, Plus, Trash2 } from 'lucide-react'
 import { MouseEvent, useContext, useRef, useState } from 'react'
 
-// Shared groups (PLAN.md section 19): fields defined once in schema/groups, which types use through Shared group
+// Shared groups: fields defined once in schema/groups, which types use through Shared group
 // fields. Their list and editor sit beside content types, and the type editor swaps a type's own groups for them.
 
 // The builder is a form of its own, as in the type editor

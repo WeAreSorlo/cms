@@ -1,7 +1,7 @@
 import { idsOf } from '../src/fields'
 import { FieldSchema, isEmptyValue, normaliseConditions } from '@sorlo/core'
 
-// What changed between two versions of an entry (PLAN.md section 20), from their values and the type's fields
+// What changed between two versions of an entry, from their values and the type's fields
 
 export type Kind = 'added' | 'removed' | 'changed'
 
@@ -233,7 +233,7 @@ export const toJson = (values: unknown) =>
         2,
       )
 
-// A change a proposal makes to a content type (PLAN.md section 21): one of its settings, or a field or layout added,
+// A change a proposal makes to a content type: one of its settings, or a field or layout added,
 // removed or changed, named by its labels from the top, such as Blocks › Quote, with what changed about it
 export interface TypeChange {
   labels: Array<string>

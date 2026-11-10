@@ -1,8 +1,8 @@
 import type { ContentType, SharedGroup } from './types'
 import type { FieldSchema, InputSchema, InputValidateValue } from '@sorlo/core'
 
-// The CMS's own inputs, which store IDs: relationship links to entries, media to files in the media library
-// (PLAN.md section 12) and form to one of the forms, and the Shared group field. Nothing here loads core or server code, so the admin imports them
+// The CMS's own inputs, which store IDs: relationship links to entries, media to files in the media library and form
+// to one of the forms, and the Shared group field. Nothing here loads core or server code, so the admin imports them
 // too and adds the pickers.
 
 // Whether types such as image/png or image/* allow a mime, leaving out its parameters, as in audio/ogg; codecs=opus
@@ -78,7 +78,7 @@ export function mapFields(
   })
 }
 
-// A use of a shared group from schema/groups, which names it by id in options.group (PLAN.md section 19). Types expand
+// A use of a shared group from schema/groups, which names it by id in options.group. Types expand
 // each use into a group of the shared group's fields when they load, so only the type editor sees one.
 export const shared = {
   name: () => 'Shared group',
@@ -123,7 +123,7 @@ export const collapseUses = (fields: Array<FieldSchema>) =>
 
 // Fields with each use of a shared group, at any depth, expanded into a group of the shared group's fields. Their ids,
 // and their layouts', get the use's id in front, so each stays unique in a type that uses the group twice, and the
-// group keeps the use's options.group, which marks where they came from (PLAN.md section 19). Groups are by id, and
+// group keeps the use's options.group, which marks where they came from. Groups are by id, and
 // must have passed checkGroup and cycleOf.
 export function expandFields(fields: Array<FieldSchema>, groups: Map<string, SharedGroup>): Array<FieldSchema> {
   return mapFields(fields, (field) => {

@@ -167,7 +167,7 @@ test('renaming a type renames its file, and deleting one removes it and flags it
   expect(await readdir(dirs.types)).toEqual(['authors.json'])
 })
 
-// Shared groups (PLAN.md section 19)
+// Shared groups
 const seo = {
   label: 'SEO',
   name: 'seo',

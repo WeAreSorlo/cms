@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
 // sorlo make:migration compares schema/types with migrations/.snapshot.json, the types as the last migration left them,
-// and writes a content migration for the difference (PLAN.md section 6). Types, fields and layouts are matched by id,
+// and writes a content migration for the difference. Types, fields and layouts are matched by id,
 // so a renamed field isn't taken for one removed and another added.
 
 interface Node {
@@ -71,7 +71,7 @@ function inside(tree: Tree, id: string, path = '', found = new Map<string, Node>
 }
 
 // The old fields with new ids wherever a group's fields came from somewhere else, such as a type's own SEO group swapped
-// for a use of a shared one, which gives the fields inside new ids (PLAN.md section 19). Those are matched by name, so
+// for a use of a shared one, which gives the fields inside new ids. Those are matched by name, so
 // each keeps its values where the name matches, and the ones that don't match are removed and flagged.
 // shortcut: a swap that changes no values writes no migration, so sorlo migrate doesn't rebuild entry_relations, whose
 // rows keep the copy's field ids until each entry saves. Nothing reads field_id yet; rebuild them here once something does.

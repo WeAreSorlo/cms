@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Who made each key and when it was last used, for the admin's API keys page (PLAN.md section 16)
+// Who made each key and when it was last used, for the admin's API keys page
 export async function up(db: Kysely<any>) {
   await db.schema
     .alterTable('api_keys')

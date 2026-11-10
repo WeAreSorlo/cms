@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Forms live in the database, since marketers make them in production (PLAN.md section 10)
+// Forms live in the database, since marketers make them in production
 export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('forms')

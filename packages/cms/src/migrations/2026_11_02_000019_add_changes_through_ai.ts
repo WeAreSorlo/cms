@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Changes through AI (PLAN.md section 21): the assistant's proposals, which a person applies or skips, the chat or MCP
+// Changes through AI: the assistant's proposals, which a person applies or skips, the chat or MCP
 // token behind each version, the Save drafts permission on tokens, and forms that take no submissions until opened
 export async function up(db: Kysely<any>) {
   await db.schema

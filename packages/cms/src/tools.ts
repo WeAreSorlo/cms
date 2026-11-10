@@ -43,7 +43,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
 
 // The CMS's tools for AI, defined once: the MCP server at /mcp offers them, and the admin's assistant uses the same ones
-// (PLAN.md section 21). Each runs as a person, through the queries and checks the admin API uses, replies with the
+//. Each runs as a person, through the queries and checks the admin API uses, replies with the
 // admin API's shapes, and keeps its reply under a cap so a client's context doesn't fill up. The write tools save
 // drafts and closed forms, and never publish, unpublish, archive or delete: in the assistant they propose each change
 // for the person to apply, and over MCP they save it at once, for a token with Save drafts. Only the tools that

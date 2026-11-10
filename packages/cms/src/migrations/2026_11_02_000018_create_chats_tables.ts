@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely'
 
 // Each person's chats with the admin's assistant, which go when the person does, and their messages, which are only
-// ever added to (PLAN.md section 21)
+// ever added to
 export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('chats')

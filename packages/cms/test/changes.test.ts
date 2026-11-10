@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 
-// Changes through AI (PLAN.md section 21): the write tools, which propose each change in the assistant's chats for the
+// Changes through AI: the write tools, which propose each change in the assistant's chats for the
 // person to apply, as a draft or applied and published, and save drafts over MCP for a token with Save drafts. Neither
 // the assistant nor MCP ever publishes, unpublishes, archives or deletes, and nothing overwrites a newer edit.
 

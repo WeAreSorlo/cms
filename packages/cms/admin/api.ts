@@ -47,7 +47,7 @@ export function initialsOf(name: string) {
 
 // What the assistant beside a page takes "this" and "these" to mean: the page its next message sends, which the server
 // checks before the model sees any of it, as ids and type names, and the line above its box, which names the same
-// thing with what the page shows (PLAN.md section 21)
+// thing with what the page shows
 export interface PageView {
   page: Record<string, unknown>
   label: string

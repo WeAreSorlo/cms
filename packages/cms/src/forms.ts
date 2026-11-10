@@ -24,7 +24,7 @@ import { isDeepStrictEqual } from 'node:util'
 export type FormRow = Selectable<Database['forms']>
 
 // Forms live in the database, made in the admin with core's schema builder, and take submissions from anyone through
-// the public routes (PLAN.md section 10)
+// the public routes
 
 // A form as the public routes return it. A closed one serves its fields and takes no submissions.
 export const toForm = (row: FormRow) => ({
@@ -373,7 +373,6 @@ function groupsOf(address: string) {
 
 // An address as the limits count it: an IPv6 address by its /64, the usual allocation for one machine or home, which
 // would otherwise give 2^64 fresh budgets, and an IPv4 address written as IPv6, in any form, as the IPv4 address
-// (PLAN.md section 16)
 export function limitKey(address: string | null) {
   if (!address || isIP(address) !== 6) return address ?? ''
   const groups = groupsOf(address)

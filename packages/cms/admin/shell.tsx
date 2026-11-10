@@ -431,8 +431,8 @@ export function Shell({
                   </SectionContext.Provider>
                 </main>
                 {/* The panel on every page: the page's own card at the top, then the assistant's, which the shell keeps
-                    across pages so a chat lasts, other than on the Chat page, which is the assistant (PLAN.md section
-                    21). Handles on its left edge and between the cards resize the panel and the assistant, whose
+                    across pages so a chat lasts, other than on the Chat page, which is the assistant. Handles on its
+                    left edge and between the cards resize the panel and the assistant, whose
                     title hides its chat. */}
                 <div id='cms-side' className='cms-side'>
                   <Splitter

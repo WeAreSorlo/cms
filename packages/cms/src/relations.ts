@@ -259,7 +259,7 @@ function eachLink(
 // Swap the IDs in some fields of entries for what they link to, as the delivery API's with does. The named fields go
 // first, then every link of the entries they hold, a level at a time down to depth. Each level loads its entries in one
 // query and its media in another, whatever their types, and pickValues walks the groups, repeaters and flexible blocks
-// in between (PLAN.md section 12, change 4). Links go to live copies, or for a preview, to drafts. Entries the delivery
+// in between. Links go to live copies, or for a preview, to drafts. Entries the delivery
 // API doesn't serve, such as unpublished or archived ones, are left out, which is null in a field that holds one. A reply
 // that would hold more than maxLinks of them, counting every place it shows one, is refused before its level's queries,
 // since a record linked from several places is written out at each, and a few entries that link to each other can make

@@ -1319,8 +1319,7 @@ export default function Design() {
     <div className='cms-design'>
       <PageHeader title='Design system' />
       <p>
-        The admin's tokens and components in the current theme. Only <code>sorlo dev</code> shows this page, and{' '}
-        <code>DESIGN.md</code> has the plan.
+        The admin's tokens and components in the current theme. Only <code>sorlo dev</code> shows this page.
       </p>
 
       <h2>Account menu</h2>

@@ -2,7 +2,7 @@ import type { AiOptions } from '.'
 import Anthropic, { type APIError } from '@anthropic-ai/sdk'
 
 // What the CMS asks of an AI provider: one streamed call to a model at a time. The CMS runs everything around it, the
-// tools, the chat's history, the cap on rounds and what's stored (PLAN.md section 21). Messages take the Claude API's
+// tools, the chat's history, the cap on rounds and what's stored. Messages take the Claude API's
 // shapes, which are the CMS's own, so another provider converts them to its own and back.
 
 export interface AiMessage {

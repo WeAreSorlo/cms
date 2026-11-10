@@ -159,7 +159,7 @@ export function createApp(
     app.use('/admin/*', serveStatic({ root: admin, rewriteRequestPath: (path) => path.slice('/admin'.length) }))
   }
 
-  // Sign in, join with an invite, and ask for and use a reset link, which need no session (PLAN.md section 5)
+  // Sign in, join with an invite, and ask for and use a reset link, which need no session
   app.route('/api', sessionRoutes(db, people))
 
   // The user whose session cookie came with the request, marked as using the admin. Someone removed has no sessions
@@ -221,7 +221,7 @@ export function createApp(
     typeRoutes(types, groups, saver, { mcp: !!mcp && { publish }, ai: !!ai, mail: !!(people.url && mail) }),
   )
   app.route('/api', entryRoutes(db, types, migrations, versions))
-  // Migrations run from the admin only where the type editor is, in sorlo dev (PLAN.md section 6)
+  // Migrations run from the admin only where the type editor is, in sorlo dev
   app.route(
     '/api',
     migrationRoutes(db, types, { dir: siteMigrations, runnable: !!editor, queued: saver?.queued, finish: finishLinks }),
@@ -232,13 +232,13 @@ export function createApp(
   app.route('/api', userRoutes(db, people))
   if (storage) app.route('/', mediaRoutes(db, storage, media))
 
-  // AI clients read the site's content as a person, with a token that person made (PLAN.md section 21)
+  // AI clients read the site's content as a person, with a token that person made
   if (mcp) {
     app.route('/api', tokenRoutes(db, publish))
     app.route('/', mcpRoutes(db, types, migrations, versions, storage, publish))
   }
 
-  // The admin's assistant reads the same way, with the site's own model (PLAN.md section 21)
+  // The admin's assistant reads the same way, with the site's own model
   if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage, saver))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth, maxLinks, origins: delivery?.origins }))

@@ -20,7 +20,7 @@ import Form, { FieldSchema, FormHandle } from '@sorlo/core'
 import { Trash2 } from 'lucide-react'
 import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 
-// Comparing versions (PLAN.md section 20): a version's page, with what it changed from the version before it or from
+// Comparing versions: a version's page, with what it changed from the version before it or from
 // another one, its name, and Restore and Delete
 
 export const kinds = {

@@ -6,7 +6,7 @@ import { setUp, types } from './fixtures'
 import { sql } from 'kysely'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
-// Ticked entries (PLAN.md section 18): Select all's ids, and archiving and restoring ticked entries a hundred at a time
+// Ticked entries: Select all's ids, and archiving and restoring ticked entries a hundred at a time
 
 // Pages that link to each other, for counting the links bulk Archive warns of
 const pages: ContentType = {

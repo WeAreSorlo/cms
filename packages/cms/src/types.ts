@@ -8,7 +8,7 @@ import { basename, dirname, join } from 'node:path'
 
 export { expandFields }
 
-// A content type, read from a JSON file in the site project's schema/types folder (PLAN.md section 4)
+// A content type, read from a JSON file in the site project's schema/types folder
 export interface ContentType {
   id: string
   name: string
@@ -16,7 +16,7 @@ export interface ContentType {
   singular?: string
   structure: 'collection' | 'hierarchical' | 'singleton'
   // Whether entries are saved as drafts and published when they're ready, true if not given. Without drafts, every save
-  // publishes (PLAN.md section 17).
+  // publishes.
   drafts?: boolean
   icon?: string
   titleField?: string
@@ -26,7 +26,7 @@ export interface ContentType {
 }
 
 // Fields defined once and used by many types, read from a JSON file in the site project's schema/groups folder. Types
-// use one through a Shared group field that names it by id (PLAN.md section 19).
+// use one through a Shared group field that names it by id.
 export interface SharedGroup {
   id: string
   name: string
@@ -57,7 +57,7 @@ const isName = (name: unknown) =>
   inputs.identifier.validateValue(name, { name: 'name', required: true, options: { format: 'mixed' } }).isValid === true
 
 // Check a list of fields or flexible layouts and everything inside them. Each needs a name that's unique beside it,
-// an ID that's unique in the type, so content migrations can match it after a rename (PLAN.md section 6), and a type
+// an ID that's unique in the type, so content migrations can match it after a rename, and a type
 // from known. Relationship fields name content types by ID, checked against typeIds when it's given. Shared group
 // fields name shared groups by ID, checked against groupIds when it's given, as it is for types and shared groups.
 function checkNodes(

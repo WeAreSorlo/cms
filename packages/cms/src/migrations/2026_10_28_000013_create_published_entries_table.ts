@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Each published entry's live copy, which the delivery API serves while the entry's draft changes (PLAN.md section 17)
+// Each published entry's live copy, which the delivery API serves while the entry's draft changes
 export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('published_entries')

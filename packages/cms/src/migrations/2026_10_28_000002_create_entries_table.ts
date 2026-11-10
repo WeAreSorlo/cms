@@ -20,7 +20,7 @@ export async function up(db: Kysely<any>) {
     .execute()
 
   // Slugs are unique among siblings, archived ones included, and top-level entries share a null parent.
-  // Localisation will add locale to this index (PLAN.md section 15).
+  // Localisation will add locale to this index.
   await db.schema
     .createIndex('entries_slug_unique')
     .on('entries')

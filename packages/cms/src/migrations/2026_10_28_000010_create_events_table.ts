@@ -1,7 +1,7 @@
 import { Kysely, sql } from 'kysely'
 
 // The outbox: each change writes its event in its own transaction, and the worker hands it on to the automations it
-// triggers (PLAN.md section 11)
+// triggers
 export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('events')

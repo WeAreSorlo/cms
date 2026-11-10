@@ -28,7 +28,7 @@ const mcpUrl = () => `${location.origin}/mcp`
 const counted = (scopes: Array<string> = [], publish: boolean) =>
   scopes.filter((scope) => publish || scope !== 'publish')
 
-// What a token can do with its permissions (PLAN.md section 21)
+// What a token can do with its permissions
 const access = (scopes: Array<string> = []) => (
   <section>
     <h2>Access</h2>

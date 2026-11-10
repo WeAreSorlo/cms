@@ -388,7 +388,7 @@ test('migrations are named for the time and the types, or a name given, and sort
   )
 })
 
-// Shared groups (PLAN.md section 19). make:migration diffs types as they load, with each use of a shared group
+// Shared groups. make:migration diffs types as they load, with each use of a shared group
 // expanded, so these are expanded as loadSchema expands them.
 const expand = (type: ContentType, ...groups: Array<SharedGroup>) => ({
   ...type,

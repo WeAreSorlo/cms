@@ -20,7 +20,7 @@ import Form, { FieldSchema, FormHandle, ValidationReport } from '@sorlo/core'
 import { KeyRound, LogOut, Trash2, UserMinus, UserPlus, Users } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-// People, how they sign in, and each person's own account (PLAN.md section 5)
+// People, how they sign in, and each person's own account
 
 // Who's signed in, as sign-in replies them
 export interface SignedIn {

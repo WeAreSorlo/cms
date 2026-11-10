@@ -1,6 +1,6 @@
 import { Kysely, sql } from 'kysely'
 
-// Each person's tokens for MCP clients, which go when the person does (PLAN.md section 21)
+// Each person's tokens for MCP clients, which go when the person does
 export async function up(db: Kysely<any>) {
   await db.schema
     .createTable('personal_tokens')

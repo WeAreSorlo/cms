@@ -19,7 +19,7 @@ import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, Selectable, sql } from 'kysely'
 
-// Automations: a trigger, conditions on the event's data, and actions run in order (PLAN.md section 11)
+// Automations: a trigger, conditions on the event's data, and actions run in order
 
 type AutomationRow = Selectable<Database['automations']>
 

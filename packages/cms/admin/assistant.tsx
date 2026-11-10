@@ -53,7 +53,7 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 // The admin's assistant: the Chat page, and the assistant under each page's panel, which share one chat through the
-// shell (PLAN.md section 21). Loaded only with the assistant on, since its Markdown renderer is the larger part.
+// shell. Loaded only with the assistant on, since its Markdown renderer is the larger part.
 
 const nameOf = (chat: Chat | null) => chat?.title ?? 'New chat'
 
@@ -65,7 +65,7 @@ function newChat(assistant: ReturnType<typeof useAssistant>, from: Element) {
 
 // Only links into the admin open from a reply, and web pages' and email addresses show as text after their words, so
 // nothing a reply was steered to write, such as an address that carries a draft's text, opens with a click
-// (PLAN.md section 21). Images never load, since an image's address can carry it too.
+//. Images never load, since an image's address can carry it too.
 const linkable = (url: string) => (/^(#\/|https?:|mailto:)/i.test(url) ? url : null)
 
 function Link({ href, children }: ComponentProps<'a'>) {

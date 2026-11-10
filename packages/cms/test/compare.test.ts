@@ -11,7 +11,7 @@ import {
 import type { FieldSchema } from '@sorlo/core'
 import { expect, test } from 'vitest'
 
-// Comparing versions (PLAN.md section 20): what changed between two versions' values, worked out in the admin
+// Comparing versions: what changed between two versions' values, worked out in the admin
 
 const fields: Array<FieldSchema> = [
   { id: 'fld_title', type: 'text', name: 'title', label: 'Title' },

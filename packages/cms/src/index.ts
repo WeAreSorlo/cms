@@ -31,7 +31,7 @@ export interface Config {
   ai?: AiOptions
 }
 
-// What MCP tokens can be given besides reading and Save drafts (PLAN.md section 21)
+// What MCP tokens can be given besides reading and Save drafts
 export interface McpOptions {
   // Lets people give their tokens Publish changes, so their AI clients' changes go live on the site at once, with no
   // one reviewing them in the admin. Off if not given.

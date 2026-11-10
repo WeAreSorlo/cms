@@ -5,7 +5,7 @@ import { db } from './database'
 import { setUp, types } from './fixtures'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
-// Bulk editing (PLAN.md section 18): PATCH /api/types/:type/entries saves the changed fields of many entries at once
+// Bulk editing: PATCH /api/types/:type/entries saves the changed fields of many entries at once
 
 // Products, with a group inside a group and a list, for changed fields to merge into
 const products: ContentType = {

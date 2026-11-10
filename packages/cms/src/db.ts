@@ -20,7 +20,7 @@ export interface Database {
     last_active_at: Date | null
     // Null for people sorlo make:user made
     invited_by: string | null
-    // Removing someone keeps their row, so everything that points at them keeps their name (PLAN.md section 5)
+    // Removing someone keeps their row, so everything that points at them keeps their name
     removed_at: Date | null
     removed_by: string | null
   }
@@ -57,7 +57,7 @@ export interface Database {
     position: number | null
     slug: string | null
     uri: string | null
-    // The last content migration the values have been through (PLAN.md section 6)
+    // The last content migration the values have been through
     migration: string | null
     created_by: string | null
     updated_by: string | null
@@ -65,7 +65,7 @@ export interface Database {
     updated_at: Generated<Date>
     archived_at: Date | null
     // When a person last took it off the live site, which only a person's publish clears, and a token never publishes
-    // it while it's set (PLAN.md section 21). In no reply.
+    // it while it's set. In no reply.
     taken_down_at: Date | null
   }
   entry_versions: {
@@ -82,14 +82,14 @@ export interface Database {
     // The last time it went live, and who published it then
     published_at: Date | null
     published_by: string | null
-    // The assistant's chat or the MCP token it was saved through, kept after the chat is deleted (PLAN.md section 21)
+    // The assistant's chat or the MCP token it was saved through, kept after the chat is deleted
     chat_id: string | null
     token_id: string | null
     // The chat or token its last publish came through, which published_at and published_by go with
     published_chat_id: string | null
     published_token_id: string | null
   }
-  // Each published entry's live copy, which the delivery API serves (PLAN.md section 17)
+  // Each published entry's live copy, which the delivery API serves
   published_entries: {
     id: string
     type: string
@@ -130,7 +130,7 @@ export interface Database {
     last_used_at: Date | null
     created_at: Generated<Date>
   }
-  // Each person's tokens for MCP clients, which act as the person (PLAN.md section 21)
+  // Each person's tokens for MCP clients, which act as the person
   personal_tokens: {
     id: string
     user_id: string
@@ -144,7 +144,7 @@ export interface Database {
     // Revoking keeps the row, so versions saved through the token keep its name
     revoked_at: Date | null
   }
-  // Each person's chats with the admin's assistant (PLAN.md section 21)
+  // Each person's chats with the admin's assistant
   chats: {
     id: string
     user_id: string
@@ -252,7 +252,7 @@ export interface Database {
     created_at: Generated<Date>
     archived_at: Date | null
   }
-  // The outbox of changes, which the worker hands on to automations (PLAN.md section 11)
+  // The outbox of changes, which the worker hands on to automations
   events: {
     id: string
     name: EventName

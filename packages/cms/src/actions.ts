@@ -13,7 +13,7 @@ import http from 'node:http'
 import https from 'node:https'
 import { BlockList, isIP } from 'node:net'
 
-// What automations' actions do, each with its settings from its layout in schemas.ts (PLAN.md section 11)
+// What automations' actions do, each with its settings from its layout in schemas.ts
 
 export type EventRow = Selectable<Database['events']>
 

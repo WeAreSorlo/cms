@@ -18,7 +18,7 @@ import sharp from 'sharp'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
 // The admin's assistant: each person's chats, and the loop that answers with the CMS's tools, all with a provider that
-// replies from a script, so nothing calls a real model (PLAN.md section 21)
+// replies from a script, so nothing calls a real model
 
 let cookie: string
 let userId: string

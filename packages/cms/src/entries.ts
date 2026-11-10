@@ -306,7 +306,7 @@ export async function readVersion(
   }
 }
 
-// Where a save came from besides who made it, which the version it writes records (PLAN.md section 21)
+// Where a save came from besides who made it, which the version it writes records
 export interface Via {
   chat?: string
   token?: string
@@ -615,7 +615,7 @@ export function entryRoutes(
 
   const app = new Hono<AdminEnv>()
 
-  // The last content migration to run, which values saved now have been through (PLAN.md section 6)
+  // The last content migration to run, which values saved now have been through
   const lastMigration = async (trx: Kysely<Database>) =>
     (await appliedMigrations(trx, await migrations())).at(-1) ?? null
 
@@ -692,7 +692,7 @@ export function entryRoutes(
     return c.json({ data: data.map(toAdminEntry), pagination })
   })
 
-  // Select all in a list (PLAN.md section 18): the ids of every entry its query finds, as the list orders them, for
+  // Select all in a list: the ids of every entry its query finds, as the list orders them, for
   // ticking them all. It takes the list's where, order and archived, and refuses past maxTicked.
   app.get('/types/:type/entries/ids', async (c) => {
     const type = typeNamed(c.req.param('type'))
@@ -711,7 +711,7 @@ export function entryRoutes(
 
   app.post('/types/:type/entries', async (c) => save(c, listNamed(c.req.param('type'))))
 
-  // Bulk editing (PLAN.md section 18): save the changed fields of up to 100 of a type's entries, with one publish for
+  // Bulk editing: save the changed fields of up to 100 of a type's entries, with one publish for
   // them all, replying with each one's result in the order sent. Each saves on its own, as PUT /entries/:id saves,
   // so the rows that pass are saved whatever happens to the others. Each merges into its entry as it's locked for the
   // save, so another save's changes to its other fields are kept, however close together they land.

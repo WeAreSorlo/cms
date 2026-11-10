@@ -1,4 +1,4 @@
-// A typed client for the Sorlo CMS's delivery API (PLAN.md section 8). It must never import server code.
+// A typed client for the Sorlo CMS's delivery API. It must never import server code.
 
 // An entry as the delivery API returns it. The file `npx sorlo types pull` writes narrows it for each content type.
 export interface Entry {

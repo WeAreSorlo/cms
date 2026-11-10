@@ -1,6 +1,6 @@
 import { Kysely } from 'kysely'
 
-// Whether applying a proposal also published it, as Apply and publish does in the admin's assistant (PLAN.md section 21)
+// Whether applying a proposal also published it, as Apply and publish does in the admin's assistant
 export async function up(db: Kysely<any>) {
   await db.schema
     .alterTable('proposals')
