@@ -1,7 +1,6 @@
 version: 2
 updates:
-  # The root's lockfile covers every workspace. Until Sorlo Forms is on npm, these updates fail, since Dependabot can't
-  # reach the file: path that @sorlo/cms links it from
+  # The root's lockfile covers every workspace
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -9,7 +8,18 @@ updates:
     # A release waits a week before Dependabot offers it
     cooldown:
       default-days: 7
+    ignore:
+      # TypeScript 7's native compiler drops the JavaScript API that tsup builds the type declarations with
+      - dependency-name: typescript
+        versions: ['>=7']
+      # Node's types stay on the oldest Node the CMS supports, so code can't use what that Node lacks
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
+      # Vite, its React plugin and Vitest each need the others' versions, so they come together, whatever the update.
+      # A dependency goes in the first group it matches
+      vite:
+        patterns: [vite, '@vitejs/*', vitest, '@vitest/*']
       npm:
         update-types: [minor, patch]
 
