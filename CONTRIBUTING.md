@@ -75,7 +75,7 @@ cd ../core
 npx tsup --watch
 ```
 
-The admin's Vite config dedupes `react`, `react-dom`, `react-i18next` and `i18next`, so the linked Sorlo Forms uses the admin's copies instead of bringing its own.
+The admin's Vite config dedupes `react` and `react-dom`, so the linked Sorlo Forms uses the admin's copies instead of bringing its own.
 
 ## Checks
 
