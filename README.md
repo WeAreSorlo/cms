@@ -18,7 +18,9 @@ Content types are JSON files in your site's repo, which the admin's type editor 
 
 ## Quick start
 
-To try Sorlo before making a site, run the sandbox site in this repo. It needs Node 22.18 or later and Docker:
+Start a site from the [starter](https://github.com/WeAreSorlo/starter), a template repository with a Sorlo site project, a Next.js site that reads it, and sample content. Choose Use this template on its page, then follow its README.
+
+To try the CMS on its own, run the sandbox site in this repo. It needs Node 22.18 or later and Docker:
 
 ```bash
 git clone https://github.com/WeAreSorlo/cms.git
@@ -31,7 +33,7 @@ npm run dev              # migrates, then the admin is at http://localhost:4100/
 
 `npm run dev` prints a link for making the first account. Open it, and choose your name, email and password.
 
-For a site of your own, [Starting a site](docs/starting-a-site.md) installs the CMS from npm, and [Deploying](docs/deploying.md) takes it live.
+To make a site from scratch instead, [Starting a site](docs/starting-a-site.md) installs the CMS from npm, and [Deploying](docs/deploying.md) takes it live.
 
 ## The packages
 

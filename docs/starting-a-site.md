@@ -1,6 +1,6 @@
 # Starting a site
 
-A site is a project that installs `@sorlo/cms` from npm, which brings Sorlo Forms and the SDK with it.
+A site is a project that installs `@sorlo/cms` from npm, which brings Sorlo Forms and the SDK with it. The [starter](https://github.com/WeAreSorlo/starter) is one ready to copy, with a Next.js site that reads it and sample content: choose Use this template on its page, then follow its README. To make one from scratch:
 
 1. Give the site a `package.json`:
 

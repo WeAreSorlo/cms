@@ -2,6 +2,8 @@
 
 Sorlo is an open-source, schema-driven CMS. This package is all of it but the frontend's client: a [Hono](https://hono.dev) server over Postgres with the delivery and admin APIs, the admin, and the `sorlo` command. Content types are JSON files in your project, and the server checks entries with the same [Sorlo Forms](https://github.com/WeAreSorlo/forms) inputs that render them in the admin. Drafts, versions, media, forms, automations, an MCP server and an AI assistant come with it.
 
+The quickest start is the [starter](https://github.com/WeAreSorlo/starter), a template repository with a site project, a Next.js site that reads it, and sample content.
+
 ## Installing
 
 It needs Node 22.18 or later, which runs a site's TypeScript itself, and Postgres.
