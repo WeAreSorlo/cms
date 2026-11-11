@@ -1,4 +1,4 @@
-# Sorlo
+# Sorlo CMS
 
 An open-source, schema-driven CMS, built on [Sorlo Forms](https://github.com/WeAreSorlo/forms) (`@sorlo/forms`).
 
