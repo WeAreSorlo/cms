@@ -1,11 +1,13 @@
 # Sorlo docs
 
-How to build a site on Sorlo, in the order you'll need it. To work on Sorlo itself, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+How to build a site on Sorlo, in the order you'll need it. To work on Sorlo itself, see [CONTRIBUTING.md](https://github.com/WeAreSorlo/cms/blob/main/CONTRIBUTING.md).
+
+The same pages come with `@sorlo/cms`, in `node_modules/@sorlo/cms/docs/`, matching the version installed, and `sorlo dev` points a site's coding agents at them, as [Notes for coding agents](cli.md#notes-for-coding-agents) describes.
 
 ## Getting started
 
 - [Starting a site](starting-a-site.md): a site project, its config and its first account
-- [The Sorlo CLI](cli.md): every `sorlo` command, where the servers listen, and how they stop
+- [The Sorlo CLI](cli.md): every `sorlo` command, the notes `sorlo dev` keeps for coding agents, where the servers listen, and how they stop
 - [Deploying](deploying.md): the site's image, migrations on each deploy, what a host provides, and proxies
 - [Exporting and importing](export-and-import.md): a site's content as a folder, such as a starter's sample content
 

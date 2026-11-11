@@ -50,6 +50,8 @@ In `sorlo dev`, the admin's Content types page writes each type's file in `schem
 - [Content types](https://github.com/WeAreSorlo/cms/blob/main/docs/content-types.md) and [content migrations](https://github.com/WeAreSorlo/cms/blob/main/docs/content-migrations.md)
 - [Every page](https://github.com/WeAreSorlo/cms/blob/main/docs/README.md)
 
+The same pages come with the package, in `node_modules/@sorlo/cms/docs/`, matching the version installed. `sorlo dev` points coding agents at them in the project's `AGENTS.md`.
+
 ## License
 
 MIT

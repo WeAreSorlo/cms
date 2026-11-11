@@ -63,6 +63,7 @@ npm links each package's folder rather than copying it, so the packages' own dep
 - **Content types** are JSON files in a site's `schema/types`. The server checks entries with the same Sorlo Forms inputs that render them in the admin.
 - **The admin,** in `packages/cms/admin`, is a React app that Vite builds into `admin/dist`, which the server serves at `/admin/`. Every form in it, sign-in included, is built with Sorlo Forms.
 - **The SDK,** in `packages/sdk`, is the typed client for the delivery API, and `sorlo types pull`. It runs in sites' frontends, so it never imports server code.
+- **The docs,** in `docs/`, go in the CMS's package too: its build copies them to `packages/cms/docs`, where `sorlo dev`'s [notes for coding agents](docs/cli.md#notes-for-coding-agents) point a site's agents. So a link in them stays inside the folder or is a full URL, which `test/docs.test.ts` checks. The notes themselves are in `packages/cms/src/agents.ts`, and changing them changes `examples/sandbox/AGENTS.md` at the next `npm run dev`, so commit the two together.
 - **Sorlo Forms stands alone.** Keep CMS concepts out of it. When the CMS needs something from it, add a general hook there for the CMS to implement.
 
 ## Working on Sorlo Forms at the same time

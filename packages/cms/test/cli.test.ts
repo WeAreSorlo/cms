@@ -1,10 +1,11 @@
+import { agentRules } from '../src/agents'
 import { uuidv7 } from '../src/db'
 import { hashToken, verifyPassword } from '../src/passwords'
 import { db, resetDb, url } from './database'
 import { contactFields, setUp } from './fixtures'
 import { ChildProcess, execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { AddressInfo, createServer } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -361,6 +362,54 @@ test('dev runs what migrate would as it starts, then prints the link that makes 
     expect(made.status).toBe(200)
   } finally {
     dev.child.kill()
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+test("dev keeps Sorlo's notes for coding agents in AGENTS.md, refreshing them in place, unless agentRules is false", async () => {
+  await setUp()
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
+  const config = (more = '') => `export default { database: { url: ${JSON.stringify(url)} }${more} }\n`
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(join(dir, 'sorlo.config.ts'), config())
+  await mkdir(join(dir, 'schema/types'), { recursive: true })
+  const agents = join(dir, 'AGENTS.md')
+
+  // What sorlo dev printed, once it says where the admin is
+  const start = async () => {
+    const dev = serve(dir, 'dev', await freePort())
+    try {
+      expect(await dev.started).toEqual({ code: null })
+      return dev.output().stdout
+    } finally {
+      dev.child.kill()
+    }
+  }
+
+  try {
+    expect(await start()).toContain("Added Sorlo's notes for coding agents to AGENTS.md.")
+    expect(await readFile(agents, 'utf8')).toBe(`${agentRules}\n`)
+
+    // A person's own notes around an older copy of Sorlo's, which only gets replaced, and only once
+    const old = '<!-- BEGIN:sorlo-agent-rules -->\n\nRead the old docs.\n\n<!-- END:sorlo-agent-rules -->'
+    await writeFile(agents, `# Our notes\n\nKeep replies short.\n\n${old}\n\n## Deploys\n\nAsk first.\n`)
+    // And a CLAUDE.md that doesn't import AGENTS.md, which Claude Code would read instead
+    await writeFile(join(dir, 'CLAUDE.md'), '# Ours\n')
+    expect(await start()).toContain(
+      "Updated Sorlo's notes for coding agents in AGENTS.md.\nClaude Code reads CLAUDE.md here instead of AGENTS.md. " +
+        'Add a line with @AGENTS.md to CLAUDE.md so it sees these notes.\n',
+    )
+    const updated = `# Our notes\n\nKeep replies short.\n\n${agentRules}\n\n## Deploys\n\nAsk first.\n`
+    expect(await readFile(agents, 'utf8')).toBe(updated)
+    expect(await start()).not.toContain('AGENTS.md')
+    expect(await readFile(agents, 'utf8')).toBe(updated)
+
+    // Turned off, it makes no file
+    await rm(agents)
+    await writeFile(join(dir, 'sorlo.config.ts'), config(', agentRules: false'))
+    expect(await start()).not.toContain('AGENTS.md')
+    expect(existsSync(agents)).toBe(false)
+  } finally {
     await rm(dir, { recursive: true })
   }
 }, 60_000)

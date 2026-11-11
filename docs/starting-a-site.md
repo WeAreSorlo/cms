@@ -48,7 +48,7 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
    @sorlo:registry=https://registry.invalid/
    ```
 
-4. Add a `sorlo.config.ts` like [the sandbox's](../examples/sandbox/sorlo.config.ts), with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
+4. Add a `sorlo.config.ts` like [the sandbox's](https://github.com/WeAreSorlo/cms/blob/main/examples/sandbox/sorlo.config.ts), with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
 
    ```json
    {
@@ -76,7 +76,7 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
 
    `sorlo dev` runs the migrations as it starts, then prints a link for making the first account, as [People](people.md#the-first-account) describes. Open it, and choose your name, email and password.
 
-`schema/types` and `migrations` can start missing. Commit `vendor/`, `package.json` and `package-lock.json`.
+`schema/types` and `migrations` can start missing. Commit `vendor/`, `package.json` and `package-lock.json`, and the `AGENTS.md` that `sorlo dev` writes, whose [notes](cli.md#notes-for-coding-agents) point coding agents at these docs.
 
 - **Node runs the site's TypeScript,** `sorlo.config.ts` and `migrations/*.ts`, by stripping its types. So types come in with `import type`, as in the migrations `make:migration` writes, relative imports name the file, as in `./mail.ts`, and enums and namespaces can't be used. The `tsconfig.json` above flags each.
 - **To update the CMS,** pack new versions into `vendor/`, delete the old tarballs, change the three version numbers in `package.json`, run `npm install`, and commit the three together. A tarball packed again with new contents under the same version fails `npm ci`'s integrity check, so every pack takes a new version.

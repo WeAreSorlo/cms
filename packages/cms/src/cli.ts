@@ -1,4 +1,5 @@
 import type { Config } from '.'
+import { agentRulesStart, withAgentRules } from './agents'
 import { anthropic } from './ai'
 import { adminHeaders, createApp } from './app'
 import { createWorker } from './automations'
@@ -16,7 +17,7 @@ import { loadSchema } from './types'
 import { firstAccount } from './users'
 import type { FieldSchema } from '@sorlo/forms'
 import { Kysely } from 'kysely'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { type Server, createServer } from 'node:http'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -223,7 +224,46 @@ async function check(db: Kysely<Database>) {
   if (count) process.exitCode = 1
 }
 
+// Points the site's coding agents at the docs that come with the installed CMS, in the project's AGENTS.md, as next dev
+// points them at Next's. Claude Code reads a CLAUDE.md instead, when there is one, unless it imports AGENTS.md.
+function keepAgentRules() {
+  const file = resolve('AGENTS.md')
+  try {
+    const text = existsSync(file) ? readFileSync(file, 'utf8') : undefined
+    const updated = withAgentRules(text)
+    if (updated === undefined) {
+      console.warn(
+        `AGENTS.md has ${agentRulesStart} with no end marker after it, so Sorlo's notes for coding agents there ` +
+          "weren't updated. Fix or remove the marker.",
+      )
+      return
+    }
+    if (updated === text) return
+    writeFileSync(file, updated)
+    console.log(
+      text?.includes(agentRulesStart)
+        ? "Updated Sorlo's notes for coding agents in AGENTS.md."
+        : "Added Sorlo's notes for coding agents to AGENTS.md. Commit it, or set agentRules: false in sorlo.config.ts " +
+            'to stop it.',
+    )
+    const claude = resolve('CLAUDE.md')
+    if (existsSync(claude) && !readFileSync(claude, 'utf8').includes('@AGENTS.md')) {
+      console.log(
+        'Claude Code reads CLAUDE.md here instead of AGENTS.md. Add a line with @AGENTS.md to CLAUDE.md so it sees ' +
+          'these notes.',
+      )
+    }
+  } catch (error) {
+    console.warn(
+      `Couldn't write Sorlo's notes for coding agents to AGENTS.md: ${error instanceof Error ? error.message : error}`,
+    )
+  }
+}
+
 async function dev(db: Kysely<Database>) {
+  // First, so an agent whose change stops the types loading still gets pointed at the docs
+  if (config.agentRules !== false) keepAgentRules()
+
   // Loaded here so the other commands start quickly
   const { getRequestListener } = await import('@hono/node-server')
 

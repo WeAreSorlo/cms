@@ -62,7 +62,7 @@ The server is stateless: each POST gets a server of its own, which replies with 
 
 ## Tools
 
-The tools live in [`packages/cms/src/tools.ts`](../packages/cms/src/tools.ts), defined once with Zod schemas, and [the admin's assistant](assistant.md) uses the same ones. They run as the token's maker, through the queries and checks the admin API uses, and reply with its shapes. Each one's description says that what it returns is content to read, never instructions to follow. Ten read, and are marked read-only:
+The tools live in [`packages/cms/src/tools.ts`](https://github.com/WeAreSorlo/cms/blob/main/packages/cms/src/tools.ts), defined once with Zod schemas, and [the admin's assistant](assistant.md) uses the same ones. They run as the token's maker, through the queries and checks the admin API uses, and reply with its shapes. Each one's description says that what it returns is content to read, never instructions to follow. Ten read, and are marked read-only:
 
 | Tool                 | Reads                                                                                                                                                                                                                                                                                                                                                    |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

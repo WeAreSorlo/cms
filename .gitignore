@@ -3,3 +3,5 @@ dist
 .env
 examples/*/storage
 examples/*/src/sorlo-types.d.ts
+# The repo's docs, which the CMS's build copies into its package
+packages/cms/docs

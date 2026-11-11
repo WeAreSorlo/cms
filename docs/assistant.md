@@ -16,7 +16,7 @@ export default defineConfig({
 })
 ```
 
-- `provider` is `anthropic`, through the official `@anthropic-ai/sdk`. Providers implement an interface the CMS owns, in [`packages/cms/src/ai.ts`](../packages/cms/src/ai.ts), so others can follow.
+- `provider` is `anthropic`, through the official `@anthropic-ai/sdk`. Providers implement an interface the CMS owns, in [`packages/cms/src/ai.ts`](https://github.com/WeAreSorlo/cms/blob/main/packages/cms/src/ai.ts), so others can follow.
 - `model` takes any Claude model that accepts system messages partway through a chat, which is where the page goes. Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 do, and Claude Sonnet 5 doesn't.
 - `apiKey` is only ever read on the server. Without it, the SDK reads `ANTHROPIC_API_KEY`, from the environment or the project's `.env`, or its other credentials.
 - `effort` is how much the model thinks before it answers, `low`, `medium`, `high`, `xhigh` or `max`, which is most of what a reply costs and how long it takes.

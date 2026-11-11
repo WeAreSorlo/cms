@@ -29,6 +29,9 @@ export interface Config {
   // Turns on the admin's assistant and its Chat page, which read the site's content with a model from this provider,
   // billed to its account. Off if not given.
   ai?: AiOptions
+  // Whether sorlo dev keeps Sorlo's notes for coding agents in the project's AGENTS.md, pointing them at the docs that
+  // come with the installed CMS. On unless false, which leaves AGENTS.md alone.
+  agentRules?: boolean
   // The editor's Preview button for each content type, by its name: the address of a page on the site, or a function
   // giving one from the entry's saved draft, or nothing for no preview of that entry. Types left out have no button.
   // It runs on the server, so an address can carry a secret from the environment for the site's preview route.

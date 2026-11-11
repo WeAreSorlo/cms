@@ -23,6 +23,29 @@ Every command but `sorlo types` stops on a Node older than 22.18, which can't ru
 
 `sorlo dev` runs what `sorlo migrate` would before it starts, printing the same lines, so a new clone, or a `git pull` that brings migrations, needs nothing else. When a waiting migration has a TODO left, it runs none of them, as `sorlo migrate` refuses to, says so, and starts anyway, so the admin's Migrations page shows what waits and runs it once the TODO is done. A database it can't reach gets a line rather than a stack trace. `sorlo start` doesn't migrate, since that's each deploy's release step, as [Deploying](deploying.md) has it.
 
+## Notes for coding agents
+
+Coding agents know nothing of Sorlo from their training, so `sorlo dev` keeps notes for them in the site project's `AGENTS.md`, which most agents read as they start, as `next dev` does for Next. The notes point them at these docs, which come with `@sorlo/cms` in `node_modules/@sorlo/cms/docs/`, matching the installed version, and at Sorlo Forms' README:
+
+```md
+<!-- BEGIN:sorlo-agent-rules -->
+
+## Sorlo isn't in your training data
+
+This project's CMS is Sorlo, `@sorlo/cms`, which is newer than your training data, so don't guess its APIs, file formats or commands. Before you change content types or shared groups in `schema/`, content migrations in `migrations/`, `sorlo.config.ts` or calls to `@sorlo/sdk`, read the pages that cover them in `node_modules/@sorlo/cms/docs/`, starting from its `README.md`, which lists them all. Fields and their options are Sorlo Forms inputs, which the README in `node_modules/@sorlo/forms/` describes. Both match the installed versions. Look for them from this file's folder upward, since in a workspace they can be in a parent folder's `node_modules`.
+
+`sorlo dev` writes this block, and writes it again when it's missing or out of date, as `docs/cli.md` in `@sorlo/cms` explains. Taking it out of a diff only brings it back, so commit it with your work.
+
+<!-- END:sorlo-agent-rules -->
+```
+
+- **`sorlo dev` writes them as it starts,** before it loads the types. It makes `AGENTS.md` if there's none, adds the notes at the end of one without them, after a blank line, and otherwise replaces only what's between their markers, leaving the rest of the file as it was. When they're current it writes nothing, and when it writes it prints a line. A start marker with no end after it gets a warning instead, and the file is left as it is, since only you can tell where the old notes stopped.
+- **Commit `AGENTS.md`** with the rest of the project, so every clone has the notes. A new version of the CMS can change them, and `sorlo dev` then updates them.
+- **To turn them off,** set `agentRules: false` in `sorlo.config.ts`. `sorlo dev` then leaves `AGENTS.md` alone, so delete the notes from it yourself.
+- **Claude Code** reads `AGENTS.md` itself, but reads a `CLAUDE.md` instead when it finds one, in the folder it starts in or above it. So a project with a `CLAUDE.md` needs a line with `@AGENTS.md` in it, which `sorlo dev` says when it writes the notes. `sorlo dev` never writes `CLAUDE.md` itself, since one in a site project inside a workspace would stop Claude Code reading the workspace's own `AGENTS.md`.
+
+`sorlo start` and the other commands never touch `AGENTS.md`.
+
 ## Where the servers listen
 
 Both servers listen on port 4100 unless `PORT` names another, such as `PORT=4200` in the project's `.env`, which leaves 3000 to a site's frontend. A port that's in use stops a server with what to do, rather than a stack trace:
