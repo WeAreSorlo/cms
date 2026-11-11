@@ -8,8 +8,7 @@ WORKDIR /site
 ENV NODE_ENV=production NO_COLOR=1
 
 # The packages first, so a change to the site's types doesn't reinstall them
-COPY package.json package-lock.json .npmrc ./
-COPY vendor vendor
+COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY . .
 
@@ -31,7 +30,7 @@ storage
 .git
 ```
 
-- **The image installs the tarballs from `vendor/`** with `npm ci`, exactly as `package-lock.json` records them. `node:24-slim` is Debian, so sharp uses its glibc build, which a lockfile lists even when it's made on a Mac. On an Apple Silicon Mac, `docker build --platform linux/amd64` builds for an x64 host.
+- **The image installs the packages** with `npm ci`, exactly as `package-lock.json` records them. `node:24-slim` is Debian, so sharp uses its glibc build, which a lockfile lists even when it's made on a Mac. On an Apple Silicon Mac, `docker build --platform linux/amd64` builds for an x64 host.
 - **It holds no secrets.** `.env` files, and env files such as `production.env`, stay out of it, and `sorlo.config.ts` reads the environment each time the server starts. The site's files belong to root, read-only to the server, which writes only to `storage`.
 - **The server is the image's command,** rather than `npm start`, so it gets the host's SIGTERM and stops [as the CLI does](cli.md#logs-and-stopping). `NO_COLOR` keeps colours out of the request log.
 - **Migrations run once per deploy,** before the new version takes traffic, from the same image and environment, such as in Fly's `release_command`, Render's pre-deploy command or a Kubernetes Job:

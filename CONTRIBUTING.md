@@ -38,7 +38,7 @@ In this workspace's `sorlo dev`, `/admin/#/design` shows the admin's design syst
 
 ### A site of your own
 
-A site outside this workspace can run on its packages too. Link them with folder dependencies, build the server code before `sorlo dev`, and keep the `.npmrc` line from [Starting a site](docs/starting-a-site.md):
+A site outside this workspace can run on its packages too. Link them with folder dependencies, and build the server code before `sorlo dev`:
 
 ```json
 "scripts": { "dev": "npm run build:server --prefix ../cms && sorlo dev" },
