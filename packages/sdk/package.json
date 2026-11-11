@@ -1,6 +1,6 @@
 {
   "name": "@sorlo/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A typed client for the Sorlo CMS's delivery API, and sorlo types pull",
   "keywords": [
     "cms",
