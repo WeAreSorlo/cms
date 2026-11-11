@@ -566,6 +566,10 @@ if (!existsSync(configFile)) {
 const envFile = resolve('.env')
 if (existsSync(envFile)) process.loadEnvFile(envFile)
 
+// start serves a site in production, so a config that checks NODE_ENV sees that, as next start does, unless the
+// environment or .env already says otherwise
+if (name === 'start') process.env.NODE_ENV ??= 'production'
+
 const config: Config = (await import(pathToFileURL(configFile).href)).default
 const db = createDb(config.database.url)
 await command.run(db, process.argv.slice(3))

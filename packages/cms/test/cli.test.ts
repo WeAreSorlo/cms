@@ -103,6 +103,32 @@ test(".env sets what the environment doesn't, before sorlo.config.ts loads", asy
   }
 }, 30_000)
 
+test('start loads sorlo.config.ts with NODE_ENV production, unless the environment sets it, as next start does', async () => {
+  // A config that prints what it sees, then stops the command before it needs a database or a port
+  const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
+  await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')
+  await writeFile(
+    join(dir, 'sorlo.config.ts'),
+    "console.log(process.env.NODE_ENV ?? 'unset')\nthrow new Error('Stop')\n",
+  )
+  // Vitest sets NODE_ENV itself
+  const env = { ...process.env }
+  delete env.NODE_ENV
+  const seen = async (command: string, extra: Record<string, string> = {}) => {
+    const run = promisify(execFile)(process.execPath, [bin, command], { cwd: dir, env: { ...env, ...extra } })
+    const { stdout } = await run.catch((error: { stdout: string }) => error)
+    return stdout.split('\n')[0]
+  }
+
+  try {
+    expect(await seen('start')).toBe('production')
+    expect(await seen('start', { NODE_ENV: 'staging' })).toBe('staging')
+    expect(await seen('dev')).toBe('unset')
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 30_000)
+
 test('migrate refuses a waiting migration with a TODO left, running nothing', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'sorlo-site-'))
   await writeFile(join(dir, 'package.json'), '{ "type": "module" }\n')

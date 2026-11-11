@@ -17,7 +17,7 @@ Run `sorlo` from a site project: `npx sorlo dev` in a terminal while you work on
 | `sorlo user:password <email>` | Sets someone's password, asked for hidden, and signs them out everywhere, for a site whose only person forgot theirs and that sends no email                                       |
 | `sorlo make:api-key`          | Creates a key for the delivery API, shown just once. `--preview`, `--types` and `--submit` give it those [permissions](api.md#api-keys)                                            |
 
-Every command but `sorlo types` stops on a Node older than 22.18, which can't run `sorlo.config.ts`. `sorlo start` warns when [`url`](people.md#settings) isn't set.
+Every command but `sorlo types` stops on a Node older than 22.18, which can't run `sorlo.config.ts`. `sorlo start` warns when [`url`](people.md#settings) isn't set. It also sets `NODE_ENV` to `production`, unless the environment or `.env` sets it, as `next start` does, so a `sorlo.config.ts` that checks it gets its production settings wherever the server runs.
 
 ## Migrations as `sorlo dev` starts
 
