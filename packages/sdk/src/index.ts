@@ -50,6 +50,9 @@ type Registered = [keyof EntryTypes] extends [never] ? Record<string, Entry> : E
 // Without pulled types, any form name works and takes any values
 type RegisteredForms = [keyof FormTypes] extends [never] ? Record<string, Record<string, unknown>> : FormTypes
 
+// A form's values by its name, or values of any shape for a form found by its ID, such as a form field's value
+type FormValues<F extends string> = F extends keyof RegisteredForms ? RegisteredForms[F] : Record<string, unknown>
+
 // A form as the CMS serves it, for rendering with Sorlo Forms. It's named so it doesn't clash with Sorlo Forms' Form.
 export interface SorloForm {
   id: string
@@ -328,14 +331,17 @@ export function createClient<Preview extends boolean = false>({
         return request(`/v1/entries/${encodeURIComponent(type)}?${params}`)
       }),
 
-    // A form, by its name, such as cms.form('contact')
-    form: <F extends keyof RegisteredForms & string>(form: F) => ({
+    // A form by its name, such as cms.form('contact'), or by its ID, as a form field holds it. A name the pulled
+    // types don't know is still an error, since a literal must be a known name, while an ID is any string
+    form: <F extends (keyof RegisteredForms & string) | (string & {})>(
+      form: F & (string extends F ? unknown : keyof RegisteredForms),
+    ) => ({
       // Its label, its fields for Sorlo Forms' Form, and whether it's open
       get: async (): Promise<SorloForm> => (await request(`/v1/forms/${encodeURIComponent(form)}`)).data,
 
       // Sends the values, resolving the submission as it was stored. Values that don't pass throw a SorloError with
       // status 422, whose body is core's report, for a core form's applyReport.
-      submit: async (values: RegisteredForms[F]): Promise<Submission<RegisteredForms[F]>> =>
+      submit: async (values: FormValues<F>): Promise<Submission<FormValues<F>>> =>
         (await request(`/v1/forms/${encodeURIComponent(form)}`, values)).data,
     }),
   }

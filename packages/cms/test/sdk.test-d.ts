@@ -201,6 +201,13 @@ test("get() resolves a form whose fields Sorlo Forms' Form takes as its schema",
   expectTypeOf<SorloForm['fields']>().toExtend<Array<FieldSchema>>()
 })
 
+test('form() takes the ID a form field holds, typing its values loosely, since the ID could name any form', () => {
+  const id: string = 'frm_k3x9q2mz'
+  expectTypeOf(cms.form(id).submit).parameter(0).toEqualTypeOf<Record<string, unknown>>()
+  expectTypeOf(cms.form(id).get()).resolves.toEqualTypeOf<SorloForm>()
+  expectTypeOf(cms.form('contact').submit).parameter(0).toEqualTypeOf<ContactFormValues>()
+})
+
 test('a preview client types drafts, whose fields can be empty and which may never have been published', () => {
   const preview = createClient({ url: 'http://localhost:3000', token: 'sorlo_key', preview: true })
   const posts = preview.entries('blog')

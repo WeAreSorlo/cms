@@ -37,6 +37,8 @@ export async function Contact() {
 }
 ```
 
+It also takes a form's ID, such as a `form` field's value when a page's block picks a form, as in `cms.form(block.values.form).get()`. The pulled types can't know which form an ID names, so that form's `submit` takes values of any shape, while a name they don't know is still an error.
+
 `cms.form('contact_us').submit(values)` sends a form's values as JSON, typed by the form's fields, and resolves the submission as it was stored, `{ id, version, values, createdAt }`. Values that don't pass throw a `SorloError` with status 422, whose `body` is the validation report, for the `applyReport` of a Sorlo Forms `Form`.
 
 ```ts
