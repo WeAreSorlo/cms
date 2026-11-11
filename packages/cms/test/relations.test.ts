@@ -150,15 +150,20 @@ test('every save rebuilds entry_relations from both kinds of field, nested ones 
     credits: [{ person: grace.id }, { person: ada.id }],
   })
 
-  expect(await relations(saved.id)).toEqual([
-    { field_id: 'fld_author', target_id: ada.id },
-    { field_id: 'fld_cover', target_id: photo },
-    { field_id: 'fld_images', target_id: photo },
-    { field_id: 'fld_images', target_id: chart },
-    { field_id: 'fld_person', target_id: ada.id },
-    { field_id: 'fld_person', target_id: grace.id },
-    { field_id: 'fld_related', target_id: other.id },
-  ])
+  // In any order, since two IDs made in the same millisecond can sort either way
+  const rows = await relations(saved.id)
+  expect(rows).toHaveLength(7)
+  expect(rows).toEqual(
+    expect.arrayContaining([
+      { field_id: 'fld_author', target_id: ada.id },
+      { field_id: 'fld_cover', target_id: photo },
+      { field_id: 'fld_images', target_id: photo },
+      { field_id: 'fld_images', target_id: chart },
+      { field_id: 'fld_person', target_id: ada.id },
+      { field_id: 'fld_person', target_id: grace.id },
+      { field_id: 'fld_related', target_id: other.id },
+    ]),
+  )
 
   await post('Links', { author: grace.id }, saved.id)
   expect(await relations(saved.id)).toEqual([{ field_id: 'fld_author', target_id: grace.id }])
