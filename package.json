@@ -9,7 +9,7 @@
   "scripts": {
     "db": "docker compose up -d --wait",
     "build:server": "npm exec --workspace @sorlo/sdk --workspace @sorlo/cms -- tsup",
-    "dev": "npm run build:server && npm run dev --workspace starter",
+    "dev": "npm run build:server && npm run dev --workspace sandbox",
     "build": "npm run build --workspace @sorlo/sdk && npm run build --workspace @sorlo/cms",
     "test": "npm test --workspace @sorlo/cms",
     "typecheck": "npm run build:server && npm run typecheck --workspaces --if-present",

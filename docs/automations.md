@@ -82,4 +82,4 @@ export default defineConfig({
 | `automations.attempts`   | How many times an action is tried before it's given up, 6 if not given                                                                                                                                                                   |
 | `webhooks.allowNetworks` | The internal networks webhooks may reach, such as `10.0.0.0/8` for a site's own services, or an address such as `127.0.0.1`                                                                                                              |
 
-The starter's `send` prints each email in the terminal, and it allows webhooks to this machine.
+The sandbox's `send` prints each email in the terminal, and it allows webhooks to this machine.

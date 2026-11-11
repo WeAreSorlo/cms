@@ -28,7 +28,7 @@ No one has an account yet. Make the first at http://localhost:4100/admin/#/setup
 
 ## Settings
 
-`url` is the admin's public address. Links in emails start from it, never from a request's Host header, which anyone can set, so a forged one can't send someone's reset link to another site. Invites and reset links are emailed only with both `url` and [`mail`](automations.md#runs-and-retries) set. Without them, the admin shows each link once, to copy and pass on. `url` takes an `http://` or `https://` address, and `sorlo dev` and `sorlo start` won't start with anything else. The starter's comes from `APP_URL`, as [Starting a site](starting-a-site.md) suggests. File URLs start from it too, whatever Host or `X-Forwarded-Proto` a request sends, and `sorlo start` warns when it isn't set.
+`url` is the admin's public address. Links in emails start from it, never from a request's Host header, which anyone can set, so a forged one can't send someone's reset link to another site. Invites and reset links are emailed only with both `url` and [`mail`](automations.md#runs-and-retries) set. Without them, the admin shows each link once, to copy and pass on. `url` takes an `http://` or `https://` address, and `sorlo dev` and `sorlo start` won't start with anything else. The sandbox's comes from `APP_URL`, as [Starting a site](starting-a-site.md) suggests. File URLs start from it too, whatever Host or `X-Forwarded-Proto` a request sends, and `sorlo start` warns when it isn't set.
 
 ## The Users page
 

@@ -16,7 +16,7 @@ In `sorlo dev`, the admin's Content types page creates, edits and deletes types,
 
 ## The type's file
 
-Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in [the starter's](../examples/starter/schema/types/posts.json). `sorlo dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a file by hand. The type editor reloads the types itself.
+Each content type is a JSON file in the site project's `schema/types` folder, named after the type, as in [the sandbox's](../examples/sandbox/schema/types/posts.json). `sorlo dev` checks every file when it starts, including each field's `defaultValue` against its input, and lists all the problems it finds. Restart it after editing a file by hand. The type editor reloads the types itself.
 
 ```json
 {

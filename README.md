@@ -18,7 +18,7 @@ Content types are JSON files in your site's repo, which the admin's type editor 
 
 ## Quick start
 
-Nothing is on npm yet, so try Sorlo with the starter site in this repo. It needs Node 22.18 or later and Docker, and links Sorlo Forms from a clone beside it, which it builds first:
+Nothing is on npm yet, so try Sorlo with the sandbox site in this repo. It needs Node 22.18 or later and Docker, and links Sorlo Forms from a clone beside it, which it builds first:
 
 ```bash
 git clone https://github.com/WeAreSorlo/forms.git core

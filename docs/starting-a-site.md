@@ -48,7 +48,7 @@ Nothing is on npm yet, so a site installs three packed tarballs from its own rep
    @sorlo:registry=https://registry.invalid/
    ```
 
-4. Add a `sorlo.config.ts` like [the starter's](../examples/starter/sorlo.config.ts), with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
+4. Add a `sorlo.config.ts` like [the sandbox's](../examples/sandbox/sorlo.config.ts), with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`, but never `vendor`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
 
    ```json
    {

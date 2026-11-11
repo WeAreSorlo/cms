@@ -19,11 +19,11 @@ services:
       retries: 30
 
 configs:
-  # Runs once, when the volume is first created: the tests' database and the starter's
+  # Runs once, when the volume is first created: the tests' database and the sandbox's
   databases:
     content: |
       CREATE DATABASE sorlo_test;
-      CREATE DATABASE sorlo_starter;
+      CREATE DATABASE sorlo_sandbox;
 
 volumes:
   postgres:

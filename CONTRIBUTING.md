@@ -8,7 +8,7 @@ This repo holds the CMS, `@sorlo/cms`, and its SDK, `@sorlo/sdk`. The form libra
 | ------------------ | ----------------------------------------------------------------------------------- |
 | `packages/cms`     | `@sorlo/cms`: the Hono server (`src/`), the admin UI (`admin/`) and the `sorlo` CLI |
 | `packages/sdk`     | `@sorlo/sdk`: the typed client for the delivery API, and `sorlo types pull`         |
-| `examples/starter` | A minimal site project, for development and as the starting point for new sites     |
+| `examples/sandbox` | A minimal site project for working on the CMS, which `npm run dev` and the docs use |
 
 ## Getting started
 
@@ -31,15 +31,15 @@ npm run dev         # builds the server code again, then runs sorlo dev: the adm
 `sorlo dev` runs the migrations as it starts, then prints a link for making the first account, as [People](docs/people.md#the-first-account) describes. Then, in another terminal, make a key for the delivery API that can pull types:
 
 ```bash
-cd examples/starter
+cd examples/sandbox
 npx sorlo make:api-key --types
 ```
 
-`npm run db` also creates a `sorlo_test` database for the tests and `sorlo_starter` for the starter, but only when it first creates the Postgres volume. On an older volume, add the starter's with `docker compose exec postgres createdb -U sorlo sorlo_starter`.
+`npm run db` also creates a `sorlo_test` database for the tests and `sorlo_sandbox` for the sandbox, but only when it first creates the Postgres volume. On an older volume, add the sandbox's with `docker compose exec postgres createdb -U sorlo sorlo_sandbox`.
 
-The packages point at their `dist` folders, as a site gets them, so the starter runs what's built. `npm run dev` in the workspace builds the SDK's and the CMS's server code first, with tsup, so restart it after changing either. The admin is the exception: in this workspace `sorlo dev` serves it from its source through Vite, which reloads it as you edit.
+The packages point at their `dist` folders, as a site gets them, so the sandbox runs what's built. `npm run dev` in the workspace builds the SDK's and the CMS's server code first, with tsup, so restart it after changing either. The admin is the exception: in this workspace `sorlo dev` serves it from its source through Vite, which reloads it as you edit.
 
-The starter's `sorlo.config.ts` sets [`previews`](docs/drafts-and-publishing.md#the-preview-button) for posts, so their editor has a Preview button, which opens a frontend on port 3000 that the starter doesn't have. `npx sorlo export` and `npx sorlo import` in `examples/starter` move its content to and from a folder, as [Exporting and importing](docs/export-and-import.md) describes.
+The sandbox's `sorlo.config.ts` sets [`previews`](docs/drafts-and-publishing.md#the-preview-button) for posts, so their editor has a Preview button, which opens a frontend on port 3000 that the sandbox doesn't have. `npx sorlo export` and `npx sorlo import` in `examples/sandbox` move its content to and from a folder, as [Exporting and importing](docs/export-and-import.md) describes.
 
 In this workspace's `sorlo dev`, `/admin/#/design` shows the admin's design system: its tokens, their contrast in the current theme, and every Sorlo Forms input. Sites, whose admin is the built one, don't have the page.
 

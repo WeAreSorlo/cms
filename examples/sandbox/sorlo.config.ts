@@ -4,7 +4,7 @@ import { FSDriver } from 'flydrive/drivers/fs'
 export default defineConfig({
   database: {
     // Matches compose.yaml in the workspace root, which creates this database with the volume
-    url: process.env.DATABASE_URL ?? 'postgres://sorlo:sorlo@localhost:5432/sorlo_starter',
+    url: process.env.DATABASE_URL ?? 'postgres://sorlo:sorlo@localhost:5432/sorlo_sandbox',
   },
   // The admin's public address, which emailed links and file URLs start from. Without it, they come from each request
   url: process.env.APP_URL,
