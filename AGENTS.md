@@ -4,7 +4,7 @@ This repo holds `@sorlo/cms`, the Hono server, React admin and `sorlo` CLI, and 
 
 ## Commands
 
-Node 24, and Docker for Postgres. Sorlo Forms is linked from a clone at `../core` until it's on npm.
+Node 24, and Docker for Postgres.
 
 - `npm run db` starts Postgres, which the tests need.
 - `npm run format`, `npm run typecheck`, `npm test` and `npm run build`, from the root. Run all four before you finish.

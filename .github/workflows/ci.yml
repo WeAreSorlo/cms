@@ -34,26 +34,11 @@ jobs:
           path: cms
           persist-credentials: false
 
-      # The CMS links Sorlo Forms from ../core until it's on npm. While WeAreSorlo/forms is private, a read-only deploy
-      # key reads it. Without the secret, the checkout uses the workflow's own token, which reads it once it's public
-      - uses: actions/checkout@v7
-        with:
-          repository: WeAreSorlo/forms
-          path: core
-          ssh-key: ${{ secrets.FORMS_DEPLOY_KEY }}
-          persist-credentials: false
-
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: |
-            cms/package-lock.json
-            core/package-lock.json
-
-      - name: Build Sorlo Forms
-        working-directory: core
-        run: npm ci && npm run build
+          cache-dependency-path: cms/package-lock.json
 
       - run: npm ci
 

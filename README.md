@@ -18,12 +18,11 @@ Content types are JSON files in your site's repo, which the admin's type editor 
 
 ## Quick start
 
-Nothing is on npm yet, so try Sorlo with the sandbox site in this repo. It needs Node 22.18 or later and Docker, and links Sorlo Forms from a clone beside it, which it builds first:
+The CMS isn't on npm yet, so try Sorlo with the sandbox site in this repo. It needs Node 22.18 or later and Docker:
 
 ```bash
-git clone https://github.com/WeAreSorlo/forms.git core
-git clone https://github.com/WeAreSorlo/cms.git cms
-cd core && npm install && npm run build && cd ../cms
+git clone https://github.com/WeAreSorlo/cms.git
+cd cms
 npm install
 npm run build
 npm run db               # Postgres 17 on localhost:5432

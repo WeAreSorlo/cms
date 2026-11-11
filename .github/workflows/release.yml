@@ -1,8 +1,8 @@
 name: Release
 
-# By hand until Sorlo Forms is on npm and the packages depend on it from there, as CONTRIBUTING.md's Releasing says.
-# Before then, npm ci fails with no Sorlo Forms beside the repo
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Each job asks for only what it needs. changesets/action is pinned to a commit, since it runs with publish rights

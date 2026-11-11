@@ -12,14 +12,7 @@ This repo holds the CMS, `@sorlo/cms`, and its SDK, `@sorlo/sdk`. The form libra
 
 ## Getting started
 
-You need Node 22.18 or later, which runs a site's TypeScript itself, and Docker. Node 24 is what the site image uses. Clone [Sorlo Forms](https://github.com/WeAreSorlo/forms) beside this repo first, as `../core`, and build it, since the CMS links it from there until it's on npm, and its `dist` isn't in git:
-
-```bash
-git clone https://github.com/WeAreSorlo/forms.git ../core
-(cd ../core && npm install && npm run build)
-```
-
-Then, in this repo:
+You need Node 22.18 or later, which runs a site's TypeScript itself, and Docker. Node 24 is what the site image uses. Then, in this repo:
 
 ```bash
 npm install
@@ -68,20 +61,20 @@ npm links each package's folder rather than copying it, so the packages' own dep
 
 ## Working on Sorlo Forms at the same time
 
-Sorlo Forms is linked from `../core` with a `file:` dependency, and its package points at `dist/`, as the SDK's and the CMS's do. Keep its build running while you change it:
+The CMS installs Sorlo Forms from npm. To change both at once, clone [Sorlo Forms](https://github.com/WeAreSorlo/forms) beside this repo, as `../core`, build it, and point `@sorlo/forms` in `packages/cms/package.json` at `file:../../../core` for the time being, then run `npm install`. Its package points at `dist/`, as the SDK's and the CMS's do, so keep its build running while you change it:
 
 ```bash
 cd ../core
 npx tsup --watch
 ```
 
-The admin's Vite config dedupes `react` and `react-dom`, so the linked Sorlo Forms uses the admin's copies instead of bringing its own.
+The admin's Vite config dedupes `react` and `react-dom`, so the linked Sorlo Forms uses the admin's copies instead of bringing its own. Put the version back before you commit.
 
 ## Checks
 
 `npm test` runs against the `sorlo_test` database, so start Postgres first. It builds the SDK and the CMS's server code first, since the CLI's tests run the built `sorlo` command and the SDK's tests import the built SDK, and like the CLI it needs Node 22.18 or later. It also typechecks the `*.test-d.ts` files, which show the SDK rejecting wrong field names and values. There's also `npm run typecheck` for every package, and `npm run format` (or `format:fix`).
 
-CI, in `.github/workflows/ci.yml`, runs the format check, the typecheck, the build and the tests on Node 24, against a Postgres 17 service, for every push to `main` and every pull request. It checks out Sorlo Forms beside the repo, as `core`, and builds it. While WeAreSorlo/forms is private, it reads it with a deploy key: a read-only one in that repo's settings under Deploy keys, whose private half is this repo's Actions secret `FORMS_DEPLOY_KEY`. Once it's public, the secret can go.
+CI, in `.github/workflows/ci.yml`, runs the format check, the typecheck, the build and the tests on Node 24, against a Postgres 17 service, for every push to `main` and every pull request.
 
 ## Pull requests
 
@@ -97,7 +90,7 @@ The CMS and the SDK share one version, since the CMS writes the types the SDK re
 
 ## Releasing
 
-The release workflow, `.github/workflows/release.yml`, runs from the Actions tab, with Run workflow, until the packages are on npm, and on every push to `main` from then on:
+The release workflow, `.github/workflows/release.yml`, runs on every push to `main`, and from the Actions tab with Run workflow:
 
 - While changesets are waiting, it opens or updates a "Version Packages" pull request, which bumps both versions, writes each package's `CHANGELOG.md` and deletes the changesets.
 - Once that pull request is merged, it runs the tests, packs the tarballs and publishes them to npm, with provenance, then tags them, such as `@sorlo/cms@0.2.0`, and makes GitHub releases.
