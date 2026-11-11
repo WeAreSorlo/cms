@@ -44,8 +44,11 @@ jobs:
       contents: write
       pull-requests: write
     steps:
+      # The whole history, since the changelog names the commit that added each changeset, which a shallow clone can't
+      # find without fetching more, and fetching needs credentials while the repository is private
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-node@v7
