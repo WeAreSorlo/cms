@@ -18,7 +18,13 @@ Content types are JSON files in your site's repo, which the admin's type editor 
 
 ## Quick start
 
-Start a site from the [starter](https://github.com/WeAreSorlo/starter), a template repository with a Sorlo site project, a Next.js site that reads it, and sample content. Choose Use this template on its page, then follow its README.
+Make a site with `create-sorlo`. It needs Node 22.18 or later, and Postgres, which Docker can run for you:
+
+```bash
+npm create sorlo@latest
+```
+
+It asks for a folder and which Postgres to use, then sets up a site from the [starter](https://github.com/WeAreSorlo/starter): a Sorlo site project, a Next.js site that reads it, and sample content. Then `cd` into the folder and run `npm run dev`, which prints a link for making the first account. The starter is a template repository too, for Use this template on its page.
 
 To try the CMS on its own, run the sandbox site in this repo. It needs Node 22.18 or later and Docker:
 
@@ -37,11 +43,12 @@ To make a site from scratch instead, [Starting a site](docs/starting-a-site.md) 
 
 ## The packages
 
-| Package                                               | What it is                                                                         |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`@sorlo/cms`](packages/cms)                          | The server, the admin and the `sorlo` command                                      |
-| [`@sorlo/sdk`](packages/sdk)                          | The typed client for the delivery API, and `sorlo types pull`                      |
-| [`@sorlo/forms`](https://github.com/WeAreSorlo/forms) | The React form library that every form in the admin is built with, in its own repo |
+| Package                                               | What it is                                                                                          |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [`@sorlo/cms`](packages/cms)                          | The server, the admin and the `sorlo` command                                                       |
+| [`@sorlo/sdk`](packages/sdk)                          | The typed client for the delivery API, and `sorlo types pull`                                       |
+| [`create-sorlo`](packages/create-sorlo)               | `npm create sorlo@latest`, which makes a site from the starter                                      |
+| [`@sorlo/forms`](https://github.com/WeAreSorlo/forms) | The React form library that every form in the admin is built with, in its own repo                  |
 
 ## Links
 

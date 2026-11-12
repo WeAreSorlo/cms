@@ -1,6 +1,21 @@
 # Starting a site
 
-A site is a project that installs `@sorlo/cms` from npm, which brings Sorlo Forms and the SDK with it. The [starter](https://github.com/WeAreSorlo/starter) is one ready to copy, with a Next.js site that reads it and sample content: choose Use this template on its page, then follow its README. To make one from scratch:
+A site is a project that installs `@sorlo/cms` from npm, which brings Sorlo Forms and the SDK with it. The quickest way to one is the [starter](https://github.com/WeAreSorlo/starter), a site project with a Next.js site that reads it and sample content, which `create-sorlo` makes for you:
+
+```bash
+npm create sorlo@latest
+```
+
+It asks for a folder, and whether to run Postgres in Docker or use your own. Then it installs the site, sets up its database with the sample content, makes the site's API keys and, where git can commit, makes the folder a repository. Next:
+
+```bash
+cd my-site
+npm run dev          # the CMS at http://localhost:4100 and the site at http://localhost:3000
+```
+
+`npm run dev` prints a link for making the first account, as [People](people.md#the-first-account) describes. `npm create sorlo@latest my-site -- --database-url <url>` asks nothing, and without a terminal, as in CI, the folder is `my-site` and Postgres runs in Docker, as [create-sorlo's README](https://github.com/WeAreSorlo/cms/blob/main/packages/create-sorlo/README.md) describes. The starter's README, in the new folder, is the guide to the site.
+
+The starter is a template repository too: choose Use this template on its page, then follow its README. To make a site from scratch instead:
 
 1. Give the site a `package.json`:
 

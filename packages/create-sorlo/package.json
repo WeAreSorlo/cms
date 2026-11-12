@@ -1,0 +1,51 @@
+{
+  "name": "create-sorlo",
+  "version": "0.1.0",
+  "description": "Makes a new Sorlo site from the starter, with npm create sorlo@latest",
+  "keywords": [
+    "cms",
+    "headless-cms",
+    "create",
+    "starter",
+    "nextjs",
+    "sorlo"
+  ],
+  "homepage": "https://github.com/WeAreSorlo/cms/blob/main/docs/starting-a-site.md",
+  "bugs": "https://github.com/WeAreSorlo/cms/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WeAreSorlo/cms.git",
+    "directory": "packages/create-sorlo"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "create-sorlo": "./bin/create-sorlo.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "npm run build",
+    "pretest": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

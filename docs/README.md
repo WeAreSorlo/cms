@@ -6,7 +6,7 @@ The same pages come with `@sorlo/cms`, in `node_modules/@sorlo/cms/docs/`, match
 
 ## Getting started
 
-- [Starting a site](starting-a-site.md): a site project, its config and its first account
+- [Starting a site](starting-a-site.md): `npm create sorlo@latest`, or a site project by hand, its config and its first account
 - [The Sorlo CLI](cli.md): every `sorlo` command, the notes `sorlo dev` keeps for coding agents, where the servers listen, and how they stop
 - [Deploying](deploying.md): the site's image, migrations on each deploy, what a host provides, and proxies
 - [Exporting and importing](export-and-import.md): a site's content as a folder, such as a starter's sample content

@@ -34,6 +34,13 @@ jobs:
           path: cms
           persist-credentials: false
 
+      # Beside the repo, where create-sorlo's end-to-end test packs it as GitHub's tarball has it
+      - uses: actions/checkout@v7
+        with:
+          repository: WeAreSorlo/starter
+          path: starter
+          persist-credentials: false
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
