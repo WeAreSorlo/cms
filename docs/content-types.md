@@ -93,6 +93,26 @@ A `form` field holds the ID of one of the [forms](forms.md), such as the sign-up
 { "id": "fld_kt5appci", "type": "form", "name": "form", "label": "Form" }
 ```
 
+## Markdown fields
+
+A `markdown` field holds text written in Markdown, such as a post's body, and delivery returns it as it was written, for the site to render. The CMS includes it, from [`@sorlo/field-markdown`](https://github.com/WeAreSorlo/cms/tree/main/packages/field-markdown), so it needs no setup. The editor is a textarea with format buttons and a Preview button, and the [assistant](assistant.md) and bulk editing treat its text as long text.
+
+```json
+{ "id": "fld_m3d8wq2r", "type": "markdown", "name": "body", "label": "Body", "options": { "rows": 16 } }
+```
+
+| Option                   | What it holds                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------------- |
+| `placeholder`            | Text the textarea shows while it's empty                                               |
+| `rows`                   | The textarea's height in lines, 8 if not given                                         |
+| `minLength`, `maxLength` | The fewest and most characters it takes, checked as a long text field's are, on saving |
+
+- **Format buttons:** Heading, Bold, Italic, Link, Bulleted list, Numbered list, Quote and Code, each of which takes its format off text that already has it. They're one toolbar, so Tab stops on it once and the arrow keys, Home and End move between them. In the textarea, Ctrl+B, Ctrl+I and Ctrl+K, or Cmd on a Mac, make bold, italic and a link, and Undo takes a button's change back.
+- **Preview** renders the Markdown in the browser, with GitHub's tables, strikethrough and task lists. HTML in the text shows as text there and never runs, links and images with schemes such as `javascript:` lose their addresses, and links open in a new tab. Images load from wherever they point. What a site does with HTML in Markdown is up to the site's own renderer.
+- **Types:** the SDK's types call it a `string`.
+- **From long text:** a `textarea` field's values are Markdown already, so changing one to `markdown` needs no conversion. `make:migration` still writes a TODO for the type change, which can be left as the `mapField` it stubs, since that returns each value as it is.
+- **Forms** offer Sorlo Forms' own inputs, so the Markdown field is for content types and shared groups.
+
 ## Shared groups
 
 A shared group is a set of fields defined once and used by many types, such as SEO fields, so the types' copies can't drift apart. In `sorlo dev`, the admin's Shared groups page creates, edits and deletes groups as the type editor does types, writing a migration for every type each change reaches. Deleting one replies 409 while a type or another group uses it. The type editor's palette has a Shared group field, and beside the form it lists the type's groups at any depth:

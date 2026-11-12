@@ -1,0 +1,72 @@
+{
+  "name": "@sorlo/field-markdown",
+  "version": "0.1.0",
+  "description": "A Markdown field for Sorlo Forms and the Sorlo CMS: a textarea with format buttons and a preview",
+  "keywords": [
+    "markdown",
+    "editor",
+    "react",
+    "form",
+    "cms",
+    "sorlo"
+  ],
+  "homepage": "https://github.com/WeAreSorlo/cms/tree/main/packages/field-markdown#readme",
+  "bugs": "https://github.com/WeAreSorlo/cms/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WeAreSorlo/cms.git",
+    "directory": "packages/field-markdown"
+  },
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "default": "./dist/validation.js"
+    },
+    "./styles.css": "./styles.css"
+  },
+  "files": [
+    "dist",
+    "styles.css"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "i18next": "^26.7.1",
+    "lucide-react": "^1.68.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "peerDependencies": {
+    "@sorlo/forms": "^0.1.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@sorlo/forms": "^0.1.0",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/react": "^19.3.0",
+    "jsdom": "^30.1.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

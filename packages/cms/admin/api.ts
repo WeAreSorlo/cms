@@ -1,6 +1,7 @@
 import { form, media, relationship } from '../src/fields'
 import { maxNamed } from '../src/schemas'
 import type { ContentType, SharedGroup } from '../src/types'
+import { markdown } from '@sorlo/field-markdown'
 import { FieldSchema, Input, inputs } from '@sorlo/forms'
 import { createContext, useContext, useEffect } from 'react'
 
@@ -178,7 +179,8 @@ export async function allEntries(type: ContentType) {
 // A value as text, formatted by its field's input
 export function formatValue(field: FieldSchema | undefined, value: any) {
   const format =
-    field && ({ ...inputs, relationship, media, form } as Record<string, Partial<Input>>)[field.type]?.formatValue
+    field &&
+    ({ ...inputs, relationship, media, form, markdown } as Record<string, Partial<Input>>)[field.type]?.formatValue
   // Core formats an invalid value as null, which shows here as it is, so a cell can show what its message is about
   const text = (format && format(value, field)) ?? (typeof value === 'object' ? null : value?.toString())
   // Core formats a choice field as the values it holds, which show here as their choices' labels

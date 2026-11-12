@@ -26,6 +26,7 @@ import {
   UserPage,
 } from './users'
 import { VersionPage } from './versions'
+import '@sorlo/field-markdown/styles.css'
 import '@sorlo/forms/styles/base.scss'
 import '@sorlo/forms/styles/layout.scss'
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'

@@ -4,14 +4,17 @@ import { allows, form, holdsOne, idsOf, isLink, linkFields, media, relationship,
 import { toMedia } from './media'
 import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
+import { markdown } from '@sorlo/field-markdown/validation'
 import type { FieldSchema, Input, InputPickFields, InputPickValue, InputSchema } from '@sorlo/forms'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, SqlBool, sql } from 'kysely'
 
-// Core's inputs and the CMS's own, which the server never renders. The admin adds their pickers. Types have no
-// Shared group fields once they load, so only their files' checks meet one.
+// Core's inputs, the CMS's own and the fields it includes, such as Markdown, which the server never renders. The
+// admin adds their pickers and editors. Types have no Shared group fields once they load, so only their files' checks
+// meet one.
 export const cmsInputs: Record<string, Input> = {
   ...inputs,
+  markdown: { ...markdown, default: () => null },
   relationship: { ...relationship, default: () => null },
   media: { ...media, default: () => null },
   form: { ...form, default: () => null },

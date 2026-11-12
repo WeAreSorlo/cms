@@ -161,3 +161,18 @@ test('takes relationship and media fields, whose links name content types by id'
     'Field "cover" has an invalid default value. Invalid value.',
   ])
 })
+
+test('takes Markdown fields, which the CMS includes, checked as text', () => {
+  const fields = [
+    { id: 'fld_body', type: 'markdown', name: 'body', defaultValue: '## Hello', options: { rows: 12 } },
+    { id: 'fld_notes', type: 'markdown', name: 'notes', defaultValue: 42 },
+  ]
+
+  expect(
+    checkType(
+      { ...blog, titleField: undefined, slugField: undefined, listColumns: undefined, fields },
+      'blog',
+      new Set(['typ_blog']),
+    ),
+  ).toEqual(['Field "notes" has an invalid default value. Invalid value.'])
+})

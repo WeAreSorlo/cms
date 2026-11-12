@@ -1,0 +1,109 @@
+/* The Markdown field, on Sorlo Forms' theme variables */
+
+.sorlo-input__markdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sorlo-size-1, 0.25rem);
+}
+
+.sorlo-markdown__bar,
+.sorlo-markdown__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sorlo-size-1, 0.25rem);
+}
+
+.sorlo-markdown__bar {
+  justify-content: space-between;
+}
+
+.sorlo-markdown__button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sorlo-size-1, 0.25rem);
+  min-width: 2rem;
+  min-height: 2rem;
+  justify-content: center;
+  padding: 0 var(--sorlo-size-2, 0.5rem);
+  font: inherit;
+  font-size: var(--sorlo-button-font-size, 0.875rem);
+  color: var(--sorlo-button-color, inherit);
+  background: var(--sorlo-button-background, transparent);
+  border: var(--sorlo-button-border, 1px solid currentColor);
+  border-radius: var(--sorlo-button-border-radius, 0.25rem);
+  cursor: pointer;
+}
+
+.sorlo-markdown__button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.sorlo-markdown__button:hover:not(:disabled) {
+  color: var(--sorlo-button-color-hover, inherit);
+  background: var(--sorlo-button-background-hover, transparent);
+}
+
+.sorlo-markdown__button:focus-visible {
+  outline: var(--sorlo-focus-outline, 2px solid);
+  outline-offset: var(--sorlo-focus-outline-offset, 1px);
+}
+
+.sorlo-markdown__button:disabled {
+  color: var(--sorlo-input-color-disabled, GrayText);
+  cursor: default;
+}
+
+/* Above the hover rule, which the pointer still triggers after the click that pressed it */
+.sorlo-markdown__button.sorlo-markdown__toggle[aria-pressed='true'] {
+  color: var(--sorlo-button-primary-color, inherit);
+  background: var(--sorlo-button-primary-background, transparent);
+  border-color: var(--sorlo-button-primary-border-color, currentColor);
+}
+
+.sorlo-input__markdown textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sorlo-markdown__preview {
+  padding: var(--sorlo-input-padding, 0.25rem 0.5rem);
+  border: var(--sorlo-input-border, 1px solid currentColor);
+  border-radius: var(--sorlo-input-border-radius, 0.25rem);
+  overflow-wrap: anywhere;
+}
+
+/* The textarea while previewing, and the preview while not, over Sorlo Forms' display: block for inputs */
+.sorlo-input__markdown [hidden] {
+  display: none;
+}
+
+.sorlo-markdown__preview > :first-child {
+  margin-top: 0;
+}
+
+.sorlo-markdown__preview > :last-child {
+  margin-bottom: 0;
+}
+
+.sorlo-markdown__preview img {
+  max-width: 100%;
+}
+
+.sorlo-markdown__preview pre {
+  overflow-x: auto;
+}
+
+.sorlo-markdown__preview table {
+  border-collapse: collapse;
+}
+
+.sorlo-markdown__preview th,
+.sorlo-markdown__preview td {
+  padding: var(--sorlo-size-1, 0.25rem) var(--sorlo-size-2, 0.5rem);
+  border: var(--sorlo-size-px, 1px) solid var(--sorlo-color-border, currentColor);
+}
+
+.sorlo-markdown__empty {
+  color: var(--sorlo-color-muted, GrayText);
+}
