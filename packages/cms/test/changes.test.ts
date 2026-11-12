@@ -16,6 +16,13 @@ import { join } from 'node:path'
 import sharp from 'sharp'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 
+// What the provider was sent, read loosely, since each test knows which part it looks at
+type Sent = {
+  system: string
+  tools: AiRequest['tools']
+  messages: Array<{ role: string; content: Array<Record<string, any>> }>
+}
+
 // Changes through AI: the write tools, which propose each change in the assistant's chats for the
 // person to apply, as a draft or applied and published, and save drafts over MCP for a token with Save drafts. Neither
 // the assistant nor MCP ever publishes, unpublishes, archives or deletes, and nothing overwrites a newer edit.
@@ -82,12 +89,11 @@ beforeAll(async () => {
 afterAll(() => db.destroy())
 
 type App = ReturnType<typeof createApp>
-type Step = (request: AiRequest) => unknown
+type Step = (request: Sent) => unknown
 
-const reply = (content: AiReply['content'], stop: AiReply['stop'] = 'end', toolCalls: AiReply['toolCalls'] = []) => ({
+const reply = (content: AiReply['content'], stop: AiReply['stop'] = 'end') => ({
   content,
   stop,
-  toolCalls,
   model: 'fake-model',
   usage: null,
 })
@@ -99,7 +105,7 @@ const said =
 
 // A reply that calls tools, with their inputs made from what the chat has so far
 const calls =
-  (...calls: Array<{ name: string; input: unknown | ((request: AiRequest) => unknown) }>): Step =>
+  (...calls: Array<{ name: string; input: unknown | ((request: Sent) => unknown) }>): Step =>
   (request) => {
     const toolCalls = calls.map(({ name, input }, index) => ({
       id: `toolu_${index}_${Math.random()}`,
@@ -107,20 +113,20 @@ const calls =
       input: typeof input === 'function' ? input(request) : input,
     }))
     return reply(
-      toolCalls.map((call) => ({ type: 'tool_use', ...call })),
+      toolCalls.map((call) => ({ type: 'toolCall' as const, ...call })),
       'tools',
-      toolCalls,
     )
   }
 
 // The data of the last tool result the chat holds
-const lastResult = (request: AiRequest) =>
-  JSON.parse(request.messages.at(-1)!.content.find((block) => block.type === 'tool_result')!.content[0].text).data
+const lastResult = (request: Sent) =>
+  JSON.parse(request.messages.at(-1)!.content.find((block) => block.type === 'toolResult')!.content[0].text).data
 
 // The assistant on an app of its own, replying from a script, with MCP on too
 function scripted(...script: Array<Step>) {
-  const requests: Array<AiRequest> = []
+  const requests: Array<Sent> = []
   const provider: AiProvider = {
+    name: 'fake',
     async reply(request) {
       requests.push(structuredClone(request))
       return (await (script.shift() ?? said('Done.'))(request)) as AiReply
@@ -524,7 +530,7 @@ test('a page with a form: the form is proposed closed, and applying the entry th
     calls({ name: 'create_form', input: { label: 'Kubecon sign-ups', name: 'kubecon_sign_ups', fields } }),
     calls({
       name: 'create_entry',
-      input: (request: AiRequest) => ({
+      input: (request: Sent) => ({
         type: 'events',
         values: {
           title: 'Kubecon stall',
@@ -557,7 +563,7 @@ test('a page with a form: the form is proposed closed, and applying the entry th
     calls({ name: 'create_form', input: { label: 'Meetup sign-ups', name: 'meetup_sign_ups', fields } }),
     calls({
       name: 'create_entry',
-      input: (request: AiRequest) => ({
+      input: (request: Sent) => ({
         type: 'events',
         values: { title: 'Meetup', slug: 'meetup-stall', starts_at: '2026-12-01T18:00', form: lastResult(request).id },
       }),
@@ -612,7 +618,7 @@ test('a publish that fails its checks saves nothing, and a page published opens 
       calls({ name: 'create_form', input: { label: `${name} sign-ups`, name: `${name}_sign_ups`, fields } }),
       calls({
         name: 'create_entry',
-        input: (request: AiRequest) => ({ type: 'events', values: { ...values, form: lastResult(request).id } }),
+        input: (request: Sent) => ({ type: 'events', values: { ...values, form: lastResult(request).id } }),
       }),
     )
 
@@ -712,16 +718,13 @@ test("a file's details are proposed after view_media shows the images, and apply
     'Proposed new details for 2 files',
   ])
 
-  // The model sees each image as the Claude API takes it, scaled to fit 512 pixels, with the SVG drawn
+  // The model sees each image as MCP's tool results hold it, scaled to fit 512 pixels, with the SVG drawn
   const [result] = requests[1].messages.at(-1)!.content
   const images = result.content.filter((block: { type: string }) => block.type === 'image')
-  expect(images.map((image: { source: { media_type: string } }) => image.source.media_type)).toEqual([
-    'image/png',
-    'image/png',
-  ])
+  expect(images.map((image: { mimeType: string }) => image.mimeType)).toEqual(['image/png', 'image/png'])
   const sizes = await Promise.all(
-    images.map(async (image: { source: { data: string } }) => {
-      const { width, height } = await sharp(Buffer.from(image.source.data, 'base64')).metadata()
+    images.map(async (image: { data: string }) => {
+      const { width, height } = await sharp(Buffer.from(image.data, 'base64')).metadata()
       return [width, height]
     }),
   )
@@ -1042,11 +1045,11 @@ test("a page's form opens exactly when the page goes live, and never on its own 
   const entry = (type: string, values: Record<string, unknown>) =>
     calls({
       name: 'create_entry',
-      input: (request: AiRequest) => {
+      input: (request: Sent) => {
         // The form the chat proposed first, whichever results came since
         const made = request.messages
           .flatMap((message) => message.content)
-          .find((block) => block.type === 'tool_result')!
+          .find((block) => block.type === 'toolResult')!
         return { type, values: { ...values, form: JSON.parse(made.content[0].text).data.id } }
       },
     })

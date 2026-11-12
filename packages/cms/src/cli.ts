@@ -1,6 +1,5 @@
 import type { Config } from '.'
 import { agentRulesStart, withAgentRules } from './agents'
-import { anthropic } from './ai'
 import { adminHeaders, createApp } from './app'
 import { createWorker } from './automations'
 import { type ContentMigrationFile, checkEntries, contentMigrations, loadContentMigrations } from './content'
@@ -302,7 +301,7 @@ async function dev(db: Kysely<Database>) {
     forms: config.forms,
     versions: config.versions,
     mcp: config.mcp,
-    ai: config.ai && anthropic(config.ai),
+    ai: config.ai,
     url: config.url,
     mail: config.mail,
     proxies: config.proxies,
@@ -371,7 +370,7 @@ async function start(db: Kysely<Database>) {
     forms: config.forms,
     versions: config.versions,
     mcp: config.mcp,
-    ai: config.ai && anthropic(config.ai),
+    ai: config.ai,
     url: config.url,
     mail: config.mail,
     proxies: config.proxies,
@@ -601,7 +600,7 @@ if (!existsSync(configFile)) {
   process.exit(1)
 }
 
-// The site project's .env, such as for ANTHROPIC_API_KEY or DATABASE_URL, which never replaces what the environment
+// The site project's .env, such as for DATABASE_URL or an AI provider's key, which never replaces what the environment
 // already sets
 const envFile = resolve('.env')
 if (existsSync(envFile)) process.loadEnvFile(envFile)
@@ -611,6 +610,13 @@ if (existsSync(envFile)) process.loadEnvFile(envFile)
 if (name === 'start') process.env.NODE_ENV ??= 'production'
 
 const config: Config = (await import(pathToFileURL(configFile).href)).default
+// Before 0.2, ai took options, such as { provider: 'anthropic' }, rather than a provider
+if (config.ai && typeof config.ai.reply !== 'function') {
+  console.error(
+    "ai in sorlo.config.ts takes a provider, such as anthropic() from @sorlo/ai-anthropic, or a site's own.",
+  )
+  process.exit(1)
+}
 const db = createDb(config.database.url)
 await command.run(db, process.argv.slice(3))
 

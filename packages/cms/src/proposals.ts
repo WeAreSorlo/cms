@@ -142,12 +142,12 @@ export function proposals(
   const propose = async (
     chat: string,
     call: string,
-    proposal: Omit<Insertable<Database['proposals']>, 'id' | 'chat_id' | 'tool_use_id'>,
+    proposal: Omit<Insertable<Database['proposals']>, 'id' | 'chat_id' | 'call_id'>,
   ) => {
     const id = uuidv7()
     await db
       .insertInto('proposals')
-      .values({ ...proposal, id, chat_id: chat, tool_use_id: call })
+      .values({ ...proposal, id, chat_id: chat, call_id: call })
       .execute()
     return id
   }
@@ -219,7 +219,7 @@ export function proposals(
     }
     const calls = new Map<string, Array<Proposal>>()
     for (const row of rows) {
-      calls.set(row.tool_use_id, [...(calls.get(row.tool_use_id) ?? []), toProposal(row, needs(row), shownOf(row))])
+      calls.set(row.call_id, [...(calls.get(row.call_id) ?? []), toProposal(row, needs(row), shownOf(row))])
     }
     return calls
   }
@@ -527,7 +527,7 @@ export function proposals(
       .updateTable('proposals')
       .set({ status: 'skipped' })
       .where('chat_id', '=', chat)
-      .where('tool_use_id', 'in', calls)
+      .where('call_id', 'in', calls)
       .where('status', '=', 'pending')
       .execute()
   }

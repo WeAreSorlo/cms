@@ -1,3 +1,4 @@
+import type { AiProvider } from './ai'
 import type { DriveManagerOptions, DriverContract } from 'flydrive/types'
 
 export interface Config {
@@ -27,8 +28,8 @@ export interface Config {
   // admin's MCP tokens page. Off if not given.
   mcp?: boolean | McpOptions
   // Turns on the admin's assistant and its Chat page, which read the site's content with a model from this provider,
-  // billed to its account. Off if not given.
-  ai?: AiOptions
+  // billed to its account, such as anthropic() from @sorlo/ai-anthropic, or a site's own. Off if not given.
+  ai?: AiProvider
   // Whether sorlo dev keeps Sorlo's notes for coding agents in the project's AGENTS.md, pointing them at the docs that
   // come with the installed CMS. On unless false, which leaves AGENTS.md alone.
   agentRules?: boolean
@@ -63,21 +64,6 @@ export interface McpOptions {
   // Lets people give their tokens Publish changes, so their AI clients' changes go live on the site at once, with no
   // one reviewing them in the admin. Off if not given.
   publish?: boolean
-}
-
-// The model the admin's assistant uses
-export interface AiOptions {
-  provider: 'anthropic'
-  // claude-opus-5-5 if not given
-  model?: string
-  // The provider's API key, only ever read on the server. ANTHROPIC_API_KEY if not given.
-  apiKey?: string
-  // How much the model thinks before it answers, which is most of what a reply costs and how long it takes. medium if
-  // not given.
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-  // Whether a request the provider's safety classifiers decline is tried again on the model the provider recommends
-  // for that kind of decline. On if not given.
-  fallback?: boolean
 }
 
 export type Storage = DriveManagerOptions<Record<string, () => DriverContract>>
@@ -162,4 +148,6 @@ export const defaultMediaTypes = ['image/*', 'video/*', 'audio/*', 'application/
 export const defineConfig = (config: Config) => config
 
 // Types a site project's content migrations
+export type { AiContent, AiMessage, AiPart, AiProvider, AiReply, AiRequest } from './ai'
+export { AiError } from './ai'
 export type { ContentMigration, EntryChanges } from './content'

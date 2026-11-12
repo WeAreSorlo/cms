@@ -1,5 +1,5 @@
 import type { Storage, VersionOptions } from '.'
-import { AiError, AiMessage, AiProvider, lastHandoff } from './ai'
+import { AiMessage, AiPart, AiProvider, isAiError } from './ai'
 import type { ContentMigrationFile } from './content'
 import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
@@ -33,7 +33,7 @@ const perPage = 20
 type ChatRow = Selectable<Database['chats']>
 type MessageRow = Selectable<Database['chat_messages']>
 type NewMessage = Omit<Insertable<Database['chat_messages']>, 'chat_id' | 'position' | 'content'> & {
-  content: Array<Record<string, any>>
+  content: Array<AiPart>
 }
 
 // A file attached to one of the person's messages, as GET /api/media gives it
@@ -152,13 +152,21 @@ const offeredTools = (editable: boolean) => tools.filter((tool) => !tool.publish
 // The tools as the provider is given them without the type editor, as outside sorlo dev
 export const toolSpecs = offeredTools(false).map(specOf)
 
-// The chat as the model is sent it. A reply the model declined is left out, as the provider asks, and so is the page
-// sent with a message that got no reply, which would sit between two of the person's messages.
-export function history(rows: Array<Pick<MessageRow, 'role' | 'content' | 'stop_reason'>>): Array<AiMessage> {
+// The chat as the provider is sent it. A reply the model declined is left out, as providers ask, and so is the page
+// sent with a message that got no reply, which would sit between two of the person's messages. Opaque parts go only
+// to the provider that wrote them, and a message left with nothing goes too.
+export function history(
+  rows: Array<Pick<MessageRow, 'role' | 'content' | 'stop_reason'>>,
+  provider: string,
+): Array<AiMessage> {
   const sent = rows.filter((row) => row.stop_reason !== 'refused')
   return sent
     .filter((row, index) => row.role !== 'system' || index === sent.length - 1 || sent[index + 1].role === 'assistant')
-    .map(({ role, content }) => ({ role, content }))
+    .map(({ role, content }) => ({
+      role,
+      content: content.filter((part) => part.type !== 'opaque' || part.provider === provider),
+    }))
+    .filter((message) => message.content.length)
 }
 
 // When the last system message the model saw was written, by history()'s rule, so what a failed reply's system message
@@ -167,12 +175,6 @@ export function lastSeen(rows: Array<Pick<MessageRow, 'role' | 'stop_reason' | '
   const sent = rows.filter((row) => row.stop_reason !== 'refused')
   return sent.filter((row, index) => row.role === 'system' && sent[index + 1]?.role === 'assistant').at(-1)?.created_at
 }
-
-// An image as the Claude API takes it, rather than as MCP does
-const imageBlock = ({ data, mimeType }: { data: string; mimeType: string }) => ({
-  type: 'image',
-  source: { type: 'base64', media_type: mimeType, data },
-})
 
 // A tool call as a step of the reply, such as Searched entries for “lamp”: 4 found
 export function stepOf(
@@ -281,15 +283,15 @@ export function display(
 
   for (const row of rows) {
     if (row.role === 'system') continue
-    const results = row.content.filter((block) => block.type === 'tool_result')
+    const results = row.content.flatMap((part) => (part.type === 'toolResult' ? [part] : []))
     if (row.role === 'user' && results.length) {
       for (const result of results) {
-        const pending = calls.get(result.tool_use_id)
+        const pending = calls.get(result.id)
         if (pending) {
           Object.assign(
             pending.step,
-            stepOf(types, pending.call, { content: result.content, isError: result.is_error }),
-            proposed.has(result.tool_use_id) && { proposals: proposed.get(result.tool_use_id) },
+            stepOf(types, pending.call, { content: result.content, isError: result.isError }),
+            proposed.has(result.id) && { proposals: proposed.get(result.id) },
           )
         }
       }
@@ -298,18 +300,16 @@ export function display(
       end()
       // Their words come last, after the files they attached
       const words = row.content.at(-1)
-      const text = words?.type === 'text' ? String(words.text) : ''
+      const text = words?.type === 'text' ? words.text : ''
       messages.push({ role: 'user', text, ...(row.files && { files: row.files.map((id) => files.get(id) ?? null) }) })
     } else {
       let reply = messages.at(-1)
       if (reply?.role !== 'assistant') messages.push((reply = { role: 'assistant', parts: [], notice: null }))
-      // Calls before a fallback's last handoff are the declining model's, which never ran
-      const handoff = lastHandoff(row.content)
-      for (const [index, block] of row.content.entries()) {
-        if (block.type === 'text' && block.text) reply.parts.push({ type: 'text', text: block.text })
-        if (block.type === 'tool_use' && index > handoff) {
+      for (const part of row.content) {
+        if (part.type === 'text' && part.text) reply.parts.push({ type: 'text', text: part.text })
+        if (part.type === 'toolCall') {
           const step: ReplyStep = { type: 'step', text: '', failed: false }
-          calls.set(block.id, { call: block as { name: string; input: unknown }, step })
+          calls.set(part.id, { call: part, step })
           reply.parts.push(step)
         }
       }
@@ -523,7 +523,7 @@ export function chatRoutes(
       // Such as a client that left before the reply began, which it isn't billed for
       if (signal.aborted) return notices.stopped
       const reply = await provider.reply(
-        { system, tools: specs, messages: history(rows) },
+        { system, tools: specs, messages: history(rows, provider.name) },
         { text: (text) => send('text', { text }), restart: () => send('restart', {}) },
         signal,
       )
@@ -540,10 +540,11 @@ export function chatRoutes(
       }
 
       // A declined reply is never sent back, so its calls need no results
+      const calls = reply.content.flatMap((part) => (part.type === 'toolCall' ? [part] : []))
       const ran =
         reply.stop === 'tools'
           ? await Promise.all(
-              reply.toolCalls.map(async (call) => {
+              calls.map(async (call) => {
                 const tool = offered.find((tool) => tool.name === call.name)
                 const missing = { content: [{ type: 'text' as const, text: `There's no tool named ${call.name}.` }] }
                 // The write tools propose their changes under the call, which the chat shows them with
@@ -556,7 +557,7 @@ export function chatRoutes(
             )
           : reply.stop === 'refused'
             ? []
-            : reply.toolCalls.map((call) => ({ call, reply: notRun }))
+            : calls.map((call) => ({ call, reply: notRun }))
       const proposed = ran.some(({ call }) => tools.find((tool) => tool.name === call.name)?.changes)
         ? await changes.byCall(chatId)
         : undefined
@@ -565,11 +566,11 @@ export function chatRoutes(
         const made = proposed?.get(call.id)
         send('step', { ...stepOf(named, call, reply), ...(made && { proposals: made }) })
       }
-      const results = ran.map(({ call, reply }) => ({
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content: reply.content.map((block) => (block.type === 'image' ? imageBlock(block) : block)),
-        ...(reply.isError && { is_error: true }),
+      const results = ran.map(({ call, reply }): AiPart => ({
+        type: 'toolResult',
+        id: call.id,
+        content: reply.content,
+        ...(reply.isError && { isError: true }),
       }))
       try {
         await append(chatId, rows, [message, ...(results.length ? [{ role: 'user' as const, content: results }] : [])])
@@ -684,13 +685,13 @@ export function chatRoutes(
   // checked.
   const attached = async (ids: Array<string>, base: string) => {
     const rows = ids.length ? await db.selectFrom('media').selectAll().where('id', 'in', ids).execute() : []
-    const blocks: Array<Record<string, any>> = []
+    const blocks: Array<AiPart> = []
     for (const id of ids) {
       const row = rows.find((row) => row.id === id)
       if (!row) return undefined
       const shown = row.mime.startsWith('image/')
       const image = drive && shown ? await imageOf(drive, row) : undefined
-      if (image) blocks.push(imageBlock(image))
+      if (image) blocks.push({ type: 'image', ...image })
       const unseen = shown ? "Its image couldn't be read" : "It isn't an image"
       const details = JSON.stringify(toAdminMedia(row, base))
       blocks.push({
@@ -763,7 +764,7 @@ export function chatRoutes(
       else c.req.raw.signal.addEventListener('abort', left, { once: true })
       const send = (event: string, data: unknown) => void stream.writeSSE({ event, data: JSON.stringify(data) })
       const notice = await respond(chat.id, rows, context, send, stop.signal).catch((error): ReplyNotice => {
-        if (error instanceof AiError) return { tone: 'danger', text: error.message }
+        if (isAiError(error)) return { tone: 'danger', text: error.message }
         if (error instanceof Conflict) return notices.conflict
         console.error(error)
         return notices.failed

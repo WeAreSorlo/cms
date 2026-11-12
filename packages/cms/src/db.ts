@@ -1,3 +1,4 @@
+import type { AiPart } from './ai'
 import type { EventName } from './schemas'
 import type { ConditionGroup, FieldSchema } from '@sorlo/forms'
 import { ColumnType, Generated, Kysely, PostgresDialect } from 'kysely'
@@ -160,8 +161,8 @@ export interface Database {
     chat_id: string
     position: number
     role: 'user' | 'assistant' | 'system'
-    // The content blocks exactly as they were sent, or as the provider returned them
-    content: JsonList<Record<string, any>>
+    // The message's parts, exactly as they were sent, or as the provider returned them
+    content: JsonList<AiPart>
     // For replies: the model that wrote it, why it stopped (end, tools, length, refused or stopped) and the tokens it
     // took, as the provider counts them
     model: string | null
@@ -177,7 +178,7 @@ export interface Database {
     id: string
     chat_id: string
     // The tool call that made it, which the chat shows it under
-    tool_use_id: string
+    call_id: string
     kind: 'entry' | 'form' | 'media' | 'type'
     // The entry, form, file or content type it changes, or the id a new one is made with
     target_id: string

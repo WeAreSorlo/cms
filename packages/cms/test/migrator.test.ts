@@ -142,6 +142,7 @@ test("the CMS's own migrations run forward and back", async () => {
     '2026_11_03_000026_add_entry_take_downs',
     '2026_11_03_000027_add_people',
     '2026_11_03_000028_add_reset_makers',
+    '2026_11_12_000029_add_neutral_chat_parts',
   ])
 
   await migrate(db, migrations)
@@ -383,13 +384,18 @@ test("the migration for content types' proposals keeps every proposal's target, 
   const proposal = (kind: 'entry' | 'type', target_id: string) => ({
     id: uuidv7(),
     chat_id: chat,
-    tool_use_id: 'toolu_1',
+    call_id: 'toolu_1',
     kind,
     target_id,
     is_new: true,
     after: {},
   })
-  await db.insertInto('proposals').values(proposal('entry', entry)).execute()
+  // Before the column's rename
+  const { call_id, ...before } = proposal('entry', entry)
+  await db
+    .insertInto('proposals')
+    .values({ ...before, tool_use_id: call_id } as never)
+    .execute()
 
   await migrate(db, migrations)
   const type = proposal('type', 'typ_k3x9q2mz')
@@ -437,7 +443,7 @@ test('the migrations for managing people roll back, leaving someone removed unab
     .values({ user_id: id, token_hash: 'y', made_by: maker, expires_at: new Date() })
     .execute()
 
-  expect(await rollback(db, migrations)).toEqual([makers, people])
+  expect(await rollback(db, migrations)).toEqual(['2026_11_12_000029_add_neutral_chat_parts', makers, people])
   const names = (await db.introspection.getTables()).map((table) => table.name)
   expect(names).not.toContain('invites')
   expect(names).not.toContain('password_resets')
@@ -490,4 +496,92 @@ test('the migration that records take-downs marks every entry that was live and 
   expect(await rollback(db, migrations)).toEqual([takeDowns])
   const columns = (await db.introspection.getTables()).find((table) => table.name === 'entries')?.columns
   expect(columns?.map((column) => column.name)).not.toContain('taken_down_at')
+})
+
+test("the migration to the CMS's own parts converts every chat's messages from the Claude API's blocks, and back", async () => {
+  const migrations = await loadMigrations(migrationsDir)
+  const parts = '2026_11_12_000029_add_neutral_chat_parts'
+  await migrate(db, Object.fromEntries(Object.entries(migrations).filter(([name]) => name < parts)))
+  const user = uuidv7()
+  const chat = uuidv7()
+  await db.insertInto('users').values({ id: user, name: 'Ada', email: 'ada@example.com', password_hash: '' }).execute()
+  await db.insertInto('chats').values({ id: chat, user_id: user }).execute()
+  const source = { type: 'base64', media_type: 'image/jpeg', data: 'aGk=' }
+  const thinking = { type: 'thinking', thinking: '', signature: 'sig' }
+  const declined = { type: 'tool_use', id: 'toolu_0', name: 'list_forms', input: {} }
+  const handoff = { type: 'fallback', from: { model: 'claude-opus-5-5' }, to: { model: 'claude-opus-5' } }
+  const blocks = [
+    {
+      role: 'user',
+      content: [
+        { type: 'image', source },
+        { type: 'text', text: 'Hi' },
+      ],
+    },
+    { role: 'system', content: [{ type: 'text', text: "It's noon." }] },
+    {
+      role: 'assistant',
+      content: [
+        thinking,
+        declined,
+        handoff,
+        { type: 'text', text: 'Looking' },
+        { type: 'tool_use', id: 'toolu_1', name: 'get_entry', input: { id: 'x' } },
+      ],
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'toolu_1', content: [{ type: 'image', source }], is_error: true },
+        { type: 'tool_result', tool_use_id: 'toolu_2', content: [{ type: 'text', text: '{}' }] },
+      ],
+    },
+  ]
+  const rows = blocks.map(({ role, content }, position) => ({
+    chat_id: chat,
+    position,
+    role: role as 'user',
+    content: JSON.stringify(content),
+  }))
+  await db.insertInto('chat_messages').values(rows).execute()
+  await db
+    .insertInto('proposals')
+    .values({
+      id: uuidv7(),
+      chat_id: chat,
+      tool_use_id: 'toolu_1',
+      kind: 'entry',
+      target_id: uuidv7(),
+      is_new: true,
+      after: {},
+    } as never)
+    .execute()
+
+  await migrate(db, migrations)
+  const contents = async () =>
+    (await db.selectFrom('chat_messages').select('content').orderBy('position').execute()).map((row) => row.content)
+  const image = { type: 'image', data: 'aGk=', mimeType: 'image/jpeg' }
+  const opaque = (data: unknown) => ({ type: 'opaque', provider: 'anthropic', data })
+  expect(await contents()).toEqual([
+    [image, { type: 'text', text: 'Hi' }],
+    [{ type: 'text', text: "It's noon." }],
+    [
+      opaque(thinking),
+      // The declining model's call, which never ran
+      opaque(declined),
+      opaque(handoff),
+      { type: 'text', text: 'Looking' },
+      { type: 'toolCall', id: 'toolu_1', name: 'get_entry', input: { id: 'x' } },
+    ],
+    [
+      { type: 'toolResult', id: 'toolu_1', content: [image], isError: true },
+      { type: 'toolResult', id: 'toolu_2', content: [{ type: 'text', text: '{}' }] },
+    ],
+  ])
+  expect(await db.selectFrom('proposals').select('call_id').execute()).toEqual([{ call_id: 'toolu_1' }])
+
+  expect(await rollback(db, migrations)).toEqual([parts])
+  expect(await contents()).toEqual(blocks.map((message) => message.content))
+  const columns = (await db.introspection.getTables()).find((table) => table.name === 'proposals')?.columns
+  expect(columns?.map((column) => column.name)).toContain('tool_use_id')
 })

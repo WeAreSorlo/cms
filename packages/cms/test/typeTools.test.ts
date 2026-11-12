@@ -17,6 +17,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
 
+// What the provider was sent, read loosely, since each test knows which part it looks at
+type Sent = {
+  system: string
+  tools: AiRequest['tools']
+  messages: Array<{ role: string; content: Array<Record<string, any>> }>
+}
+
 // The assistant's tools for content types: offered only where the type editor is on, as in sorlo
 // dev, they propose new types and changes to them, checked as the type editor and its schema builder check them, and
 // Apply writes the type's file and its content migration as the type editor's Save does, never running sorlo migrate.
@@ -70,12 +77,11 @@ beforeEach(async () => {
 })
 
 type App = ReturnType<typeof createApp>
-type Step = (request: AiRequest) => unknown
+type Step = (request: Sent) => unknown
 
-const reply = (content: AiReply['content'], stop: AiReply['stop'] = 'end', toolCalls: AiReply['toolCalls'] = []) => ({
+const reply = (content: AiReply['content'], stop: AiReply['stop'] = 'end') => ({
   content,
   stop,
-  toolCalls,
   model: 'fake-model',
   usage: null,
 })
@@ -87,7 +93,7 @@ const said =
 
 // A reply that calls tools, with their inputs made from what the chat has so far
 const calls =
-  (...calls: Array<{ name: string; input: unknown | ((request: AiRequest) => unknown) }>): Step =>
+  (...calls: Array<{ name: string; input: unknown | ((request: Sent) => unknown) }>): Step =>
   (request) => {
     const toolCalls = calls.map(({ name, input }, index) => ({
       id: `toolu_${index}_${Math.random()}`,
@@ -95,16 +101,16 @@ const calls =
       input: typeof input === 'function' ? input(request) : input,
     }))
     return reply(
-      toolCalls.map((call) => ({ type: 'tool_use', ...call })),
+      toolCalls.map((call) => ({ type: 'toolCall' as const, ...call })),
       'tools',
-      toolCalls,
     )
   }
 
 // The assistant on a site of its own, replying from a script, with the type editor on unless editor is false
 async function scripted(script: Array<Step>, { editor = true, snapshot = true } = {}) {
-  const requests: Array<AiRequest> = []
+  const requests: Array<Sent> = []
   const provider: AiProvider = {
+    name: 'fake',
     async reply(request) {
       requests.push(structuredClone(request))
       return (await (script.shift() ?? said('Done.'))(request)) as AiReply
@@ -149,9 +155,9 @@ const proposalsIn = (events: Awaited<ReturnType<typeof ask>>) => steps(events).f
 const newChat = async (app: App) => (await admin(app, 'POST', '/chats', {})).body.data.id as string
 
 // What the model was told after a tool call, as the next request sends it back
-const resultOf = (request: AiRequest) => {
-  const result = request.messages.at(-1)!.content.find((block) => block.type === 'tool_result')!
-  return { isError: !!result.is_error, text: result.content.map((block: { text: string }) => block.text).join('\n') }
+const resultOf = (request: Sent) => {
+  const result = request.messages.at(-1)!.content.find((block) => block.type === 'toolResult')!
+  return { isError: !!result.isError, text: result.content.map((block: { text: string }) => block.text).join('\n') }
 }
 
 const typeFile = async (name: string) => JSON.parse(await readFile(join(dirs.types, `${name}.json`), 'utf8'))
@@ -608,7 +614,7 @@ test('nothing links to a type proposed in the chat until it is applied, and a ch
     calls({ name: 'create_content_type', input: titled }),
     calls({
       name: 'update_content_type',
-      input: (request: AiRequest) => {
+      input: (request: Sent) => {
         const id = JSON.parse(resultOf(request).text.split('\n')[0]).data.id
         return {
           type: 'blog',

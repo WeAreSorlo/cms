@@ -1,6 +1,6 @@
 import { AiError, AiProvider, AiReply, AiRequest } from '../src/ai'
 import { createApp } from '../src/app'
-import { maxRounds, systemPrompt, toolSpecs } from '../src/chats'
+import { history, maxRounds, systemPrompt, toolSpecs } from '../src/chats'
 import { uuidv7 } from '../src/db'
 import { hashToken } from '../src/passwords'
 import { tools } from '../src/tools'
@@ -16,6 +16,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import sharp from 'sharp'
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest'
+
+// What the provider was sent, read loosely, since each test knows which part it looks at
+type Sent = {
+  system: string
+  tools: AiRequest['tools']
+  messages: Array<{ role: string; content: Array<Record<string, any>> }>
+}
 
 // The admin's assistant: each person's chats, and the loop that answers with the CMS's tools, all with a provider that
 // replies from a script, so nothing calls a real model
@@ -62,12 +69,13 @@ beforeEach(async () => {
 
 afterAll(() => db.destroy())
 
-type Step = (request: AiRequest, on: { text(text: string): void; restart(): void }, signal: AbortSignal) => unknown
+type Step = (request: Sent, on: { text(text: string): void; restart(): void }, signal: AbortSignal) => unknown
 
 // A provider that answers each call with the next step of its script, and keeps what each call was sent
 function scripted(...script: Array<Step>) {
-  const requests: Array<AiRequest> = []
+  const requests: Array<Sent> = []
   const provider: AiProvider = {
+    name: 'fake',
     async reply(request, on, signal) {
       requests.push(structuredClone(request))
       return (await (script.shift() ?? said('Done.'))(request, on, signal)) as AiReply
@@ -76,10 +84,9 @@ function scripted(...script: Array<Step>) {
   return { provider, requests, app: createApp(db, types, { ai: provider, storage }) }
 }
 
-const reply = (content: AiReply['content'], stop: AiReply['stop'] = 'end', toolCalls: AiReply['toolCalls'] = []) => ({
+const reply = (content: AiReply['content'], stop: AiReply['stop'] = 'end') => ({
   content,
   stop,
-  toolCalls,
   model: 'fake-model',
   usage: { input_tokens: 10, output_tokens: 2 },
 })
@@ -99,9 +106,8 @@ const calls =
   () => {
     const toolCalls = calls.map((call, index) => ({ id: `toolu_${index}_${Math.random()}`, ...call }))
     return reply(
-      toolCalls.map((call) => ({ type: 'tool_use', ...call })),
+      toolCalls.map((call) => ({ type: 'toolCall' as const, ...call })),
       'tools',
-      toolCalls,
     )
   }
 
@@ -207,7 +213,7 @@ test('a reply reads with the tools, round after round, and streams as it goes', 
   expect(first.messages[0].content).toEqual([{ type: 'text', text: 'Find the post about the lamp\nand check it' }])
   expect(second.messages.map((message) => message.role)).toEqual(['user', 'system', 'assistant', 'user'])
   const [result] = second.messages[3].content
-  expect(result).toMatchObject({ type: 'tool_result', tool_use_id: second.messages[2].content[0].id })
+  expect(result).toMatchObject({ type: 'toolResult', id: second.messages[2].content[0].id })
   expect(JSON.parse(result.content[0].text).data[0].id).toBe(lampId)
 
   // The system prompt and tools are the same every time, and hold the content types
@@ -376,10 +382,9 @@ test('tool calls a reply ends on are stored as not run, so the chat can be sent 
     return reply(
       [
         { type: 'text', text: 'Reading' },
-        { type: 'tool_use', ...call },
+        { type: 'toolCall', ...call },
       ],
       'length',
-      [call],
     )
   }
   const { app, requests } = scripted(cut, said('OK.'))
@@ -394,10 +399,10 @@ test('tool calls a reply ends on are stored as not run, so the chat can be sent 
   const [, , , results] = requests[1].messages
   expect(results.content).toEqual([
     {
-      type: 'tool_result',
-      tool_use_id: 'toolu_cut',
+      type: 'toolResult',
+      id: 'toolu_cut',
       content: [{ type: 'text', text: 'Not run, since the reply ended first.' }],
-      is_error: true,
+      isError: true,
     },
   ])
 })
@@ -519,14 +524,14 @@ test("a message's files go to the model before its words, as view_media shows im
   const [sent, where] = requests[0].messages
   const attached = 'Attached, and uploaded to the media library'
   expect(sent.content).toEqual([
-    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: expect.any(String) } },
+    { type: 'image', data: expect.any(String), mimeType: 'image/jpeg' },
     { type: 'text', text: `${attached}: ${JSON.stringify(photo)}` },
     { type: 'text', text: `${attached}. It isn't an image, so you can't see it: ${JSON.stringify(terms)}` },
     { type: 'text', text: `${attached}. Its image couldn't be read, so you can't see it: ${JSON.stringify(odd)}` },
     { type: 'text', text },
   ])
   // A preview, scaled to fit 512 pixels, and the page as any message says it
-  const { width, height } = await sharp(Buffer.from(sent.content[0].source.data, 'base64')).metadata()
+  const { width, height } = await sharp(Buffer.from(sent.content[0].data, 'base64')).metadata()
   expect([width, height]).toEqual([512, 384])
   expect(where.content[0].text).toContain(`the id ${lampId}, so "here" and "this" mean that entry.`)
   expect(requests[0].system).toContain('The person can attach files to their message')
@@ -665,8 +670,9 @@ test('under Node, a client that leaves while its files are read stops the reply 
     }
   }
   const slow = { default: 'local', services: { local: () => new Slow({ location, visibility: 'public' }) } }
-  const requests: Array<AiRequest> = []
+  const requests: Array<Sent> = []
   const provider: AiProvider = {
+    name: 'fake',
     async reply(request) {
       requests.push(request)
       return reply([{ type: 'text', text: 'Too late.' }])
@@ -711,4 +717,23 @@ test('under Node, a client that leaves while its files are read stops the reply 
   } finally {
     server.close()
   }
+})
+
+test('opaque parts go only to the provider that wrote them, and a message left with nothing goes too', () => {
+  const ours = { type: 'opaque', provider: 'fake', data: { signature: 'a' } } as const
+  const rows = [
+    { role: 'user', content: [{ type: 'text', text: 'Hi' }], stop_reason: null },
+    { role: 'assistant', content: [{ type: 'opaque', provider: 'other', data: {} }], stop_reason: 'end' },
+    { role: 'user', content: [{ type: 'text', text: 'And?' }], stop_reason: null },
+    {
+      role: 'assistant',
+      content: [{ type: 'opaque', provider: 'other', data: {} }, ours, { type: 'text', text: 'So' }],
+      stop_reason: 'end',
+    },
+  ] as const
+  expect(history(rows as never, 'fake')).toEqual([
+    { role: 'user', content: [{ type: 'text', text: 'Hi' }] },
+    { role: 'user', content: [{ type: 'text', text: 'And?' }] },
+    { role: 'assistant', content: [ours, { type: 'text', text: 'So' }] },
+  ])
 })

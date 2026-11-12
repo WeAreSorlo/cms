@@ -2,39 +2,81 @@
 
 With `ai` set in `sorlo.config.ts`, the admin has an assistant: Assistant at the top of the nav, which opens the Chat page with the person's chats beside it, and the same chat in a card under every page's panel, which knows the page it's on, so "fix the typos here" means the entry open in the editor. It reads with [the MCP server's tools](mcp.md#tools), as the person who asks, and changes content with their write tools, as [proposals](#proposals) the person applies or skips. The card's title hides and shows its chat, its ⋮ holds New chat and the person's chats, and from 64rem wide the card's height and the panel's width change by dragging their edges or with arrow keys. Each browser remembers all three.
 
+`ai` takes a provider, which sends the chat to a model and streams its reply. Providers are packages a site installs, such as [`@sorlo/ai-anthropic`](#anthropic), or a site's own, as [Writing a provider](#writing-a-provider) describes, and the CMS depends on none of them. `npm create sorlo` sets one up when you choose it.
+
 ```ts
+import { anthropic } from '@sorlo/ai-anthropic'
+
 export default defineConfig({
   // …
-  ai: {
-    provider: 'anthropic',
-    // The defaults
-    model: 'claude-opus-5-5',
-    apiKey: process.env.ANTHROPIC_API_KEY,
-    effort: 'medium',
-    fallback: true,
-  },
+  ai: anthropic(),
 })
 ```
 
-- `provider` is `anthropic`, through the official `@anthropic-ai/sdk`. Providers implement an interface the CMS owns, in [`packages/cms/src/ai.ts`](https://github.com/WeAreSorlo/cms/blob/main/packages/cms/src/ai.ts), so others can follow.
-- `model` takes any Claude model that accepts system messages partway through a chat, which is where the page goes. Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 do, and Claude Sonnet 5 doesn't.
-- `apiKey` is only ever read on the server. Without it, the SDK reads `ANTHROPIC_API_KEY`, from the environment or the project's `.env`, or its other credentials.
-- `effort` is how much the model thinks before it answers, `low`, `medium`, `high`, `xhigh` or `max`, which is most of what a reply costs and how long it takes.
-- `fallback` runs a request that Anthropic's safety classifiers decline again on the model Anthropic recommends for that kind of decline, as `fallbacks: "default"`, since the classifiers can flag harmless content. `false` turns it off, and a model without fallbacks answers alone.
-
 Without `ai`, there's no Assistant in the nav, Chat page or assistant beside pages, and the chat routes reply 404.
 
-## What's sent to Anthropic
+## What's sent to the provider
 
-Each message sends Anthropic these, billed to the key's account:
+Each message sends the provider these, billed to the site's account with it:
 
-- The system prompt: the assistant's instructions and the site's content types with their fields and options, or only their fields' names when they're over 30,000 characters. It's the same for every person and every message, so it caches until the types change.
+- The system prompt: the assistant's instructions and the site's content types with their fields and options, or only their fields' names when they're over 30,000 characters. It's the same for every person and every message, so a provider can cache it until the types change.
 - The sixteen tools, with their descriptions and inputs, and in `sorlo dev` the three for [content types](#content-types-through-the-assistant).
 - The chat so far, each message as it was sent or returned, with the time and the page the person is on after each of their messages: an entry's, a form's or a media file's id, a version's number or a type's name, and on a list the ids of the entries “these” means, up to 100, or how many past that, never text from the page itself, such as titles, searches or filters. After it come the ids of the proposals the person applied or skipped since the last reply, those that went stale and those still waiting.
 - The files attached to the person's messages: each one's details, and for images, the preview `view_media` would show. A file deleted later keeps its preview in the chats that showed it, until they're deleted.
 - What the tools read: entries with their drafts and versions, the names of the people who saved and published them, forms' fields, media files' details, and the images `view_media` shows, scaled to fit 512 pixels. Form submissions, email addresses and passwords never are.
 
-The requests use two betas: `server-side-fallback-2026-07-01` for `fallback`, and `thinking-binding-controls-2026-08-01`, so a change to the content types drops the model's thinking from earlier in a chat rather than failing the chat.
+## Anthropic
+
+`@sorlo/ai-anthropic` asks Anthropic's Claude, through the official `@anthropic-ai/sdk`. It's released with the CMS, so install the version that matches it:
+
+```bash
+npm install @sorlo/ai-anthropic
+```
+
+```ts
+ai: anthropic({
+  // The defaults
+  model: 'claude-opus-5-5',
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  effort: 'medium',
+  fallback: true,
+})
+```
+
+- `model` takes any Claude model that accepts system messages partway through a chat, which is where the page goes. Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 do, and Claude Sonnet 5 doesn't.
+- `apiKey` is only ever read on the server. Without it, the SDK reads `ANTHROPIC_API_KEY`, from the environment or the project's `.env`, or its other credentials.
+- `effort` is how much the model thinks before it answers, `low`, `medium`, `high`, `xhigh` or `max`, which is most of what a reply costs and how long it takes.
+- `fallback` runs a request that Anthropic's safety classifiers decline again on the model Anthropic recommends for that kind of decline, as `fallbacks: "default"`, since the classifiers can flag harmless content. `false` turns it off, and a model without fallbacks answers alone.
+
+Its requests use two betas: `server-side-fallback-2026-07-01` for `fallback`, and `thinking-binding-controls-2026-08-01`, so a change to the content types drops the model's thinking from earlier in a chat rather than failing the chat.
+
+## Writing a provider
+
+A provider is an object with a `name` and a `reply` method, typed `AiProvider` in `@sorlo/cms`, so a site can pass its own, or publish one as a package:
+
+```ts
+import type { AiProvider } from '@sorlo/cms'
+
+export const myProvider = (): AiProvider => ({
+  name: 'my-provider',
+  async reply({ system, tools, messages }, on, signal) {
+    // Send them to the model, call on.text with each piece of text as it streams, and resolve with the whole reply
+    return { content: [{ type: 'text', text: 'Hello' }], stop: 'end', model: 'my-model', usage: null }
+  },
+})
+```
+
+`reply` gets one call's worth of the chat: the system prompt, the tools with their inputs as JSON schemas, and the messages, each `user`, `assistant` or `system`, which goes partway through the chat. Each message's `content` is a list of the CMS's own parts, which the provider converts to its API's and back:
+
+| Part | What it holds |
+| --- | --- |
+| `{ type: 'text', text }` | Text |
+| `{ type: 'image', data, mimeType }` | An image, base64, as MCP's tool results hold one |
+| `{ type: 'toolCall', id, name, input }` | A tool the model calls, which the CMS runs |
+| `{ type: 'toolResult', id, content, isError? }` | The result of the call with that `id`, its text and images |
+| `{ type: 'opaque', provider, data }` | What only the provider named reads, such as a model's reasoning or signatures. The CMS stores it and sends it back unchanged, and leaves other providers' out, so a site can change providers partway through a chat |
+
+The reply resolves with its parts, why it stopped (`end`, `tools` when its `toolCall` parts are to be run, `length`, `refused`, or `stopped` once `signal` aborts, with the text written so far), the model that wrote it and its usage, which the CMS stores as given. `on.restart()` drops the text streamed since the last call, for a provider that has to ask again. An error named `AiError`, such as one made with the `AiError` class `@sorlo/cms` exports, shows its message in the chat, and any other shows that something went wrong.
 
 ## “This” and “these”
 
