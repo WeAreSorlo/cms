@@ -18,6 +18,7 @@ import {
   useConfirm,
   useToast,
 } from './ui'
+import { markdown } from '@sorlo/field-markdown'
 import Form, {
   FieldSchema,
   FlatValidationReport,
@@ -183,7 +184,9 @@ function CellValue({ field, value, links }: { field: FieldSchema; value: any; li
 
 // Widths in rem, since a fixed layout keeps columns still while a cell's input comes and goes
 const widthOf = (field: FieldSchema) =>
-  ({ boolean: 6, number: 8, range: 8, color: 8, date: 9, time: 9, datetime: 12, textarea: 18 })[field.type] ?? 14
+  ({ boolean: 6, number: 8, range: 8, color: 8, date: 9, time: 9, datetime: 12, textarea: 18, markdown: 18 })[
+    field.type
+  ] ?? 14
 const statusWidth = 12
 
 // Keys that move between cells, as in a spreadsheet
@@ -341,7 +344,12 @@ export function Grid({
   onChange: (index: number, path: Array<string>, value: unknown) => void
 }) {
   const table = useRef<HTMLTableElement>(null)
-  const inputs = useInputs()
+  const cmsInputs = useInputs()
+  // A cell edits Markdown as long text, since the grid's keys and widths have no room for its toolbar and preview
+  const inputs = useMemo(
+    () => ({ ...cmsInputs, markdown: { ...markdown, default: coreInputs.textarea.default } }),
+    [cmsInputs],
+  )
   const links = useLinks(rows, columns)
   const every = useMemo(() => columnsOf(type.fields), [type])
   const [active, setActive] = useState<[number, number]>([0, 0])

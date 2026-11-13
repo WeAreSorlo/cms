@@ -4,13 +4,14 @@ This repo holds the CMS, `@sorlo/cms`, and its SDK, `@sorlo/sdk`, with `create-s
 
 ## Layout
 
-| Folder                  | What it is                                                                                         |
-| ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `packages/cms`          | `@sorlo/cms`: the Hono server (`src/`), the admin UI (`admin/`) and the `sorlo` CLI                |
-| `packages/sdk`          | `@sorlo/sdk`: the typed client for the delivery API, and `sorlo types pull`                        |
-| `packages/create-sorlo` | `create-sorlo`: `npm create sorlo@latest`, which makes a site from the starter                     |
-| `packages/ai-anthropic` | `@sorlo/ai-anthropic`: Anthropic's Claude as the assistant's AI provider |
-| `examples/sandbox`      | A minimal site project for working on the CMS, which `npm run dev` and the docs use                |
+| Folder                    | What it is                                                                             |
+| ------------------------- | -------------------------------------------------------------------------------------- |
+| `packages/cms`            | `@sorlo/cms`: the Hono server (`src/`), the admin UI (`admin/`) and the `sorlo` CLI    |
+| `packages/sdk`            | `@sorlo/sdk`: the typed client for the delivery API, and `sorlo types pull`            |
+| `packages/create-sorlo`   | `create-sorlo`: `npm create sorlo@latest`, which makes a site from the starter         |
+| `packages/ai-anthropic`   | `@sorlo/ai-anthropic`: Anthropic's Claude as the assistant's AI provider               |
+| `packages/field-markdown` | `@sorlo/field-markdown`: the Markdown field, a Sorlo Forms input that the CMS includes |
+| `examples/sandbox`        | A minimal site project for working on the CMS, which `npm run dev` and the docs use    |
 
 ## Getting started
 
@@ -61,6 +62,7 @@ npm links each package's folder rather than copying it, so the packages' own dep
 - **The SDK,** in `packages/sdk`, is the typed client for the delivery API, and `sorlo types pull`. It runs in sites' frontends, so it never imports server code.
 - **The docs,** in `docs/`, go in the CMS's package too: its build copies them to `packages/cms/docs`, where `sorlo dev`'s [notes for coding agents](docs/cli.md#notes-for-coding-agents) point a site's agents. So a link in them stays inside the folder or is a full URL, which `test/docs.test.ts` checks. The notes themselves are in `packages/cms/src/agents.ts`, and changing them changes `examples/sandbox/AGENTS.md` at the next `npm run dev`, so commit the two together.
 - **`create-sorlo`,** in `packages/create-sorlo`, downloads the starter's `main` as GitHub's tarball and unpacks it with the system's `tar`, leaving out the starter's `LICENSE` and naming the root `package.json` after the folder. For a database of the person's own, or an AI provider's key, it writes `cms/.env` from `cms/.env.example`, and for a provider they choose from its list it writes the provider into `cms/sorlo.config.ts`, on the line the starter leaves for `ai`. Then it runs the site's `npm install`, then for a provider `npm install` of its package at the CMS's version, its `npm run db` for Postgres in Docker, and its `npm run setup`, which is the starter's, so a change to what a new site gets is usually a change to the starter. `npm create` downloads it each time, so it has no dependencies: it asks with `node:readline`, as the CLI does, and reads its flags with `parseArgs`.
+- **Fields the CMS includes,** such as `packages/field-markdown`, are Sorlo Forms inputs in packages of their own, so they work without the CMS and keep their editors' dependencies out of the server. The server registers each one's entry without a component in `cmsInputs`, in `src/relations.ts`, and the admin its main entry in `useInputs`, in `admin/fields.tsx`, and in `formatValue`, in `admin/api.ts`.
 - **Sorlo Forms stands alone.** Keep CMS concepts out of it. When the CMS needs something from it, add a general hook there for the CMS to implement.
 
 ## Working on Sorlo Forms at the same time
@@ -92,7 +94,7 @@ CI, in `.github/workflows/ci.yml`, runs the format check, the typecheck, the bui
 
 A change that sites will notice comes with a changeset, which sets the next version and writes the changelog. Run `npx changeset`, choose patch, minor or major, and describe the change for the changelog. It writes a file in `.changeset/` to commit with the change. Changes to tests, docs or CI need none.
 
-The CMS and the SDK share one version, since the CMS writes the types the SDK reads, so a changeset for either releases both. `create-sorlo` has its own.
+The CMS and the SDK share one version, since the CMS writes the types the SDK reads, so a changeset for either releases both. `create-sorlo` and `@sorlo/field-markdown` have their own.
 
 ## Releasing
 

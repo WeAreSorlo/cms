@@ -1,6 +1,6 @@
 # Notes for coding agents
 
-This repo holds `@sorlo/cms`, the Hono server, React admin and `sorlo` CLI, and `@sorlo/sdk`, the typed client for the delivery API. Beside them is `create-sorlo`, which makes a site from the starter. `examples/sandbox` is the site the workspace runs. [CONTRIBUTING.md](CONTRIBUTING.md) has setup, the layout and how the pieces fit, and [`docs/`](docs/README.md) documents every feature. This file is the short version.
+This repo holds `@sorlo/cms`, the Hono server, React admin and `sorlo` CLI, and `@sorlo/sdk`, the typed client for the delivery API. Beside them are `create-sorlo`, which makes a site from the starter, and `@sorlo/field-markdown`, the Markdown field the CMS includes. `examples/sandbox` is the site the workspace runs. [CONTRIBUTING.md](CONTRIBUTING.md) has setup, the layout and how the pieces fit, and [`docs/`](docs/README.md) documents every feature. This file is the short version.
 
 ## Commands
 
@@ -16,5 +16,5 @@ Node 24, and Docker for Postgres.
 - **No package depends on one site,** `examples/sandbox` included.
 - **Shapes are promises.** Open an issue before changing what the APIs accept or return, or the shape of a `sorlo.config.ts` setting, since sites and the SDK rely on them.
 - **The CMS's own migrations,** in `packages/cms/src/migrations`, only ever gain new files. A migration that has shipped is never edited.
-- **Docs and changesets:** update the page in `docs/` that covers what you change, and add a changeset with `npx changeset` for anything sites will notice. The CMS and the SDK share one version, and `create-sorlo` has its own.
+- **Docs and changesets:** update the page in `docs/` that covers what you change, and add a changeset with `npx changeset` for anything sites will notice. The CMS and the SDK share one version, and `create-sorlo` and `@sorlo/field-markdown` have their own.
 - **Formatting:** 120 columns, no semicolons, single quotes and sorted imports, which `npm run format:fix` applies.

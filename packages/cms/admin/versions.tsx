@@ -105,7 +105,7 @@ export function ChangeList({
                 </li>
               ))}
             </ol>
-          ) : change.kind === 'changed' && change.field.type === 'textarea' ? (
+          ) : change.kind === 'changed' && (change.field.type === 'textarea' || change.field.type === 'markdown') ? (
             <TextChanges before={String(change.before)} after={String(change.after)} />
           ) : (
             <dl className='cms-pairs'>

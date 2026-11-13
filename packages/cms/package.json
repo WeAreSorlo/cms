@@ -47,13 +47,14 @@
     "build": "tsup && vite build --config admin/vite.config.ts && npm run build:docs",
     "build:docs": "node -e \"fs.rmSync('docs', { recursive: true, force: true }); fs.cpSync('../../docs', 'docs', { recursive: true })\"",
     "prepack": "npm run build",
-    "pretest": "tsup && npm run build --prefix ../sdk",
+    "pretest": "tsup && npm run build --prefix ../sdk && npm run build --prefix ../field-markdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "@sorlo/field-markdown": "^0.1.0",
     "@sorlo/forms": "^0.1.0",
     "@sorlo/sdk": "^0.1.1",
     "file-type": "^22.3.0",

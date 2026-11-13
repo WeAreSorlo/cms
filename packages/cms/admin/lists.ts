@@ -9,6 +9,7 @@ import type { FieldSchema } from '@sorlo/forms'
 export const sortable = new Set([
   'text',
   'textarea',
+  'markdown',
   'identifier',
   'email',
   'url',
