@@ -1,6 +1,6 @@
 {
   "name": "@sorlo/cms",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "An open-source, schema-driven CMS: its server, admin and CLI",
   "keywords": [
     "cms",
@@ -57,7 +57,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@sorlo/field-markdown": "^0.1.0",
     "@sorlo/forms": "^0.1.0",
-    "@sorlo/sdk": "^0.1.1",
+    "@sorlo/sdk": "^0.2.0",
     "@vitejs/plugin-react": "^6.2.1",
     "file-type": "^22.3.0",
     "flydrive": "^2.2.0",
