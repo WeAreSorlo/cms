@@ -1,6 +1,6 @@
 {
   "name": "@sorlo/ai-openai",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "OpenAI's models as the AI provider of the Sorlo CMS's assistant",
   "keywords": [
     "cms",

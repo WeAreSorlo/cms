@@ -1,6 +1,6 @@
 {
   "name": "@sorlo/ai-anthropic",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Anthropic's Claude as the AI provider of the Sorlo CMS's assistant",
   "keywords": [
     "cms",
