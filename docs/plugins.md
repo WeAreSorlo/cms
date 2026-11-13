@@ -120,6 +120,26 @@ export const rating = (): Plugin => ({
 - **Check on the server.** `validateValue` runs in the editor and again on the server, and only the server's check decides what's saved, since a browser can send anything. `validateServerValue` is for checks only a server can make.
 - **Name it** `sorlo-field-<name>`, or `sorlo-plugin-<name>` for a plugin that adds other things once plugins can, as Strapi's community names theirs. `@sorlo/field-<name>` is for Sorlo's own.
 
+### Making one with make:plugin
+
+`npx sorlo make:plugin badge`, in a site project, makes a field package whose field type is `badge`, ready to change and to publish:
+
+- **It writes `plugins/sorlo-field-badge`,** with the three entries in `src/`, built to `dist/` with tsup, and a field that starts as Sorlo Forms' text field: its checks, options and type in `src/validation.ts`, and its component in `src/index.tsx`.
+- **It adds the package to the site,** as `"sorlo-field-badge": "file:plugins/sorlo-field-badge"` in `package.json`, and to `sorlo.config.ts`, with `import { badge } from 'sorlo-field-badge/plugin'` after its imports and `badge()` in its `plugins`. A config with no `plugins` and no `defineConfig({` or `export default {` to start them in is left as it is, with the lines to add printed.
+- **Then it installs and builds the package and installs the site,** showing npm's output, so the site's link to it exists. With `--no-install` it prints those steps instead.
+- **It refuses** a name that isn't lowercase letters and digits, a field type a built-in field or another plugin has, and a folder that's there already.
+
+While you work on it, run `npm run dev` in its folder, which builds it again on each change, beside `npx sorlo dev` in the site. The admin reloads as the component changes, and `sorlo dev` needs starting again after a change to the checks, which the server loads as it starts.
+
+A site deploying with the package in its folder needs it there before `npm ci`, which links it, and built before `sorlo build`. [Deploying](deploying.md)'s Dockerfile gains these lines, before `RUN npm ci`, and `node_modules` in `.dockerignore` becomes `**/node_modules`:
+
+```dockerfile
+COPY plugins plugins
+RUN cd plugins/sorlo-field-badge && npm ci --include=dev --no-audit --no-fund && npm run build
+```
+
+Once it's published, the site installs it from npm instead, and the lines go.
+
 ## Plugins are trusted code
 
 A plugin runs with every right the CMS has, as any dependency does, and the CMS doesn't sandbox it:

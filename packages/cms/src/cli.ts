@@ -8,6 +8,7 @@ import { flattenValidationReport, inputs, validateServerValues } from './core'
 import { Database, createDb, uuidv7 } from './db'
 import { createApiKey } from './delivery'
 import { makeMigration, notesOf } from './makeMigration'
+import { makePlugin, runStep } from './makePlugin'
 import { loadMigrations, migrationsDir, ranMigrations, readMigrations, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
 import { registerPlugins } from './plugins'
@@ -66,6 +67,33 @@ const commands: Record<string, Command> = {
         for (const { name, batch } of rows)
           console.log(`${(batch ? `Ran, batch ${batch}` : 'Pending').padEnd(16)}${name}`)
         if (!rows.length) console.log('None yet')
+      }
+    },
+  },
+  'make:plugin': {
+    description: 'Write a field package to plugins/, and add it to package.json and sorlo.config.ts',
+    run: async (_db, args) => {
+      const name = args.find((arg) => !arg.startsWith('--'))
+      if (!name) {
+        console.error('Name the field, such as npx sorlo make:plugin rating, which becomes its field type.')
+        process.exit(1)
+      }
+      let made: ReturnType<typeof makePlugin>
+      try {
+        made = makePlugin(process.cwd(), name)
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : error)
+        process.exit(1)
+      }
+      console.log(made.done.join('\n'))
+      // With --no-install, the person runs the steps themselves
+      const left = [...made.steps]
+      if (!args.includes('--no-install')) while (left.length && runStep(left[0])) left.shift()
+      if (left.length) {
+        console.log(['To finish, run:', ...left.map(({ command }) => `  ${command}`)].join('\n'))
+        if (!args.includes('--no-install')) process.exitCode = 1
+      } else {
+        console.log(`Run npm run dev in ${made.folder} while you change it, beside npx sorlo dev here.`)
       }
     },
   },

@@ -5,7 +5,7 @@ import { db, resetDb, url } from './database'
 import { contactFields, setUp } from './fixtures'
 import { ChildProcess, execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { AddressInfo, createServer } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -549,6 +549,66 @@ test("build bundles a site's own field into the admin, which start serves, and s
         stderr: "The plugins in sorlo.config.ts can't be loaded:\n  text, from stars, is a built-in field type.\n",
       })
     }
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+test('make:plugin writes a field package that builds, adds it to the site, and refuses a name it can’t use', async () => {
+  await setUp()
+  const dir = await siteWithStorage()
+  await mkdir(join(dir, 'plugins/sorlo-field-taken'), { recursive: true })
+  const make = (...args: Array<string>) => run(dir, ['make:plugin', ...args, '--no-install'])
+  try {
+    for (const [args, stderr] of [
+      [[], 'Name the field, such as npx sorlo make:plugin rating, which becomes its field type.\n'],
+      [
+        ['star-rating'],
+        "star-rating can't be a field type. Name the field with lowercase letters and digits, starting with a letter, " +
+          'such as rating, which becomes its field type.\n',
+      ],
+      [['markdown'], "markdown is a field type already, built in or a plugin's. Choose another name.\n"],
+      [['taken'], 'plugins/sorlo-field-taken is there already, so nothing was made.\n'],
+    ] as const) {
+      expect(await make(...args), args.join()).toEqual({ code: 1, stdout: '', stderr })
+    }
+
+    expect(await make('badge')).toEqual({
+      code: 0,
+      stdout: [
+        'Created plugins/sorlo-field-badge, a field package with the field type badge.',
+        'Added it to package.json as file:plugins/sorlo-field-badge.',
+        'Added it to sorlo.config.ts, as plugins: [badge()].',
+        'To finish, run:',
+        '  cd plugins/sorlo-field-badge && npm install',
+        '  cd plugins/sorlo-field-badge && npm run build',
+        '  npm install',
+        '',
+      ].join('\n'),
+      stderr: '',
+    })
+    expect(JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')).dependencies).toEqual({
+      'sorlo-field-badge': 'file:plugins/sorlo-field-badge',
+    })
+
+    // What the npm steps would install, from this workspace, then the package's own build, types included, and the
+    // admin's, which imports its field by name
+    const workspace = fileURLToPath(new URL('../../../node_modules/', import.meta.url))
+    const modules = join(dir, 'node_modules')
+    await mkdir(join(modules, '@sorlo'), { recursive: true })
+    await mkdir(join(modules, '@types'), { recursive: true })
+    for (const name of ['@sorlo/forms', '@types/react', 'react', 'tsup', 'typescript']) {
+      await symlink(join(workspace, name), join(modules, name))
+    }
+    const plugin = join(dir, 'plugins/sorlo-field-badge')
+    await symlink(plugin, join(modules, 'sorlo-field-badge'))
+    await promisify(execFile)(process.execPath, [join(workspace, 'tsup/dist/cli-default.js')], { cwd: plugin })
+    expect(existsSync(join(plugin, 'dist/plugin.d.ts'))).toBe(true)
+    expect(await run(dir, ['build'])).toEqual({
+      code: 0,
+      stdout: 'Built the admin into .sorlo/admin, which sorlo start serves.\n',
+      stderr: '',
+    })
   } finally {
     await rm(dir, { recursive: true })
   }
