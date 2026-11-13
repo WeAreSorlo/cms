@@ -1,6 +1,6 @@
 {
   "name": "create-sorlo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Makes a new Sorlo site from the starter, with npm create sorlo@latest",
   "keywords": [
     "cms",
