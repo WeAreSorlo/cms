@@ -2,7 +2,7 @@
 
 With `ai` set in `sorlo.config.ts`, the admin has an assistant: Assistant at the top of the nav, which opens the Chat page with the person's chats beside it, and the same chat in a card under every page's panel, which knows the page it's on, so "fix the typos here" means the entry open in the editor. It reads with [the MCP server's tools](mcp.md#tools), as the person who asks, and changes content with their write tools, as [proposals](#proposals) the person applies or skips. The card's title hides and shows its chat, its ⋮ holds New chat and the person's chats, and from 64rem wide the card's height and the panel's width change by dragging their edges or with arrow keys. Each browser remembers all three.
 
-`ai` takes a provider, which sends the chat to a model and streams its reply. Providers are packages a site installs, such as [`@sorlo/ai-anthropic`](#anthropic), or a site's own, as [Writing a provider](#writing-a-provider) describes, and the CMS depends on none of them. `npm create sorlo` sets one up when you choose it.
+`ai` takes a provider, which sends the chat to a model and streams its reply. Providers are packages a site installs, such as [`@sorlo/ai-anthropic`](#anthropic) and [`@sorlo/ai-openai`](#openai), or a site's own, as [Writing a provider](#writing-a-provider) describes, and the CMS depends on none of them. `npm create sorlo` sets one up when you choose it.
 
 ```ts
 import { anthropic } from '@sorlo/ai-anthropic'
@@ -49,6 +49,29 @@ ai: anthropic({
 - `fallback` runs a request that Anthropic's safety classifiers decline again on the model Anthropic recommends for that kind of decline, as `fallbacks: "default"`, since the classifiers can flag harmless content. `false` turns it off, and a model without fallbacks answers alone.
 
 Its requests use two betas: `server-side-fallback-2026-07-01` for `fallback`, and `thinking-binding-controls-2026-08-01`, so a change to the content types drops the model's thinking from earlier in a chat rather than failing the chat.
+
+## OpenAI
+
+`@sorlo/ai-openai` asks OpenAI's models, such as GPT-6 Astra, through the official `openai` SDK and OpenAI's Responses API. It's released with the CMS, so install the version that matches it:
+
+```bash
+npm install @sorlo/ai-openai
+```
+
+```ts
+ai: openai({
+  // The defaults
+  model: 'gpt-6-astra',
+  apiKey: process.env.OPENAI_API_KEY,
+  effort: 'medium',
+})
+```
+
+- `model` takes any OpenAI model that calls tools through the Responses API, such as `gpt-6-astra`, OpenAI's flagship, or `gpt-6.1-sol`, which costs less.
+- `apiKey` is only ever read on the server. Without it, the SDK reads `OPENAI_API_KEY`, from the environment or the project's `.env`. It's a key from the OpenAI API platform, billed to the account there, which a ChatGPT subscription doesn't cover.
+- `effort` is how much the model reasons before it answers, sent as `reasoning.effort`, which is most of what a reply costs and how long it takes. Each model takes its own set: GPT-6 Astra takes `low`, `medium`, `high`, `xhigh` or `max`.
+
+Its requests have `store: false`, so OpenAI keeps no copy of the chat, which the CMS sends whole each time, and the reasoning goes back encrypted, as OpenAI returned it, which OpenAI takes even once a change to the content types has changed the system prompt. The tools go with `strict: false`, so their inputs' schemas reach the model as the CMS wrote them, and the CMS checks every input against them. OpenAI's output items, its reasoning, messages and calls, are stored whole as the provider's own parts, beside the text and calls the CMS reads, and go back exactly as they came.
 
 ## Writing a provider
 

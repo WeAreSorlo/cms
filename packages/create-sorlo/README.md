@@ -10,7 +10,7 @@ It needs Node 22.18 or later, and Postgres, which Docker can run for you. It ask
 
 - **The folder,** which has to be empty or not there yet.
 - **The Postgres to use:** Postgres in Docker, which the site's `npm run db` starts, or your own, whose `DATABASE_URL` goes in `cms/.env`.
-- **The AI provider of the admin's assistant,** none unless you choose one. Choosing one installs its package, passes it as `ai` in `cms/sorlo.config.ts` and asks for its API key, without showing it as you type, which goes in `cms/.env`. Left empty, the provider reads its key from the environment. Another provider, or your own, goes in by hand, as the CMS's [docs on the assistant](https://github.com/WeAreSorlo/cms/blob/main/docs/assistant.md#writing-a-provider) say.
+- **The AI provider of the admin's assistant,** none unless you choose Anthropic or OpenAI. Choosing one installs its package, passes it as `ai` in `cms/sorlo.config.ts` and asks for its API key, without showing it as you type, which goes in `cms/.env`. Left empty, the provider reads its key from the environment. Another provider, or your own, goes in by hand, as the CMS's [docs on the assistant](https://github.com/WeAreSorlo/cms/blob/main/docs/assistant.md#writing-a-provider) say.
 
 Then it downloads the starter's `main` from GitHub, runs `npm install`, starts Postgres if it's Docker's, and runs `npm run setup`, which creates the database, runs the migrations, imports the sample content and makes the site's API keys. Where git is installed and has your name and email, the folder becomes a repository with a first commit. Then:
 

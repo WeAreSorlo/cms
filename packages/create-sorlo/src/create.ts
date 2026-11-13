@@ -12,6 +12,7 @@ const defaultFolder = 'my-site'
 // own, goes in cms/sorlo.config.ts by hand.
 export const providers = [
   { name: 'Anthropic', package: '@sorlo/ai-anthropic', provider: 'anthropic', key: 'ANTHROPIC_API_KEY' },
+  { name: 'OpenAI', package: '@sorlo/ai-openai', provider: 'openai', key: 'OPENAI_API_KEY' },
 ]
 export type Provider = (typeof providers)[number]
 

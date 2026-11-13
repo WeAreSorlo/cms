@@ -113,7 +113,7 @@ describe("cms/.env's DATABASE_URL", () => {
 })
 
 describe('the AI provider', () => {
-  const [anthropic] = providers
+  const [anthropic, openai] = providers
   const config = [
     "import { defineConfig } from '@sorlo/cms'",
     "import type { MailOptions } from '@sorlo/cms'",
@@ -145,6 +145,16 @@ describe('the AI provider', () => {
     expect(withProvider(config, last)).toContain("import nodemailer from 'nodemailer'\nimport { zed } from 'zed-ai'\n")
   })
 
+  test("offers OpenAI too, as openai() from @sorlo/ai-openai, with OPENAI_API_KEY's value in cms/.env", () => {
+    expect(openai).toMatchObject({ name: 'OpenAI', key: 'OPENAI_API_KEY' })
+    const written = withProvider(config, openai)
+    expect(written).toContain("import { openai } from '@sorlo/ai-openai'\nimport { defineConfig } from '@sorlo/cms'\n")
+    expect(written).toContain('  ai: openai(),\n')
+    expect(withVariable('SMTP_URL=\n', openai.key, 'sk-proj-abc_DEF-123')).toBe(
+      'SMTP_URL=\nOPENAI_API_KEY=sk-proj-abc_DEF-123\n',
+    )
+  })
+
   test("isn't written into a config without the line", () => {
     expect(withProvider(config.replace(/.*\/\/ ai:.*\n/, ''), anthropic)).toBeUndefined()
   })
@@ -156,7 +166,7 @@ describe('the AI provider', () => {
     )
   })
 
-  test.each(['', 'sk-ant-api03-abc_DEF-123', 'AIza.Sy-x:y/z+='])('takes the key %j', (key) => {
+  test.each(['', 'sk-ant-api03-abc_DEF-123', 'sk-proj-abc_DEF-123', 'AIza.Sy-x:y/z+='])('takes the key %j', (key) => {
     expect(checkApiKey(key)).toBeUndefined()
   })
 

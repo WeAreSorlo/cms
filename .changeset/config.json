@@ -6,7 +6,7 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "ignore": [],
-  "fixed": [["@sorlo/cms", "@sorlo/sdk", "@sorlo/ai-anthropic"]],
+  "fixed": [["@sorlo/cms", "@sorlo/sdk", "@sorlo/ai-anthropic", "@sorlo/ai-openai"]],
   "linked": [],
   "updateInternalDependencies": "patch"
 }
