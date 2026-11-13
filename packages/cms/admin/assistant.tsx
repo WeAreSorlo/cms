@@ -19,6 +19,7 @@ import {
   useToast,
 } from './ui'
 import { ChangeList, JsonChanges, kinds } from './versions'
+import { lexical } from '@sorlo/field-lexical'
 import { markdown } from '@sorlo/field-markdown'
 import Form, { FieldSchema, FormHandle, Input, inputs } from '@sorlo/forms'
 import {
@@ -143,7 +144,15 @@ function useTypeOf(proposal: Proposal) {
 
 // A field type's name, as the type editor's palette shows it, such as Long text for textarea. Plugins' are looked up
 // each time, since mount adds them after this module loads
-const fieldTypes: Record<string, { name?: () => string }> = { ...inputs, relationship, media, form, shared, markdown }
+const fieldTypes: Record<string, { name?: () => string }> = {
+  ...inputs,
+  relationship,
+  media,
+  form,
+  shared,
+  markdown,
+  lexical,
+}
 const typeName = (type: string) => (fieldTypes[type] ?? pluginInputs[type])?.name?.() ?? type
 
 // What a proposal is called, such as New event: Kubecon stall, or Changes to Launch day

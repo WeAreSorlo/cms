@@ -11,7 +11,7 @@ import { makeMigration, notesOf } from './makeMigration'
 import { makePlugin, runStep } from './makePlugin'
 import { loadMigrations, migrationsDir, ranMigrations, readMigrations, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
-import { registerPlugins } from './plugins'
+import { isBuiltIn, registerPlugins } from './plugins'
 import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
 import { apiKeySchema, apiKeyScopes, resetSchema, userSchema } from './schemas'
 import { Refused, exportContent, importContent, summary } from './transfer'
@@ -311,7 +311,7 @@ async function dev(db: Kysely<Database>) {
   const admin = `http://localhost:${port}/admin/`
   const setup = firstAccount(admin)
   const server = createServer()
-  const vite = await adminServer(process.cwd(), plugins, server)
+  const vite = await adminServer(process.cwd(), adminPlugins, server)
   const app = createApp(db, types, {
     siteMigrations: dirs.migrations,
     finishLinks: true,
@@ -359,7 +359,7 @@ async function dev(db: Kysely<Database>) {
 // The site's admin with its plugins, for sorlo start
 async function build() {
   try {
-    await buildAdmin(process.cwd(), plugins)
+    await buildAdmin(process.cwd(), adminPlugins)
     console.log('Built the admin into .sorlo/admin, which sorlo start serves.')
   } catch (error) {
     console.error(`Couldn't build the admin: ${error instanceof Error ? error.message : error}`)
@@ -370,7 +370,7 @@ async function build() {
 // The production server: the admin as sorlo build wrote it, and types that change only through git
 async function start(db: Kysely<Database>) {
   const { createAdaptorServer } = await import('@hono/node-server')
-  const built = builtAdmin(process.cwd(), plugins)
+  const built = builtAdmin(process.cwd(), adminPlugins)
   if ('problem' in built) {
     console.error(built.problem)
     process.exit(1)
@@ -652,6 +652,8 @@ if (problems.length) {
   console.error(["The plugins in sorlo.config.ts can't be loaded:", ...problems.map((line) => `  ${line}`)].join('\n'))
   process.exit(1)
 }
+// The admin has the plugins the CMS includes, such as lexical(), so its build takes only the others
+const adminPlugins = plugins.filter((plugin) => !isBuiltIn(plugin))
 
 const db = createDb(config.database.url)
 await command.run(db, process.argv.slice(3))

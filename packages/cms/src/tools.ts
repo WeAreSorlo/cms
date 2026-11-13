@@ -33,6 +33,7 @@ import { cmsInputs, formsOf, serverInputs } from './relations'
 import { mediaSchema } from './schemas'
 import { TypeSaver, createId, migrationFor, typeFrom } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
+import { type Tree, mapText } from '@sorlo/field-lexical/validation'
 import type { FieldSchema, Input } from '@sorlo/forms'
 import { DriveManager } from 'flydrive'
 import { HTTPException } from 'hono/http-exception'
@@ -334,12 +335,24 @@ const committed = (
         ),
       }
 
-// A copy of values with find replaced by replace in the text of every text, long text and Markdown field, at any
-// depth, which counts each replacement, and keeps the other capitals it was found in, such as Private preview for
+// A copy of values with find replaced by replace in the text of every text, long text, Markdown and rich text field,
+// at any depth, which counts each replacement, and keeps the other capitals it was found in, such as Private preview for
 // private preview. Slugs, links, choices and the rest are left alone.
 function replacer(find: string, replace: string) {
   const anyCase = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
   const result = { count: 0, others: new Set<string>(), field }
+  function text(value: string) {
+    for (const found of value.match(anyCase) ?? []) if (found !== find) result.others.add(found)
+    // Text that already reads as the replacement is left as it is, so replacing Acme with Acme Corp again can't make
+    // Acme Corp Corp
+    const kept = replace.includes(find) ? value.split(replace) : [value]
+    const replaced = kept.map((part) => {
+      const parts = part.split(find)
+      result.count += parts.length - 1
+      return parts.join(replace)
+    })
+    return replaced.join(replace)
+  }
   function fields(schemas: Array<FieldSchema>, values: unknown) {
     if (!isObject(values)) return values
     const copy = { ...values }
@@ -350,17 +363,20 @@ function replacer(find: string, replace: string) {
   function field(schema: FieldSchema, value: unknown): unknown {
     const inside = schema.options?.fields ?? []
     if (schema.type === 'text' || schema.type === 'textarea' || schema.type === 'markdown') {
-      if (typeof value !== 'string') return value
-      for (const found of value.match(anyCase) ?? []) if (found !== find) result.others.add(found)
-      // Text that already reads as the replacement is left as it is, so replacing Acme with Acme Corp again can't
-      // make Acme Corp Corp
-      const kept = replace.includes(find) ? value.split(replace) : [value]
-      const replaced = kept.map((part) => {
-        const parts = part.split(find)
-        result.count += parts.length - 1
-        return parts.join(replace)
+      return typeof value === 'string' ? text(value) : value
+    }
+    // Rich text's text nodes, and its blocks' fields
+    if (schema.type === 'lexical') {
+      const layouts: Array<{ name: string; fields?: Array<FieldSchema> }> = schema.options?.layouts ?? []
+      // A value that isn't a tree comes back as it was
+      const replaced = mapText(value, text) as Tree
+      if (replaced === value) return value
+      const children = replaced.root.children.map((node) => {
+        const block = node.type === 'block' ? (node.block as Record<string, unknown>) : undefined
+        const fieldsOf = layouts.find((layout) => layout.name === block?._layout)?.fields
+        return block && fieldsOf ? { ...node, block: fields(fieldsOf, block) } : node
       })
-      return replaced.join(replace)
+      return { ...replaced, root: { ...replaced.root, children } }
     }
     if (schema.type === 'group') return fields(inside, value)
     if (!Array.isArray(value)) return value
@@ -1040,8 +1056,8 @@ export const tools = [
   tool({
     name: 'replace_text',
     description:
-      'Replaces some text with other text, exactly as written, capitals included, in the text, long text and ' +
-      "Markdown fields of every entry's draft, at any depth, across every content type, the ones named or the entries given, leaving " +
+      'Replaces some text with other text, exactly as written, capitals included, in the text, long text, ' +
+      "Markdown and rich text fields of every entry's draft, at any depth, across every content type, the ones named or the entries given, leaving " +
       'out slugs, links, choices and archived entries, and over MCP types without drafts. Use it for a find and ' +
       "replace, such as a product's new name. When the person means this entry or these ones, pass their ids, which " +
       "the admin's system message gives for the page they're on. Text that already reads as the replacement, such " +

@@ -112,6 +112,24 @@ describe('the helpers', () => {
     ).rejects.toThrow("Can't rename blocks.quote to other.quote, outside its flexible field.")
   })
 
+  test("reach rich text's blocks as they do a flexible field's", async () => {
+    const tree = (...children: Array<object>) => ({ root: { type: 'root', children } })
+    const block = (values: object) => ({ type: 'block', block: values })
+    const text = { type: 'paragraph', children: [{ type: 'text', text: 'Hi' }] }
+    const values = {
+      body: tree(text, block({ _layout: 'quote', quote: 'Q' }), block({ _layout: 'old', x: 1 })),
+    }
+
+    expect(
+      await apply(values, ({ entries }) => {
+        entries.renameField('blog', 'body.quote.quote', 'body.quote.words')
+        entries.addField('blog', 'body.quote.by', 'Ada')
+        entries.renameLayout('blog', 'body.quote', 'body.citation')
+        entries.removeLayout('blog', 'body.old')
+      }),
+    ).toEqual({ body: tree(text, block({ _layout: 'citation', words: 'Q', by: 'Ada' })) })
+  })
+
   test("only change the named type's entries, following its renames", async () => {
     const up: ContentMigration = ({ entries }) => {
       entries.renameField('posts', 'title', 'name')

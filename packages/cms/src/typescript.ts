@@ -1,6 +1,6 @@
 import { inputs, normaliseConditions, schemaToTypeScript } from './core'
-import { holdsOne, isLink, linkFields, someField } from './fields'
-import { allowedTypes, cmsInputs } from './relations'
+import { holdsOne, someField } from './fields'
+import { allowedTypes, cmsInputs, linkFields, resolvesLinks } from './relations'
 import { type ContentType, type SharedGroup, expandFields } from './types'
 import type { FieldSchema, Input, InputTypeValue } from '@sorlo/forms'
 
@@ -22,7 +22,7 @@ export function typesFile(
   const byId = new Map([...groups.values()].map((group) => [group.id, group]))
   const expanded = new Map([...groups.values()].map((group) => [group.id, expandFields(group.fields, byId)]))
   const groupName = (id: string) => inputs.identifier.formatIdentifier(`group ${byId.get(id)!.name}`, 'pascal')
-  const holdsLinks = (id: string) => someField(expanded.get(id)!, isLink)
+  const holdsLinks = (id: string) => someField(expanded.get(id)!, resolvesLinks)
 
   // A use of a shared group is typed by the group's name, and any other group by its fields
   const group = (use: (id: string) => string): Input => ({
@@ -31,11 +31,19 @@ export function typesFile(
       schema.options?.group === undefined ? cmsInputs.group.typeValue!(schema, typeFields) : use(schema.options.group),
   })
 
-  const stored: Record<string, Input> = { ...cmsInputs, group: group(groupName) }
+  // Fields the delivery API returns as something else, such as rich text as HTML, are typed as that
+  const delivered: Record<string, Input> = Object.fromEntries(
+    Object.entries(cmsInputs).map(([type, input]) => [
+      type,
+      input.deliveredType ? { ...input, typeValue: input.deliveredType } : input,
+    ]),
+  )
+
+  const stored: Record<string, Input> = { ...delivered, group: group(groupName) }
 
   // A linked entry's own links resolve a level less, which the SDK's Linked counts down
   const returned: Record<string, Input> = {
-    ...cmsInputs,
+    ...delivered,
     relationship: {
       ...cmsInputs.relationship,
       typeValue: (schema) => {

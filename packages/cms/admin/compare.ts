@@ -1,4 +1,5 @@
 import { idsOf } from '../src/fields'
+import { lexical } from '@sorlo/field-lexical/validation'
 import { FieldSchema, isEmptyValue, normaliseConditions } from '@sorlo/forms'
 
 // What changed between two versions of an entry, from their values and the type's fields
@@ -12,7 +13,8 @@ export interface Change {
   kind: Kind
   before: unknown
   after: unknown
-  // A repeater's items, a flexible field's blocks or a matrix's cells that changed, matched by position
+  // A repeater's items, a flexible or rich text field's blocks or a matrix's cells that changed, matched by
+  // position
   items?: Array<ItemChange>
 }
 
@@ -36,9 +38,15 @@ export const same = (a: any, b: any): boolean =>
 
 const label = (field: { name: string; label?: string }) => field.label || field.name
 
+// A rich text field's blocks, in order
+const blocksOf = (value: any): Array<unknown> =>
+  Array.isArray(value?.root?.children)
+    ? value.root.children.filter((node: any) => node?.type === 'block').map((node: any) => node.block)
+    : []
+
 // A list field's items as they're matched: by index, or for a matrix, by row and column
 function itemsOf(field: FieldSchema, value: unknown) {
-  const list = Array.isArray(value) ? value : []
+  const list = field.type === 'lexical' ? blocksOf(value) : Array.isArray(value) ? value : []
   if (field.type === 'matrix') {
     return list.flatMap((row, r) =>
       (Array.isArray(row) ? row : []).map((cell, c) => ({
@@ -50,7 +58,7 @@ function itemsOf(field: FieldSchema, value: unknown) {
     )
   }
   return list.map((item, index) => {
-    if (field.type !== 'flexible') {
+    if (field.type !== 'flexible' && field.type !== 'lexical') {
       return { key: `${index}`, label: `Item ${index + 1}`, fields: field.options?.fields ?? [], values: item }
     }
     const layout = (field.options?.layouts ?? []).find((layout: { name: string }) => layout.name === item?._layout)
@@ -121,7 +129,16 @@ export function compare(
     if (field.type === 'group') return compare(field.options?.fields ?? [], was, is, at)
     if (same(was, is) || (isEmptyValue(was) && isEmptyValue(is))) return []
 
-    const kind = isEmptyValue(was) ? 'added' : isEmptyValue(is) ? 'removed' : 'changed'
+    const kind: Kind = isEmptyValue(was) ? 'added' : isEmptyValue(is) ? 'removed' : 'changed'
+    // Rich text's text, then its blocks as a flexible field's, under Blocks
+    if (field.type === 'lexical') {
+      const items = compareItems(field, was, is)
+      const blocks: Array<Change> = items.length
+        ? [{ labels: [...at, 'Blocks'], field, kind, before: was, after: is, items }]
+        : []
+      const text = lexical.formatValue(was) !== lexical.formatValue(is) || !blocks.length
+      return [...(text ? [{ labels: at, field, kind, before: was, after: is }] : []), ...blocks]
+    }
     if (!lists.has(field.type)) return [{ labels: at, field, kind, before: was, after: is }]
     // Keys no field reads don't count
     const items = compareItems(field, was, is)

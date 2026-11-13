@@ -1,20 +1,31 @@
+import type { FieldLinks, LinkedRecords, Plugin } from '.'
 import { inputs, pickValues, validationError } from './core'
 import { Database, isUuid } from './db'
-import { allows, form, holdsOne, idsOf, isLink, linkFields, media, relationship, shared } from './fields'
+import { allows, form, holdsOne, idsOf, isLink, media, relationship, shared, someField } from './fields'
 import { toMedia } from './media'
 import { Delivered, deliveredEntries, toEntry } from './query'
 import type { ContentType } from './types'
+import { lexical } from '@sorlo/field-lexical/plugin'
 import { markdown } from '@sorlo/field-markdown/validation'
 import type { FieldSchema, Input, InputPickFields, InputPickValue, InputSchema } from '@sorlo/forms'
 import { HTTPException } from 'hono/http-exception'
 import { Kysely, SqlBool, sql } from 'kysely'
 
-// Core's inputs, the CMS's own and the fields it includes, such as Markdown, which the server never renders. The
-// admin adds their pickers and editors. Types have no Shared group fields once they load, so only their files' checks
-// meet one.
-export const cmsInputs: Record<string, Input> = {
+// The fields the CMS includes as plugins, from packages of their own, which a site lists in its plugins only for their
+// settings, such as lexical({ entryLinks })
+export const builtInPlugins: Array<Plugin> = [lexical()]
+
+// A plugin's fields as the server has them, with a component that renders nothing
+export const serverFields = (plugin: Plugin) =>
+  Object.fromEntries(Object.entries(plugin.fields).map(([type, field]) => [type, { ...field, default: () => null }]))
+
+// Core's inputs, the CMS's own and the fields it includes, such as Markdown and rich text, which the server never
+// renders. The admin adds their pickers and editors. Types have no Shared group fields once they load, so only their
+// files' checks meet one.
+export const cmsInputs: Record<string, Input & FieldLinks> = {
   ...inputs,
   markdown: { ...markdown, default: () => null },
+  ...Object.assign({}, ...builtInPlugins.map(serverFields)),
   relationship: { ...relationship, default: () => null },
   media: { ...media, default: () => null },
   form: { ...form, default: () => null },
@@ -26,6 +37,34 @@ export function allowedTypes(types: Map<string, ContentType>, schema: InputSchem
   const ids: Array<string> = schema.options?.types ?? []
   return [...types.values()].filter((type) => !ids.length || ids.includes(type.id)).map((type) => type.name)
 }
+
+// Whether with() can name a field: a relationship or media field, or one whose input resolves the links in its value,
+// such as rich text delivered as JSON
+export const resolvesLinks = (field: FieldSchema) => isLink(field) || !!cmsInputs[field.type]?.resolve
+
+// A type's top-level fields that with() can name, or that hold some
+export const linkFields = (type: ContentType) => type.fields.filter((field) => someField([field], resolvesLinks))
+
+// Inputs with each field that links within its value, such as rich text, calling found with what it links to as
+// pickValues reaches it, before its own pickValue
+const withOwnLinks = (
+  all: Record<string, Input & FieldLinks>,
+  found: (schema: InputSchema, links: { entries: Array<string>; media: Array<string> }) => void,
+) =>
+  Object.fromEntries(
+    Object.entries(all).map(([type, input]) => [
+      type,
+      !input.links
+        ? input
+        : {
+            ...input,
+            pickValue: ((value, schema, pickFields) => {
+              found(schema, input.links!(value, schema))
+              return input.pickValue ? input.pickValue(value, schema, pickFields) : value
+            }) as InputPickValue,
+          },
+    ]),
+  )
 
 const fitsMedia = (schema: InputSchema, mime: string) =>
   !schema.options?.types?.length || allows(schema.options.types, mime)
@@ -100,16 +139,21 @@ export function serverInputs(
 
 type Relation = Database['entry_relations']
 
-// What an entry's relationship and media fields link to, as rows of entry_relations
+// What an entry's relationship and media fields link to, and the links in fields such as rich text, as rows of
+// entry_relations
 function relationsOf(type: ContentType, entryId: string, values: Record<string, any>) {
   const rows = new Map<string, Relation>()
-  const collect: InputPickValue = (value, schema) => {
-    for (const id of idsOf(value).filter(isUuid)) {
+  const add = (schema: InputSchema, ids: Array<string>) => {
+    for (const id of ids.filter(isUuid)) {
       rows.set(`${schema.id} ${id}`, { entry_id: entryId, field_id: String(schema.id), target_id: id })
     }
-    return value
   }
-  pickValues(type.fields, values, walking(collect))
+  const collect: InputPickValue = (value, schema) => (add(schema, idsOf(value)), value)
+  pickValues(
+    type.fields,
+    values,
+    withOwnLinks(walking(collect), (schema, links) => add(schema, [...links.entries, ...links.media])),
+  )
   return [...rows.values()]
 }
 
@@ -240,13 +284,14 @@ export function parseWith(
 
 type Entry = ReturnType<typeof toEntry>
 
-// Calls found with each relationship and media field in some values and the IDs it holds, once for each place it sits,
-// inside groups, repeaters and flexible blocks too. Each container's pickValue finds its items, as in pickValues, but
-// without pickValues' condition scopes, which visit every field again, so fields that conditions hide are visited too.
+// Calls found with the IDs each relationship and media field in some values holds, and those in the values of fields
+// that resolve their own links, such as rich text delivered as JSON, once for each place it sits, inside groups, repeaters and
+// flexible blocks too. Each container's pickValue finds its items, as in pickValues, but without pickValues' condition
+// scopes, which visit every field again, so fields that conditions hide are visited too.
 function eachLink(
   fields: Array<FieldSchema>,
   values: Record<string, any>,
-  found: (field: FieldSchema, ids: Array<string>) => void,
+  found: (media: boolean, ids: Array<string>) => void,
 ) {
   const inside: InputPickFields = (children, items) => {
     eachLink(children, items, found)
@@ -254,8 +299,109 @@ function eachLink(
   }
   for (const field of fields) {
     const value = values?.[field.name] === undefined ? field.defaultValue : values[field.name]
-    if (isLink(field)) found(field, idsOf(value).filter(isUuid))
-    else cmsInputs[field.type]?.pickValue?.(value, field, inside)
+    const input = cmsInputs[field.type]
+    if (isLink(field)) {
+      found(field.type === 'media', idsOf(value).filter(isUuid))
+      continue
+    }
+    if (input?.resolve && input.links) {
+      const links = input.links(value, field)
+      found(false, links.entries.filter(isUuid))
+      found(true, links.media.filter(isUuid))
+    }
+    input?.pickValue?.(value, field, inside)
+  }
+}
+
+const among = (ids: Iterable<string>) => sql<SqlBool>`id = any(${[...ids]}::uuid[])`
+
+// The entries and files with some IDs, as the delivery API returns them, each kind in one query. Entries are live
+// copies, or for a preview, drafts, and those it doesn't serve, such as unpublished or archived ones, are left out.
+async function loadLinked(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  origin: string,
+  entryIds: Iterable<string>,
+  mediaIds: Iterable<string>,
+  draft: boolean,
+) {
+  const [entries, files] = [[...entryIds], [...mediaIds]]
+  return {
+    entries: new Map(
+      (entries.length === 0
+        ? []
+        : await deliveredEntries(db, draft)
+            .selectAll()
+            .$castTo<Delivered>()
+            .where(among(entries))
+            // Entries of a type that's been removed stay in the database, but the API doesn't serve them
+            .where('type', 'in', [...types.keys()])
+            .execute()
+      ).map((row) => [row.id, toEntry(row)]),
+    ),
+    media: new Map(
+      (files.length === 0 ? [] : await db.selectFrom('media').selectAll().where(among(files)).execute()).map((row) => [
+        row.id,
+        toMedia(row, origin),
+      ]),
+    ),
+  }
+}
+
+const delivers = (field: FieldSchema) => !!cmsInputs[field.type]?.deliver
+
+// Values with each field whose input delivers its own, such as rich text, changed by change, at any depth, through
+// each container's pickValue, as eachLink walks them. The rest stay as they are.
+function mapDelivered(
+  fields: Array<FieldSchema>,
+  values: Record<string, any>,
+  change: (field: FieldSchema, value: unknown) => unknown,
+) {
+  const changed: Record<string, unknown> = {}
+  const inside: InputPickFields = (children, items) => ({ ...items, ...mapDelivered(children, items, change) })
+  for (const field of fields) {
+    if (!values || !Object.hasOwn(values, field.name)) continue
+    const value = values[field.name]
+    const input = cmsInputs[field.type]
+    if (input?.deliver) changed[field.name] = change(field, value)
+    else if (input?.pickValue && typeof value === 'object' && value !== null && someField([field], delivers)) {
+      changed[field.name] = input.pickValue(value, field, inside)
+    }
+  }
+  return changed
+}
+
+// Entries with the fields whose inputs deliver their own written out, such as rich text as HTML, given the entries and
+// files they link to, which load first, each kind in one query
+export async function deliverValues(
+  db: Kysely<Database>,
+  types: Map<string, ContentType>,
+  origin: string,
+  entries: Iterable<Entry>,
+  draft = false,
+) {
+  const delivering = [...entries].flatMap((entry) => {
+    const fields = (types.get(entry.type)?.fields ?? []).filter((field) => someField([field], delivers))
+    return fields.length ? [{ entry, fields }] : []
+  })
+  if (!delivering.length) return
+
+  const entryIds = new Set<string>()
+  const mediaIds = new Set<string>()
+  for (const { entry, fields } of delivering) {
+    mapDelivered(fields, entry.values, (field, value) => {
+      const links = cmsInputs[field.type].links?.(value, field)
+      for (const id of links?.entries.filter(isUuid) ?? []) entryIds.add(id)
+      for (const id of links?.media.filter(isUuid) ?? []) mediaIds.add(id)
+      return value
+    })
+  }
+  const found: LinkedRecords = await loadLinked(db, types, origin, entryIds, mediaIds, draft)
+  for (const { entry, fields } of delivering) {
+    entry.values = {
+      ...entry.values,
+      ...mapDelivered(fields, entry.values, (field, value) => cmsInputs[field.type].deliver!(value, field, found)),
+    }
   }
 }
 
@@ -293,10 +439,10 @@ export async function resolveLinks(
     const entryIds = new Map<string, number>()
     const mediaIds = new Set<string>()
     for (const { entry, names, shown } of level) {
-      eachLink(fieldsOf(entry, names), entry.values, (field, ids) => {
+      eachLink(fieldsOf(entry, names), entry.values, (media, ids) => {
         for (const id of ids) {
           copies += shown
-          if (field.type === 'media') mediaIds.add(id)
+          if (media) mediaIds.add(id)
           else entryIds.set(id, (entryIds.get(id) ?? 0) + shown)
         }
       })
@@ -308,24 +454,10 @@ export async function resolveLinks(
       )
     }
 
-    const among = (ids: Iterable<string>) => sql<SqlBool>`id = any(${[...ids]}::uuid[])`
-    const linked = new Map(
-      (entryIds.size === 0
-        ? []
-        : await deliveredEntries(db, draft)
-            .selectAll()
-            .$castTo<Delivered>()
-            .where(among(entryIds.keys()))
-            // Entries of a type that's been removed stay in the database, but the API doesn't serve them
-            .where('type', 'in', [...types.keys()])
-            .execute()
-      ).map((row) => [row.id, toEntry(row)]),
-    )
-    const files = new Map(
-      (mediaIds.size === 0 ? [] : await db.selectFrom('media').selectAll().where(among(mediaIds)).execute()).map(
-        (row) => [row.id, toMedia(row, origin)],
-      ),
-    )
+    const found = await loadLinked(db, types, origin, entryIds.keys(), mediaIds, draft)
+    const { entries: linked, media: files } = found
+    // Linked entries are delivered as any is, such as with their rich text as HTML
+    await deliverValues(db, types, origin, linked.values(), draft)
 
     // The second swaps each ID for its record
     const swap =
@@ -337,9 +469,27 @@ export async function resolveLinks(
         })
         return holdsOne(schema) ? (records[0] ?? null) : records
       }
-    const inputs = walking(
-      swap(linked, (entry, schema) => allowedTypes(types, schema).includes(entry.type)),
-      swap(files, (file, schema) => fitsMedia(schema, file.mime)),
+    const inputs = Object.fromEntries(
+      Object.entries(
+        walking(
+          swap(linked, (entry, schema) => allowedTypes(types, schema).includes(entry.type)),
+          swap(files, (file, schema) => fitsMedia(schema, file.mime)),
+        ),
+      ).map(([type, input]) => [
+        type,
+        // Fields that resolve their own links do so once their containers' picks have resolved those inside them
+        !input.resolve
+          ? input
+          : {
+              ...input,
+              pickValue: ((value, schema, pickFields) =>
+                input.resolve!(
+                  input.pickValue ? input.pickValue(value, schema, pickFields) : value,
+                  schema,
+                  found,
+                )) as InputPickValue,
+            },
+      ]),
     )
     for (const { entry, names } of level) {
       entry.values = { ...entry.values, ...pickValues(fieldsOf(entry, names), entry.values, inputs) }

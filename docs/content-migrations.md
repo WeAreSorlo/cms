@@ -40,18 +40,18 @@ export const down: ContentMigration = ({ entries }) => {
 }
 ```
 
-| Helper                         | What it does to each of the type's entries                                             |
-| ------------------------------ | -------------------------------------------------------------------------------------- |
-| `renameField(type, from, to)`  | Moves a field's value to another name or place                                         |
-| `removeField(type, path)`      | Deletes a field's value                                                                |
-| `addField(type, path, value)`  | Gives the field this value where it has none                                           |
-| `mapField(type, path, change)` | Replaces the field's value with what `change` returns for it                           |
-| `renameLayout(type, from, to)` | Renames a flexible field's layout, as in `('blog', 'blocks.quote', 'blocks.citation')` |
-| `removeLayout(type, path)`     | Deletes the blocks of a layout                                                         |
-| `renameType(from, to)`         | Renames a type, unless the new name already has entries                                |
-| `update(type, change)`         | Any other change: `change` takes an entry's values and returns new ones                |
+| Helper                         | What it does to each of the type's entries                                                          |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `renameField(type, from, to)`  | Moves a field's value to another name or place                                                      |
+| `removeField(type, path)`      | Deletes a field's value                                                                             |
+| `addField(type, path, value)`  | Gives the field this value where it has none                                                        |
+| `mapField(type, path, change)` | Replaces the field's value with what `change` returns for it                                        |
+| `renameLayout(type, from, to)` | Renames a flexible or rich text field's layout, as in `('blog', 'blocks.quote', 'blocks.citation')` |
+| `removeLayout(type, path)`     | Deletes the blocks of a layout                                                                      |
+| `renameType(from, to)`         | Renames a type, unless the new name already has entries                                             |
+| `update(type, change)`         | Any other change: `change` takes an entry's values and returns new ones                             |
 
-- Paths name fields as the schema nests them: `address.town` in a group, `pets.name` in every item of a repeater or matrix, and `blocks.quote.credit` in the blocks of the `quote` layout.
+- Paths name fields as the schema nests them: `address.town` in a group, `pets.name` in every item of a repeater or matrix, and `blocks.quote.credit` in the blocks of the `quote` layout, whether `blocks` is a flexible field or a [rich text field](content-types.md#rich-text-fields) delivered as JSON.
 - `make:migration` compares types as they load, with their uses of shared groups expanded, so the snapshot holds them that way too, and a use's fields are paths like any group's, such as `seo.title`. A swap is a group whose `options.group` changed under the same `id`, as the type editor's swaps keep it. Its fields are matched by name rather than by `id`, and a matched field whose type or settings changed gets a TODO or a flag, as any field does. A use added with an `id` of its own in place of a group is a removal and an addition, flagged.
 - An `up` or `down` only declares changes to one entry's values. `sorlo migrate` runs them on every entry, 500 at a time, inside one transaction for each migration, and old versions run them too.
 - Every save records the last content migration that ran. Opening an old version runs the `up` of each migration that ran after it was saved, so its values fit the fields as they are now. A version saved after a migration that has since been rolled back replies 409 until it runs again.

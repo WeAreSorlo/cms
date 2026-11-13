@@ -1,5 +1,5 @@
 import type { AiProvider } from './ai'
-import type { Input } from '@sorlo/forms'
+import type { Input, InputSchema, InputTypeValue } from '@sorlo/forms'
 import type { DriveManagerOptions, DriverContract } from 'flydrive/types'
 
 export interface Config {
@@ -57,7 +57,48 @@ export interface Plugin {
   admin: string
 }
 
-export type PluginField = Omit<Input, 'default'>
+// A Sorlo Forms input without its component, and optionally what the CMS needs of a field that links within its value,
+// such as rich text, or that the delivery API returns as something else
+export type PluginField = Omit<Input, 'default'> & FieldLinks
+
+export interface FieldLinks {
+  // The entries and files a value links to, by ID, which entry_relations records, so Used by lists them
+  links?: (value: unknown, schema: InputSchema) => { entries: Array<string>; media: Array<string> }
+  // The value as with() returns it, given what its links link to. A field with resolve is one with() can name.
+  resolve?: (value: unknown, schema: InputSchema, found: LinkedRecords) => unknown
+  // What the delivery API returns in place of the value, such as HTML, given what its links link to
+  deliver?: (value: unknown, schema: InputSchema, found: LinkedRecords) => unknown
+  // The TypeScript type of what deliver returns, for the types the SDK pulls
+  deliveredType?: InputTypeValue
+}
+
+// The entries and files a value's links link to, by ID, as the delivery API returns them. Those it doesn't serve, such
+// as unpublished entries, are missing.
+export interface LinkedRecords {
+  entries: Map<string, DeliveredEntry>
+  media: Map<string, DeliveredMedia>
+}
+
+export interface DeliveredEntry {
+  id: string
+  type: string
+  slug: string | null
+  uri: string | null
+  values: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface DeliveredMedia {
+  id: string
+  name: string
+  mime: string
+  url: string
+  width: number | null
+  height: number | null
+  alt: string | null
+  caption: string | null
+  [key: string]: unknown
+}
 
 export type Preview = string | ((context: { entry: DraftEntry }) => PreviewUrl | Promise<PreviewUrl>)
 

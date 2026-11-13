@@ -14,7 +14,7 @@ export default defineConfig({
 
 - **Build the admin** with `npx sorlo build` before `sorlo start`, and again after changing the plugins or upgrading the CMS. `sorlo start` refuses a build for other plugins or another version of Sorlo, as [The admin's build](cli.md#the-admins-build) describes. `sorlo dev` needs no build.
 - **Install plugin packages as dependencies,** not dev dependencies, since [Deploying](deploying.md)'s image installs without dev dependencies and then builds the admin with them.
-- **A field type is taken once.** A plugin's field type that's built in, such as `text` or `markdown`, or that another plugin has, stops every command with a list of each, since `migrate`, `make:migration` and imports check type files too.
+- **A field type is taken once.** A plugin's field type that's built in, such as `text` or `markdown`, or that another plugin has, stops every command with a list of each, since `migrate`, `make:migration` and imports check type files too. The exception is a plugin the CMS includes, such as `lexical()` from `@sorlo/field-lexical`, which a site lists for its settings, as [Where entry links go](content-types.md#where-entry-links-go) shows, and which `sorlo build` leaves out, since the admin has its fields already.
 - **Forms** offer Sorlo Forms' own inputs, so a plugin's fields are for content types and shared groups.
 - **Plugins are trusted code,** as [below](#plugins-are-trusted-code) explains.
 
@@ -27,6 +27,15 @@ A plugin is `{ name, fields, admin }`, and `@sorlo/cms` exports its type, `Plugi
 | `name`   | What messages call it                                                                                                                                                                                                |
 | `fields` | Field types by name, each a [Sorlo Forms input](https://github.com/WeAreSorlo/forms#readme) without its `default` component: its name, description, category, options, checks and `typeValue`                        |
 | `admin`  | The module the admin's build imports each field's full input from, as an export named after its field type: a package, such as `sorlo-field-rating`, or a path from `sorlo.config.ts`, such as `./fields/rating.tsx` |
+
+A field can also say what the CMS needs of a value that links within it, or that the delivery API returns as something else, as the [rich text fields](content-types.md#rich-text-fields) do. Each is optional:
+
+| Key             | What it holds                                                                                                                                                                      |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `links`         | `(value, schema)` giving `{ entries, media }`, the IDs the value links to, which `entry_relations` records, so Used by lists the entry                                             |
+| `resolve`       | `(value, schema, found)` giving the value as `with` returns it, from `found.entries` and `found.media`, the linked entries and files by ID. A field with it is one `with` can name |
+| `deliver`       | `(value, schema, found)` giving what the delivery API returns in place of the value, such as HTML, with what its `links` link to in `found`                                        |
+| `deliveredType` | Like `typeValue`, the TypeScript type of what `deliver` returns, for `sorlo types pull`                                                                                            |
 
 The server checks and types values with `fields`, as it does Sorlo Forms' own inputs, so saves, type files, `sorlo types pull` and the [assistant](assistant.md)'s field types all take them. It never imports `admin`, so an editor and its browser-only code stay out of the server. The admin's build imports each field by its name, so a module without one fails the build, naming it.
 

@@ -113,6 +113,66 @@ A `markdown` field holds text written in Markdown, such as a post's body, and de
 - **From long text:** a `textarea` field's values are Markdown already, so changing one to `markdown` needs no conversion. `make:migration` still writes a TODO for the type change, which can be left as the `mapField` it stubs, since that returns each value as it is.
 - **Forms** offer Sorlo Forms' own inputs, so the Markdown field is for content types and shared groups.
 
+## Rich text fields
+
+A `lexical` field holds formatted text, such as an article's body. Its `output` option says how delivery returns it: as HTML, ready to show, or as JSON, for the site to render with its own components, which can hold blocks between its paragraphs, each with fields of its own, such as a call to action. The CMS includes it, from [`@sorlo/field-lexical`](https://github.com/WeAreSorlo/cms/tree/main/packages/field-lexical), so it needs no setup. Its editor is [Lexical](https://lexical.dev), and the type editor calls it Rich text.
+
+```json
+{ "id": "fld_r7k2mq9d", "type": "lexical", "name": "body", "label": "Body" }
+```
+
+| Option    | What it holds                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `output`  | `html` or `json`, which the type editor calls Delivered as. `html` if not given                                                                                     |
+| `layouts` | For `json` only, the kinds of blocks it takes, as a flexible field's `layouts`. Optional, so a field can start with none. The type editor shows them once it's JSON |
+
+Its blocks are a flexible field's blocks, keyed on `_layout`, so their fields are checked, picked and typed the same way:
+
+```json
+{
+  "id": "fld_q8n4tz2w",
+  "type": "lexical",
+  "name": "content",
+  "label": "Content",
+  "options": {
+    "output": "json",
+    "layouts": [
+      {
+        "id": "lay_k3x9q2mz",
+        "name": "callout",
+        "label": "Callout",
+        "fields": [{ "id": "fld_c1p8wq4e", "type": "text", "name": "title", "label": "Title", "required": true }]
+      }
+    ]
+  }
+}
+```
+
+- **The editor:** Heading, Subheading, Bold, Italic, Strikethrough, Code, Link, Link to an entry, Bulleted list, Numbered list, Quote, Code block, Insert a file, an Add button for each of a JSON field's layouts, Undo and Redo, in one toolbar, which Tab stops on once and the arrow keys, Home and End move through. Ctrl+B, Ctrl+I and Ctrl+U, or Cmd on a Mac, work in the text. Link asks for an address, which takes `https://`, `http://`, `mailto:`, `tel:` or a path on the site such as `/about`. Link to an entry and Insert a file open the entry search and the media library. A file or block sits on a line of its own, with Move up, Move down and Remove buttons, and a block's fields are a form inside it.
+- **What's stored** is Lexical's own JSON, `{ "root": { "type": "root", "children": [...] } }`, or `null` once the editor is emptied. Links to entries and files are Sorlo's own nodes, holding IDs, so `entry_relations` records them and the entries and files they link to list the entry under Used by: `{ "type": "entrylink", "entry": "<id>", "children": [...] }` around its text, `{ "type": "media", "media": "<id>" }` and, in a JSON field, `{ "type": "block", "block": { "_layout": "callout", "title": "…" } }`. Files and blocks sit only at the top of the tree.
+- **Saving checks the tree** on the server, since a browser can send any: only the nodes above and Lexical's own for headings, paragraphs, quotes, lists, code, links and text, each where it can be, links with the addresses Link takes, and each block's fields, whose messages are under the block's place among the field's blocks, such as `content.0.title`. A block whose layout has gone is left out, as a flexible field's is, and so is every block once a field is delivered as HTML, since HTML has no way to write them yet. So switching a field from JSON to HTML drops its blocks from each entry the next time it's saved, and `make:migration` flags the switch.
+- **HTML,** the default, is plain elements with no classes or styles, with every text and attribute escaped: `<h2>`, `<p>`, `<strong>`, `<em>`, `<u>`, `<s>`, `<code>`, `<br>`, `<ul>` and `<ol>`, `<blockquote>`, `<pre><code class="language-…">`, and `<a>` for links, with `rel="noopener noreferrer"` on those that open a new tab, and empty paragraphs are left out. An image is an `<img>` with its alt text and size, in a `<figure>` with a `<figcaption>` when it has a caption, video and audio get players, and other files a link. A link to an entry is `<a href="…" data-entry="<id>">`, its address from `/` and the entry's `uri` or slug, or from the site's [`entryLinks`](#where-entry-links-go). One to an entry that isn't live, or a file that's been deleted, leaves its text unlinked or the file out. Previews get drafts' HTML.
+- **JSON** is delivered as stored, with IDs. Naming the field in [`with`](api.md#the-delivery-api) swaps them for what they link to, in the text's nodes and in its blocks' fields alike: an entry link's `entry` and a file's `media` become the entry and file as the delivery API returns them, or `null` for one that isn't served.
+- **Types:** the SDK's types call an HTML field a `string`, and a JSON field its tree, with each block typed by its layout, so checking `type` and `_layout` narrows a node to a block of a layout. A field that isn't required can also be `null`.
+- **Elsewhere:** lists, emails and the assistant show the text, versions compare it word by word and its blocks as a flexible field's, bulk editing opens the editor in a dialog, and `replace_text` changes the text and blocks' text fields. The admin API and MCP read and write the stored JSON.
+- **Forms** offer Sorlo Forms' own inputs, so this field is for content types and shared groups.
+
+### Where entry links go
+
+The CMS doesn't know the site's routes, so a site whose pages aren't at `/` and the entry's `uri` or slug says where each type's entries are, for HTML fields' links. It lists `lexical()` in `plugins` with its `entryLinks`, a function for each type, by name, from the entry as the delivery API returns it to the address its links take. One giving nothing, such as `null`, leaves the link's text unlinked.
+
+```ts
+import { defineConfig } from '@sorlo/cms'
+import { lexical } from '@sorlo/field-lexical/plugin'
+
+export default defineConfig({
+  // ...
+  plugins: [lexical({ entryLinks: { posts: ({ entry }) => `/blog/${entry.slug}` } })],
+})
+```
+
+`@sorlo/field-lexical` comes with `@sorlo/cms`, at the version the CMS uses, so a site that imports it adds that version to its own `package.json`. Since the admin already has the field, `sorlo build` leaves this plugin out, and changing `entryLinks` needs no build. `lexical()` takes only the field the CMS includes from it.
+
 [Plugins](plugins.md) add field types of their own, from packages or from the site's own folder, which the type editor offers beside these.
 
 ## Shared groups

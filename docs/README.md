@@ -13,7 +13,7 @@ The same pages come with `@sorlo/cms`, in `node_modules/@sorlo/cms/docs/`, match
 
 ## Modelling content
 
-- [Content types](content-types.md): the type editor, the type's file, relationship, media, form and Markdown fields, and shared groups
+- [Content types](content-types.md): the type editor, the type's file, relationship, media, form, Markdown and rich text fields, and shared groups
 - [Content migrations](content-migrations.md): changing a type's entries with it, from the CLI or the admin
 - [Plugins](plugins.md): field types from packages or the site's own folder, writing a field package, and why plugins are trusted code
 

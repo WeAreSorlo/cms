@@ -54,7 +54,16 @@ export interface Column {
 }
 
 // Fields too big for a cell, which open in a dialog
-const dialogTypes = new Set(['repeater', 'matrix', 'flexible', 'relationship', 'media', 'schemabuilder', 'conditions'])
+const dialogTypes = new Set([
+  'repeater',
+  'matrix',
+  'flexible',
+  'relationship',
+  'media',
+  'schemabuilder',
+  'conditions',
+  'lexical',
+])
 
 // Every column a type's grid can show. A group's fields become columns of their own, and so do those of the groups
 // inside it. Content and hidden fields have nothing to edit.
@@ -184,9 +193,18 @@ function CellValue({ field, value, links }: { field: FieldSchema; value: any; li
 
 // Widths in rem, since a fixed layout keeps columns still while a cell's input comes and goes
 const widthOf = (field: FieldSchema) =>
-  ({ boolean: 6, number: 8, range: 8, color: 8, date: 9, time: 9, datetime: 12, textarea: 18, markdown: 18 })[
-    field.type
-  ] ?? 14
+  ({
+    boolean: 6,
+    number: 8,
+    range: 8,
+    color: 8,
+    date: 9,
+    time: 9,
+    datetime: 12,
+    textarea: 18,
+    markdown: 18,
+    lexical: 18,
+  })[field.type] ?? 14
 const statusWidth = 12
 
 // Keys that move between cells, as in a spreadsheet

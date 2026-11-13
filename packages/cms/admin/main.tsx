@@ -12,6 +12,7 @@ import {
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage, TypeGone } from './entries'
+import { RichTextPickers } from './fields'
 import { FormEditor, FormList, FormPage, Inbox, isView } from './forms'
 import { GroupEditor, GroupList } from './groups'
 import { KeyEditor, KeyList, KeyPage } from './keys'
@@ -35,6 +36,7 @@ import {
   UserPage,
 } from './users'
 import { VersionPage } from './versions'
+import '@sorlo/field-lexical/styles.css'
 import '@sorlo/field-markdown/styles.css'
 import type { Input } from '@sorlo/forms'
 import '@sorlo/forms/styles/base.scss'
@@ -244,30 +246,32 @@ function App() {
     <TypesContext.Provider value={types}>
       <GroupsContext.Provider value={groups}>
         <PreviewsContext.Provider value={previews}>
-          <Shell
-            hash={hash}
-            types={types}
-            user={user}
-            editable={editable}
-            mcp={!!mcp}
-            ai={ai}
-            onSignOut={signOut}
-            onTypes={reloadTypes}
-            arriving={arriving}
-          >
-            <Page
+          <RichTextPickers>
+            <Shell
               hash={hash}
               types={types}
-              groups={groups}
+              user={user}
               editable={editable}
-              mcp={mcp}
+              mcp={!!mcp}
               ai={ai}
-              mail={mail}
-              me={user.id}
-              reloadTypes={reloadTypes}
-              onUser={setUser}
-            />
-          </Shell>
+              onSignOut={signOut}
+              onTypes={reloadTypes}
+              arriving={arriving}
+            >
+              <Page
+                hash={hash}
+                types={types}
+                groups={groups}
+                editable={editable}
+                mcp={mcp}
+                ai={ai}
+                mail={mail}
+                me={user.id}
+                reloadTypes={reloadTypes}
+                onUser={setUser}
+              />
+            </Shell>
+          </RichTextPickers>
         </PreviewsContext.Provider>
       </GroupsContext.Provider>
     </TypesContext.Provider>

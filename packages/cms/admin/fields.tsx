@@ -2,10 +2,11 @@ import { form, holdsOne, idsOf, media, relationship, relationshipOptions, shared
 import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, pluginInputs, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
 import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
+import { type PickedEntry, type PickedFile, type Pickers, PickersContext, lexical } from '@sorlo/field-lexical'
 import { markdown } from '@sorlo/field-markdown'
 import Form, { FieldSchema, Input, inputs, useFieldContext } from '@sorlo/forms'
 import { CircleAlert, Search, X } from 'lucide-react'
-import { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 // After a pick or a removal, focus goes back to the picker's Choose button, or once the field is full and Choose has
 // gone, to its last remove button. It would drop to the page otherwise, since a pick unmounts the dialog that had it
@@ -406,6 +407,49 @@ function FormPicker() {
   )
 }
 
+// The rich text fields' media library and entry search, each in a dialog, as the media and relationship fields open
+// theirs. An editor asks for a pick and gets the file or entry chosen, or nothing once the dialog closes.
+export function RichTextPickers({ children }: { children: ReactNode }) {
+  const types = useContext(TypesContext)
+  const [open, setOpen] = useState<{ kind: 'media' | 'entry'; done: (picked: any) => void }>()
+  const pickers = useMemo<Pickers>(
+    () => ({
+      media: () => new Promise<PickedFile | null>((done) => setOpen({ kind: 'media', done })),
+      entry: () => new Promise<PickedEntry | null>((done) => setOpen({ kind: 'entry', done })),
+      files: async (ids) => {
+        const where = encodeURIComponent(JSON.stringify([[{ field: 'id', op: 'in', value: ids }]]))
+        const { body } = await api('GET', `/media?perPage=100&where=${where}`)
+        return Object.fromEntries(ids.map((id) => [id, body.data.find((file: Media) => file.id === id) ?? null]))
+      },
+    }),
+    [],
+  )
+  const close = (picked: PickedFile | PickedEntry | null) => {
+    open?.done(picked)
+    setOpen(undefined)
+  }
+
+  return (
+    <PickersContext.Provider value={pickers}>
+      {children}
+      {open?.kind === 'media' && (
+        <Dialog title='Insert a file' onClose={() => close(null)}>
+          <MediaLibrary pick={{ chosen: [], onPick: (file) => close(file) }} />
+        </Dialog>
+      )}
+      {open?.kind === 'entry' && (
+        <Dialog title='Link to an entry' onClose={() => close(null)}>
+          <EntrySearch
+            types={[...types.values()]}
+            chosen={[]}
+            onPick={(entry) => close({ id: entry.id, title: titleOf(types.get(entry.type)!, entry) })}
+          />
+        </Dialog>
+      )}
+    </PickersContext.Provider>
+  )
+}
+
 // The type editor's Icon setting, whose value is text: the name of one of Lucide's icons
 export const iconInput: Input = { ...inputs.text, default: IconPicker }
 
@@ -425,6 +469,7 @@ export function useInputs(building?: string) {
       media: { ...media, default: MediaPicker },
       form: { ...form, default: FormPicker },
       markdown,
+      lexical,
       ...pluginInputs,
       // Types expand their uses into groups, so no form ever renders one
       ...(usable.length

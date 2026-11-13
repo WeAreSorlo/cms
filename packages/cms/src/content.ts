@@ -44,11 +44,19 @@ interface Step {
 const isObject = (value: unknown): value is Values =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+// A rich text field's tree, whose blocks sit in its block nodes, as a list of them
+const blocksIn = (node: Values) =>
+  isObject(node.root) && node.root.type === 'root' && Array.isArray(node.root.children)
+    ? node.root.children.flatMap((child: unknown) => (isObject(child) && child.type === 'block' ? [child.block] : []))
+    : undefined
+
 // Call change with every object a path leads to: through groups by key, into every item of a list, and into the blocks
-// of the flexible layout the path names. Blocks are known by their _layout key, which no field can have.
+// of the flexible or rich text layout the path names. Blocks are known by their _layout key, which no field can have.
 function each(node: unknown, path: Array<string>, change: (object: Values) => void, inBlock = false): void {
   if (Array.isArray(node)) return node.forEach((item) => each(item, path, change))
   if (!isObject(node)) return
+  const blocks = inBlock ? undefined : blocksIn(node)
+  if (blocks) return each(blocks, path, change)
   if (!inBlock && typeof node._layout === 'string') {
     if (node._layout === path[0]) each(node, path.slice(1), change, true)
     return
@@ -134,7 +142,12 @@ async function stepsOf(migration: ContentMigration) {
       removeLayout(type, path) {
         const layout = path.split('.').at(-1)
         inside(type, path.split('.').slice(0, -1).join('.'), (object, key) => {
-          if (Array.isArray(object[key])) object[key] = object[key].filter((block) => block?._layout !== layout)
+          const field = object[key]
+          if (Array.isArray(field)) object[key] = field.filter((block) => block?._layout !== layout)
+          else if (isObject(field) && blocksIn(field)) {
+            const children = field.root.children.filter((node: Values) => node?.block?._layout !== layout)
+            object[key] = { ...field, root: { ...field.root, children } }
+          }
         })
       },
       renameType: (from, to) => void steps.push({ type: from, rename: to }),

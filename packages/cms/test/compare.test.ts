@@ -197,6 +197,30 @@ test('matches flexible blocks by position, and a block that swaps its layout is 
   ])
 })
 
+test("compares rich text's text, then its blocks as a flexible field's", () => {
+  const body: FieldSchema = {
+    ...fields.find((field) => field.name === 'blocks')!,
+    type: 'lexical',
+    name: 'body',
+  }
+  const tree = (text: string, ...blocks: Array<object>) => ({
+    root: {
+      type: 'root',
+      children: [
+        { type: 'paragraph', children: [{ type: 'text', text }] },
+        ...blocks.map((block) => ({ type: 'block', block })),
+      ],
+    },
+  })
+  const before = { body: tree('Hello', { _layout: 'text', text: 'One' }) }
+  expect(summary(compare([body], before, { body: tree('Hello there', { _layout: 'text', text: 'One' }) }))).toEqual([
+    ['Blocks', 'changed'],
+  ])
+  expect(summary(compare([body], before, { body: tree('Hello', { _layout: 'text', text: 'Two' }) }))).toEqual([
+    ['Blocks › Blocks', 'changed', [['Block 1: Text', 'changed', [['text', 'changed']]]]],
+  ])
+})
+
 test("matches a matrix's cells by row and column", () => {
   const before = { prices: [[{ price: 1 }, { price: 2 }]] }
   const after = { prices: [[{ price: 1 }, { price: 3 }], [{ price: 4 }]] }

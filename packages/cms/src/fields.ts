@@ -47,9 +47,6 @@ export const someField = (fields: Array<FieldSchema>, test: (field: FieldSchema)
       ),
   )
 
-// A type's top-level fields that are relationship or media fields or hold some, which with() can name
-export const linkFields = (type: ContentType) => type.fields.filter((field) => someField([field], isLink))
-
 type Layout = { id?: string; fields?: Array<FieldSchema> }
 
 // Fields with each field and layout in them, at any depth, replaced by what change and changeLayout make of it, after

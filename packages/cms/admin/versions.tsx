@@ -54,6 +54,9 @@ function valueText(field: FieldSchema, value: unknown, links: Record<string, str
   return formatValue(field, value)
 }
 
+// Fields whose changes show as their words, rich text's as its text
+const texts = new Set(['textarea', 'markdown', 'lexical'])
+
 // A long text's words, with those added and removed marked, and named for screen readers, which don't announce
 // <ins> and <del>
 const TextChanges = ({ before, after }: { before: string; after: string }) => (
@@ -105,8 +108,11 @@ export function ChangeList({
                 </li>
               ))}
             </ol>
-          ) : change.kind === 'changed' && (change.field.type === 'textarea' || change.field.type === 'markdown') ? (
-            <TextChanges before={String(change.before)} after={String(change.after)} />
+          ) : change.kind === 'changed' && texts.has(change.field.type) ? (
+            <TextChanges
+              before={formatValue(change.field, change.before)}
+              after={formatValue(change.field, change.after)}
+            />
           ) : (
             <dl className='cms-pairs'>
               {change.kind !== 'added' && (

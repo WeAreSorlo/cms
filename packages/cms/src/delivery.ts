@@ -5,7 +5,7 @@ import type { AdminEnv } from './entries'
 import { findMedia, origin, toMedia } from './media'
 import { hashToken } from './passwords'
 import { Delivered, deliveredEntries, listEntries, listMedia, parseMediaQuery, parseQuery, toEntry } from './query'
-import { parseWith, resolveLinks } from './relations'
+import { deliverValues, parseWith, resolveLinks } from './relations'
 import { apiKeySchema, apiKeyScopes } from './schemas'
 import type { ContentType } from './types'
 import { maker } from './users'
@@ -209,9 +209,15 @@ export function deliveryRoutes(
     return type
   }
 
-  // Entries as the delivery API returns them, with the links resolved that the request's with names
-  const withLinks = (c: Context<DeliveryEnv>, resolving: ReturnType<typeof parseWith>, rows: Array<Delivered>) => {
+  // Entries as the delivery API returns them, with fields such as rich text written out and the links resolved that the
+  // request's with names
+  const withLinks = async (
+    c: Context<DeliveryEnv>,
+    resolving: ReturnType<typeof parseWith>,
+    rows: Array<Delivered>,
+  ) => {
     const found = rows.map(toEntry)
+    await deliverValues(db, types, origin(c), found, c.var.draft)
     return resolving
       ? resolveLinks(db, types, origin(c), found, resolving.names, resolving.depth, maxLinks, c.var.draft)
       : found
