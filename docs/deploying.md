@@ -11,6 +11,8 @@ ENV NODE_ENV=production NO_COLOR=1
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY . .
+# The admin, with the site's plugins, into .sorlo/admin
+RUN node_modules/.bin/sorlo build
 
 # The local disk's folder, which a volume keeps
 RUN mkdir -p storage && chown node:node storage
@@ -27,10 +29,12 @@ node_modules
 .env*
 *.env
 storage
+.sorlo
 .git
 ```
 
 - **The image installs the packages** with `npm ci`, exactly as `package-lock.json` records them. `node:24-slim` is Debian, so sharp uses its glibc build, which a lockfile lists even when it's made on a Mac. On an Apple Silicon Mac, `docker build --platform linux/amd64` builds for an x64 host.
+- **It builds the admin** with `sorlo build`, as [The admin's build](cli.md#the-admins-build) describes, so each image's admin has the [plugins](plugins.md) its `sorlo.config.ts` lists, and `sorlo start` serves it. The build reads `sorlo.config.ts` but connects to nothing, so it needs none of the site's secrets, as long as the config doesn't throw without them. `.dockerignore` leaves out `.sorlo`, since the image builds its own, and the packages install without dev dependencies, so a site installs its plugins as dependencies.
 - **It holds no secrets.** `.env` files, and env files such as `production.env`, stay out of it, and `sorlo.config.ts` reads the environment each time the server starts. The site's files belong to root, read-only to the server, which writes only to `storage`.
 - **The server is the image's command,** rather than `npm start`, so it gets the host's SIGTERM and stops [as the CLI does](cli.md#logs-and-stopping). `NO_COLOR` keeps colours out of the request log.
 - **Migrations run once per deploy,** before the new version takes traffic, from the same image and environment, such as in Fly's `release_command`, Render's pre-deploy command or a Kubernetes Job:

@@ -5,7 +5,7 @@ import { db, resetDb, url } from './database'
 import { contactFields, setUp } from './fixtures'
 import { ChildProcess, execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { AddressInfo, createServer } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -161,6 +161,14 @@ test('migrate refuses a waiting migration with a TODO left, running nothing', as
   }
 }, 30_000)
 
+// Stops a server and waits for it to exit, so it's done with the site's files, such as Vite's cache in .sorlo
+const stop = (child: ChildProcess) =>
+  new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) return resolve(undefined)
+    child.once('exit', resolve)
+    child.kill()
+  })
+
 // A port nothing listens on yet
 const freePort = () =>
   new Promise<number>((resolve) => {
@@ -219,8 +227,12 @@ test("dev listens on 127.0.0.1 unless HOST names another address, and other site
     const ipv6 = await dev('::1')
     expect(await admin('[::1]', ipv6)).toBe("200, DENY, frame-ancestors 'none'")
     expect(await admin('127.0.0.1', ipv6)).toBe('refused')
+
+    // Vite serves the admin, but none of the project's own files, such as its config
+    const config = await fetch(`http://[::1]:${ipv6}/admin/@fs${await realpath(dir)}/sorlo.config.ts`)
+    expect(config.status).toBe(403)
   } finally {
-    for (const child of running) child.kill()
+    await Promise.all(running.map(stop))
     await rm(dir, { recursive: true })
   }
 }, 60_000)
@@ -361,7 +373,7 @@ test('dev runs what migrate would as it starts, then prints the link that makes 
     })
     expect(made.status).toBe(200)
   } finally {
-    dev.child.kill()
+    await stop(dev.child)
     await rm(dir, { recursive: true })
   }
 }, 60_000)
@@ -382,7 +394,7 @@ test("dev keeps Sorlo's notes for coding agents in AGENTS.md, refreshing them in
       expect(await dev.started).toEqual({ code: null })
       return dev.output().stdout
     } finally {
-      dev.child.kill()
+      await stop(dev.child)
     }
   }
 
@@ -432,21 +444,22 @@ test('dev starts with a TODO left in a waiting migration, running none of them, 
     )
     expect(dev.output().stdout).not.toContain('Migrated')
   } finally {
-    dev.child.kill()
+    await stop(dev.child)
     await rm(dir, { recursive: true })
   }
 }, 60_000)
-
-// start serves the built admin, which npm run build makes
-const built = existsSync(fileURLToPath(new URL('../admin/dist/index.html', import.meta.url)))
 
 test('a port in use stops dev and start with what to do, rather than a stack trace', async () => {
   await setUp()
   const dir = await siteWithStorage()
   // Taken where each listens: dev on 127.0.0.1, and start on every address
-  const commands: Array<['dev' | 'start', string | undefined]> = [['dev', '127.0.0.1']]
-  if (built) commands.push(['start', undefined])
+  const commands: Array<['dev' | 'start', string | undefined]> = [
+    ['dev', '127.0.0.1'],
+    ['start', undefined],
+  ]
   try {
+    // start serves the admin sorlo build makes
+    expect((await run(dir, ['build'])).code).toBe(0)
     for (const [command, host] of commands) {
       const taken = createServer()
       const port = await new Promise<number>((resolve) =>
@@ -463,9 +476,78 @@ test('a port in use stops dev and start with what to do, rather than a stack tra
         )
         expect(stderr, command).not.toMatch(/^\s+at /m)
       } finally {
-        server.child.kill()
+        await stop(server.child)
         taken.close()
       }
+    }
+  } finally {
+    await rm(dir, { recursive: true })
+  }
+}, 60_000)
+
+test("build bundles a site's own field into the admin, which start serves, and start refuses a build that's out of date", async () => {
+  await setUp()
+  // The field's checks in a .ts file, which sorlo.config.ts imports, and its component in the module the build imports
+  const dir = await siteWithStorage()
+  await mkdir(join(dir, 'fields'))
+  await writeFile(
+    join(dir, 'fields/rating.ts'),
+    "export const rating = { name: () => 'Rating', typeValue: () => 'number' }\n",
+  )
+  await writeFile(
+    join(dir, 'fields/rating.tsx'),
+    "import { rating as checks } from './rating.ts'\n\nexport const rating = { ...checks, default: () => <b>Five stars</b> }\n",
+  )
+  const config = await readFile(join(dir, 'sorlo.config.ts'), 'utf8')
+  const withFields = (fields: string) =>
+    writeFile(
+      join(dir, 'sorlo.config.ts'),
+      config.replace(
+        'export default {',
+        "import { rating } from './fields/rating.ts'\nexport default {\n" +
+          `  plugins: [{ name: 'stars', fields: ${fields}, admin: './fields/rating.tsx' }],`,
+      ),
+    )
+  await withFields('{ rating }')
+
+  try {
+    expect(await run(dir, ['build'])).toEqual({
+      code: 0,
+      stdout: 'Built the admin into .sorlo/admin, which sorlo start serves.\n',
+      stderr: '',
+    })
+    expect(await readFile(join(dir, '.sorlo/.gitignore'), 'utf8')).toBe('*\n')
+
+    const port = await freePort()
+    const start = serve(dir, 'start', port)
+    try {
+      expect(await start.started).toEqual({ code: null })
+      const page = await (await fetch(`http://127.0.0.1:${port}/admin/`)).text()
+      const [, script] = page.match(/src="(\/admin\/assets\/index-[^"]+\.js)"/)!
+      expect(await (await fetch(`http://127.0.0.1:${port}${script}`)).text()).toContain('Five stars')
+    } finally {
+      await stop(start.child)
+    }
+
+    // A field that wasn't built, and that its module doesn't export, so the build fails too
+    await withFields('{ rating, stars: rating }')
+    expect(await run(dir, ['start'])).toEqual({
+      code: 1,
+      stdout: '',
+      stderr: 'The admin was built for another version of Sorlo or other plugins. Run npx sorlo build again.\n',
+    })
+    const failed = await run(dir, ['build'])
+    expect(failed.code).toBe(1)
+    expect(failed.stderr).toContain('"stars" is not exported by "fields/rating.tsx"')
+
+    // A field type that's taken stops every command, before it does anything
+    await withFields('{ rating, text: rating }')
+    for (const command of ['build', 'start', 'migrate:status']) {
+      expect(await run(dir, [command]), command).toEqual({
+        code: 1,
+        stdout: '',
+        stderr: "The plugins in sorlo.config.ts can't be loaded:\n  text, from stars, is a built-in field type.\n",
+      })
     }
   } finally {
     await rm(dir, { recursive: true })

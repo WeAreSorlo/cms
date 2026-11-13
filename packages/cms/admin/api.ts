@@ -16,6 +16,9 @@ export const GroupsContext = createContext(new Map<string, SharedGroup>())
 // The names of the types whose editor has a Preview button, from previews in sorlo.config.ts
 export const PreviewsContext = createContext<Array<string>>([])
 
+// The plugins' field types with their components, which mount fills before the admin renders
+export const pluginInputs: Record<string, Input> = {}
+
 // Who saved or published a version, or The CLI for no one, since sorlo import and sorlo migrate record no one, as API
 // keys made by sorlo make:api-key do
 // shortcut: a version whose person was deleted, before removal kept people's rows, says the CLI too
@@ -180,7 +183,8 @@ export async function allEntries(type: ContentType) {
 export function formatValue(field: FieldSchema | undefined, value: any) {
   const format =
     field &&
-    ({ ...inputs, relationship, media, form, markdown } as Record<string, Partial<Input>>)[field.type]?.formatValue
+    ({ ...inputs, relationship, media, form, markdown, ...pluginInputs } as Record<string, Partial<Input>>)[field.type]
+      ?.formatValue
   // Core formats an invalid value as null, which shows here as it is, so a cell can show what its message is about
   const text = (format && format(value, field)) ?? (typeof value === 'object' ? null : value?.toString())
   // Core formats a choice field as the values it holds, which show here as their choices' labels

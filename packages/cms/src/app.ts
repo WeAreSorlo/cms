@@ -173,6 +173,8 @@ export function createApp(
       for (const [name, value] of Object.entries(adminHeaders)) c.header(name, value)
       if (c.res.headers.get('content-type')?.startsWith('text/html')) c.header('Cache-Control', 'no-cache')
     })
+    // What sorlo build built it with, the CMS's version and the plugins' paths, is the server's business only
+    app.get('/admin/build.json', (c) => c.notFound())
     app.use('/admin/*', serveStatic({ root: admin, rewriteRequestPath: (path) => path.slice('/admin'.length) }))
   }
 

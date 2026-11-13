@@ -113,6 +113,8 @@ A `markdown` field holds text written in Markdown, such as a post's body, and de
 - **From long text:** a `textarea` field's values are Markdown already, so changing one to `markdown` needs no conversion. `make:migration` still writes a TODO for the type change, which can be left as the `mapField` it stubs, since that returns each value as it is.
 - **Forms** offer Sorlo Forms' own inputs, so the Markdown field is for content types and shared groups.
 
+[Plugins](plugins.md) add field types of their own, from packages or from the site's own folder, which the type editor offers beside these.
+
 ## Shared groups
 
 A shared group is a set of fields defined once and used by many types, such as SEO fields, so the types' copies can't drift apart. In `sorlo dev`, the admin's Shared groups page creates, edits and deletes groups as the type editor does types, writing a migration for every type each change reaches. Deleting one replies 409 while a type or another group uses it. The type editor's palette has a Shared group field, and beside the form it lists the type's groups at any depth:

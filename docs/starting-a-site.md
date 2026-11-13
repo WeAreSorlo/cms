@@ -26,11 +26,12 @@ The starter is a template repository too: choose Use this template on its page, 
      "type": "module",
      "scripts": {
        "dev": "sorlo dev",
+       "build": "sorlo build",
        "start": "sorlo start",
        "migrate": "sorlo migrate"
      },
      "dependencies": {
-       "@sorlo/cms": "^0.1.0",
+       "@sorlo/cms": "^0.2.0",
        "flydrive": "^2.2.0"
      },
      "devDependencies": {
@@ -40,7 +41,7 @@ The starter is a template repository too: choose Use this template on its page, 
    }
    ```
 
-2. Add a `sorlo.config.ts` like [the sandbox's](https://github.com/WeAreSorlo/cms/blob/main/examples/sandbox/sorlo.config.ts), with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
+2. Add a `sorlo.config.ts` like [the sandbox's](https://github.com/WeAreSorlo/cms/blob/main/examples/sandbox/sorlo.config.ts), with `url: process.env.APP_URL`, a `.env` with `DATABASE_URL`, and a `.gitignore` with `node_modules`, `.env*`, `*.env` and `storage`. The `.sorlo` folder, where the admin is built, ignores itself. With no fallback for `url`, a deploy that forgets `APP_URL` gets `sorlo start`'s warning and file URLs on the address requests come to, rather than file URLs that all say `localhost`. This `tsconfig.json` makes `tsc` flag what Node can't run:
 
    ```json
    {
@@ -71,6 +72,7 @@ The starter is a template repository too: choose Use this template on its page, 
 `schema/types` and `migrations` can start missing. Commit `package.json` and `package-lock.json`, and the `AGENTS.md` that `sorlo dev` writes, whose [notes](cli.md#notes-for-coding-agents) point coding agents at these docs.
 
 - **Node runs the site's TypeScript,** `sorlo.config.ts` and `migrations/*.ts`, by stripping its types. So types come in with `import type`, as in the migrations `make:migration` writes, relative imports name the file, as in `./mail.ts`, and enums and namespaces can't be used. The `tsconfig.json` above flags each.
+- **`npm start` needs `npm run build` first,** which builds the admin with the site's [plugins](plugins.md) into `.sorlo/admin`, as [The admin's build](cli.md#the-admins-build) describes. Build again after changing the plugins or updating the CMS. `npm run dev` needs no build.
 - **To update the CMS,** run `npm install @sorlo/cms@latest`, and commit `package.json` and `package-lock.json` together.
 - **Scripts and deploys run the local command,** as `npm run migrate` or `node_modules/.bin/sorlo migrate`, rather than `npx sorlo migrate`. Where a project has no `sorlo` installed, `npx` looks the name up on npm, and outside a terminal it installs and runs what it finds without asking.
 

@@ -1,5 +1,5 @@
 import { form, holdsOne, idsOf, media, relationship, relationshipOptions, shared, sharedOptions } from '../src/fields'
-import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, titleOf } from './api'
+import { ContentType, Entry, GroupsContext, TypesContext, api, errorMessage, pluginInputs, titleOf } from './api'
 import { Media, MediaLibrary, Thumbnail } from './media'
 import { Badge, Dialog, EmptyState, IconButton, Loading, Notice, TypeIcon } from './ui'
 import { markdown } from '@sorlo/field-markdown'
@@ -425,6 +425,7 @@ export function useInputs(building?: string) {
       media: { ...media, default: MediaPicker },
       form: { ...form, default: FormPicker },
       markdown,
+      ...pluginInputs,
       // Types expand their uses into groups, so no form ever renders one
       ...(usable.length
         ? { shared: { ...shared, optionFields: () => sharedOptions(usable), default: () => null } }

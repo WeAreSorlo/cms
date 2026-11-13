@@ -25,7 +25,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./admin": "./admin/dist/index.js"
   },
   "bin": {
     "sorlo": "./bin/sorlo.js"
@@ -47,7 +48,7 @@
     "build": "tsup && vite build --config admin/vite.config.ts && npm run build:docs",
     "build:docs": "node -e \"fs.rmSync('docs', { recursive: true, force: true }); fs.cpSync('../../docs', 'docs', { recursive: true })\"",
     "prepack": "npm run build",
-    "pretest": "tsup && npm run build --prefix ../sdk && npm run build --prefix ../field-markdown",
+    "pretest": "tsup && npm run build --prefix ../sdk && npm run build --prefix ../field-markdown && vite build --config admin/vite.config.ts --logLevel warn",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -57,6 +58,7 @@
     "@sorlo/field-markdown": "^0.1.0",
     "@sorlo/forms": "^0.1.0",
     "@sorlo/sdk": "^0.1.1",
+    "@vitejs/plugin-react": "^6.2.1",
     "file-type": "^22.3.0",
     "flydrive": "^2.2.0",
     "hono": "^4.13.16",
@@ -65,6 +67,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "sharp": "^0.35.5",
+    "vite": "^8.3.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -72,14 +75,12 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.2.1",
     "lucide-react": "1.68.0",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
     "sass": "^1.107.1",
     "tsup": "^9.0.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
     "vitest": "^5.1.0"
   }
 }

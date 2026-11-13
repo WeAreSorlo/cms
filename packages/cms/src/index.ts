@@ -1,4 +1,5 @@
 import type { AiProvider } from './ai'
+import type { Input } from '@sorlo/forms'
 import type { DriveManagerOptions, DriverContract } from 'flydrive/types'
 
 export interface Config {
@@ -37,7 +38,26 @@ export interface Config {
   // giving one from the entry's saved draft, or nothing for no preview of that entry. Types left out have no button.
   // It runs on the server, so an address can carry a secret from the environment for the site's preview route.
   previews?: Record<string, Preview | null | undefined>
+  // What the site adds to Sorlo, such as field types for content types and shared groups. sorlo build builds the admin
+  // with them, which sorlo start serves.
+  plugins?: Array<Plugin>
 }
+
+// What a plugin package's plugin entry makes, or a site makes for its own fields. Plugins are trusted code: they run
+// on the server and in editors' browsers with every right the CMS has.
+export interface Plugin {
+  // Names the plugin in messages
+  name: string
+  // Field types by their names, each a Sorlo Forms input without its default component, which the server checks and
+  // types values with. A built-in field type or another plugin's can't be taken.
+  fields: Record<string, PluginField>
+  // The module the admin's build imports each field's full input from, as a named export under its field type: a
+  // package, such as sorlo-field-rating, or a path from sorlo.config.ts, such as ./fields/rating.tsx. The server
+  // never imports it.
+  admin: string
+}
+
+export type PluginField = Omit<Input, 'default'>
 
 export type Preview = string | ((context: { entry: DraftEntry }) => PreviewUrl | Promise<PreviewUrl>)
 

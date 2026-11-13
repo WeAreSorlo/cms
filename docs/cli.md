@@ -5,7 +5,8 @@ Run `sorlo` from a site project: `npx sorlo dev` in a terminal while you work on
 | Command                       | What it does                                                                                                                                                                       |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sorlo dev`                   | Runs what `sorlo migrate` would, then serves the API and the admin on one port, `PORT` or 4100, on 127.0.0.1 unless `HOST` names another address, and runs automations             |
-| `sorlo start`                 | Serves the API and the built admin for production on `PORT` or 4100, and runs automations. Types are read-only                                                                     |
+| `sorlo build`                 | Builds the admin with the site's [plugins](plugins.md) into `.sorlo/admin`, for `sorlo start`, as [The admin's build](#the-admins-build) describes                                 |
+| `sorlo start`                 | Serves the API and the admin `sorlo build` wrote, for production, on `PORT` or 4100, and runs automations. Types are read-only                                                     |
 | `sorlo migrate`               | Runs pending migrations as one batch: the CMS's own, then the site project's content migrations. It refuses a waiting one with a TODO left, running nothing                        |
 | `sorlo migrate --check`       | Lists the saved entries whose drafts no longer pass what a save checks, or whose live copies no longer pass what a publish checks, and fails if there are any. It migrates nothing |
 | `sorlo migrate:rollback`      | Rolls back the last batch, content migrations first                                                                                                                                |
@@ -17,7 +18,7 @@ Run `sorlo` from a site project: `npx sorlo dev` in a terminal while you work on
 | `sorlo user:password <email>` | Sets someone's password, asked for hidden, and signs them out everywhere, for a site whose only person forgot theirs and that sends no email                                       |
 | `sorlo make:api-key`          | Creates a key for the delivery API, shown just once. `--preview`, `--types` and `--submit` give it those [permissions](api.md#api-keys)                                            |
 
-Every command but `sorlo types` stops on a Node older than 22.18, which can't run `sorlo.config.ts`. `sorlo start` warns when [`url`](people.md#settings) isn't set. It also sets `NODE_ENV` to `production`, unless the environment or `.env` sets it, as `next start` does, so a `sorlo.config.ts` that checks it gets its production settings wherever the server runs.
+Every command but `sorlo types` stops on a Node older than 22.18, which can't run `sorlo.config.ts`, and when a plugin's field type is taken, listing each, as [Plugins](plugins.md) describes. `sorlo start` warns when [`url`](people.md#settings) isn't set. It also sets `NODE_ENV` to `production`, unless the environment or `.env` sets it, as `next start` does, so a `sorlo.config.ts` that checks it gets its production settings wherever the server runs.
 
 ## Migrations as `sorlo dev` starts
 
@@ -56,7 +57,20 @@ Port 4100 is in use, by another Sorlo server or something else. Stop it, or choo
 
 `sorlo dev` listens on 127.0.0.1 alone, so only this machine reaches it, unless `HOST` names another address, such as `HOST=0.0.0.0 npx sorlo dev` for a phone on the same network or a container's port. An empty `HOST`, as a `.env` can leave it, counts as none. `sorlo start` listens on every interface unless `HOST` names one, such as `HOST=127.0.0.1` behind a proxy on the same machine, so a container needs no `HOST`. Both send every reply under `/admin/` with `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`, so no other site can frame the admin and lay its own page over its buttons.
 
-`sorlo start` serves the admin from `packages/cms/admin/dist`, which `npm run build` writes, so run that again after changing the admin. The package's `prepack` runs the build before `npm pack` and `npm publish`, so sites never build the admin, and a site's `sorlo dev` serves that built admin too, since only this workspace has its source.
+## The admin's build
+
+`sorlo build` bundles the site's admin into `.sorlo/admin`, with Vite: the CMS's admin, which `@sorlo/cms` carries built, and each [plugin](plugins.md)'s components, sharing one React and one Sorlo Forms. It writes `.sorlo/.gitignore` too, holding `*`, so git leaves the folder alone and no site has to ignore it. It reads `sorlo.config.ts` but connects to nothing, so it runs without the database, as in an image's build.
+
+`sorlo start` serves that folder, and stops with what to do when it can't:
+
+```
+The admin hasn't been built. Run npx sorlo build first.
+The admin was built for another version of Sorlo or other plugins. Run npx sorlo build again.
+```
+
+The second comes from `.sorlo/admin/build.json`, which records the CMS's version and the plugins the admin was built with, and which the server never serves. A plugin package upgraded without a build isn't caught, so build on every deploy, as [Deploying](deploying.md)'s image does.
+
+`sorlo dev` needs no build. It serves the same entry through Vite, so a plugin's components reload as they change, and keeps it in `.sorlo/build`, with Vite's cache in `.sorlo/vite`. Vite serves only the files in `.sorlo` and the CMS's admin, and what they import, so the project's `.env` and uploads stay out of reach.
 
 ## Logs and stopping
 

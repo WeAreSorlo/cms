@@ -7,6 +7,6 @@ export default defineConfig({
   dts: { entry: 'src/index.ts' },
   sourcemap: true,
   clean: true,
-  // Imported only where they're installed: Vite by sorlo dev in this workspace, and a site's own Prettier
-  external: ['vite', 'prettier'],
+  // A site's own Prettier, imported only where it's installed
+  external: ['prettier'],
 })

@@ -1,4 +1,5 @@
 import { createApp } from '../src/app'
+import { adminServer } from '../src/build'
 import { uuidv7 } from '../src/db'
 import { createApiKey } from '../src/delivery'
 import { preview } from '../src/media'
@@ -6,7 +7,7 @@ import { db } from './database'
 import { setUp, types } from './fixtures'
 import { FSDriver } from 'flydrive/drivers/fs'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -447,22 +448,19 @@ test('with url set, file URLs start from it, whatever Host or X-Forwarded-Proto 
   expect((await forged.json()).data.url).toBe(url)
 })
 
-test("the admin's dev server serves no files from the workspace around it, such as a site's uploads", async () => {
-  // As sorlo dev runs it, with its cache in the temporary folder
-  const vite = await import('vite')
-  const admin = await vite.createServer({
-    configFile: fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url)),
-    cacheDir: join(root, 'vite'),
-    server: { middlewareMode: true, hmr: false },
-    optimizeDeps: { noDiscovery: true },
-    logLevel: 'silent',
-  })
-  const server = createServer(admin.middlewares)
+test("the admin's dev server serves no files from the site or the workspace around it, such as a site's uploads", async () => {
+  // As sorlo dev runs it, for a site in the temporary folder
+  const server = createServer()
+  const admin = await adminServer(root, [], server)
+  server.on('request', admin.middlewares)
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   try {
-    const workspace = vite.searchForWorkspaceRoot(fileURLToPath(new URL('../admin/', import.meta.url)))
+    const { searchForWorkspaceRoot } = await import('vite')
+    const workspace = searchForWorkspaceRoot(fileURLToPath(new URL('../admin/', import.meta.url)))
     const { port } = server.address() as AddressInfo
-    expect((await fetch(`http://127.0.0.1:${port}/admin/@fs${join(workspace, 'package.json')}`)).status).toBe(403)
+    for (const file of [join(workspace, 'package.json'), join(await realpath(root), 'secret.txt')]) {
+      expect((await fetch(`http://127.0.0.1:${port}/admin/@fs${file}`)).status, file).toBe(403)
+    }
   } finally {
     server.close()
     await admin.close()

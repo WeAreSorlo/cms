@@ -7,13 +7,14 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 
 let app: ReturnType<typeof createApp>
 
-// The admin as npm run build writes it, served as sorlo start serves it, next to a file it mustn't serve
+// The admin as sorlo build writes it, served as sorlo start serves it, next to a file it mustn't serve
 beforeAll(async () => {
   const root = await mkdtemp(join(tmpdir(), 'sorlo-admin-'))
-  const admin = join(root, 'dist')
+  const admin = join(root, 'admin')
   await mkdir(join(admin, 'assets'), { recursive: true })
   await writeFile(join(admin, 'index.html'), '<script type="module" src="/admin/assets/index-abc.js"></script>')
   await writeFile(join(admin, 'assets/index-abc.js'), 'console.log("admin")')
+  await writeFile(join(admin, 'build.json'), '{ "cms": "0.2.0", "plugins": [] }\n')
   await writeFile(join(root, 'secret.txt'), 'secret')
   app = createApp(db, new Map(), { admin })
 })
@@ -48,9 +49,10 @@ test("no other site can frame the admin, its page or its files, but the API's re
   expect(api.headers.get('content-security-policy')).toBeNull()
 })
 
-test("serves nothing that isn't in the build", async () => {
+test("serves only the admin's own files, not what it was built with or what's beside it", async () => {
   for (const path of [
     '/admin/assets/index-old.js',
+    '/admin/build.json',
     '/admin/..%2Fsecret.txt',
     '/admin/%2e%2e%2fsecret.txt',
     '/admin/assets/..%5c..%5csecret.txt',

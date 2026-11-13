@@ -2,6 +2,7 @@ import type { Config } from '.'
 import { agentRulesStart, withAgentRules } from './agents'
 import { adminHeaders, createApp } from './app'
 import { createWorker } from './automations'
+import { adminServer, buildAdmin, builtAdmin } from './build'
 import { type ContentMigrationFile, checkEntries, contentMigrations, loadContentMigrations } from './content'
 import { flattenValidationReport, inputs, validateServerValues } from './core'
 import { Database, createDb, uuidv7 } from './db'
@@ -9,6 +10,7 @@ import { createApiKey } from './delivery'
 import { makeMigration, notesOf } from './makeMigration'
 import { loadMigrations, migrationsDir, ranMigrations, readMigrations, rollback, status } from './migrator'
 import { hashPassword } from './passwords'
+import { registerPlugins } from './plugins'
 import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
 import { apiKeySchema, apiKeyScopes, resetSchema, userSchema } from './schemas'
 import { Refused, exportContent, importContent, summary } from './transfer'
@@ -18,15 +20,16 @@ import type { FieldSchema } from '@sorlo/forms'
 import { Kysely } from 'kysely'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { type Server, createServer } from 'node:http'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { Writable } from 'node:stream'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 
 type Command = { description: string; run: (db: Kysely<Database>, args: Array<string>) => Promise<void> }
 
 const commands: Record<string, Command> = {
   dev: { description: 'Start the server and admin', run: dev },
+  build: { description: 'Build the admin with the plugins, for sorlo start', run: build },
   start: { description: 'Start the server and the built admin, for production', run: start },
   migrate: {
     description: "Run pending migrations, or with --check, list entries that don't pass",
@@ -280,16 +283,7 @@ async function dev(db: Kysely<Database>) {
   const admin = `http://localhost:${port}/admin/`
   const setup = firstAccount(admin)
   const server = createServer()
-  // Vite serves the admin from its source, which only the CMS's own workspace has. A site's is the built one.
-  const viteConfig = fileURLToPath(new URL('../admin/vite.config.ts', import.meta.url))
-  const vite = existsSync(viteConfig)
-    ? await (
-        await import('vite')
-      ).createServer({
-        configFile: viteConfig,
-        server: { middlewareMode: true, hmr: { server } },
-      })
-    : undefined
+  const vite = await adminServer(process.cwd(), plugins, server)
   const app = createApp(db, types, {
     siteMigrations: dirs.migrations,
     finishLinks: true,
@@ -307,7 +301,6 @@ async function dev(db: Kysely<Database>) {
     proxies: config.proxies,
     firstAccount: setup,
     previews: config.previews,
-    admin: vite ? undefined : builtAdmin(),
     log: true,
   })
   const api = getRequestListener(app.fetch)
@@ -322,7 +315,7 @@ async function dev(db: Kysely<Database>) {
 
   // Vite serves the admin under /admin, where it runs, and Hono everything else
   server.on('request', (req, res) => {
-    if (!vite || !req.url?.startsWith('/admin')) return api(req, res)
+    if (!req.url?.startsWith('/admin')) return api(req, res)
     for (const [name, value] of Object.entries(adminHeaders)) res.setHeader(name, value)
     vite.middlewares(req, res)
   })
@@ -335,20 +328,26 @@ async function dev(db: Kysely<Database>) {
   stopOnSignals(db, server, worker, working, vite)
 }
 
-// The admin as npm run build wrote it, which a packed CMS carries
-function builtAdmin() {
-  const admin = fileURLToPath(new URL('../admin/dist', import.meta.url))
-  if (!existsSync(join(admin, 'index.html'))) {
-    console.error("The admin hasn't been built. Run npm run build in @sorlo/cms first.")
-    process.exit(1)
+// The site's admin with its plugins, for sorlo start
+async function build() {
+  try {
+    await buildAdmin(process.cwd(), plugins)
+    console.log('Built the admin into .sorlo/admin, which sorlo start serves.')
+  } catch (error) {
+    console.error(`Couldn't build the admin: ${error instanceof Error ? error.message : error}`)
+    process.exitCode = 1
   }
-  return admin
 }
 
-// The production server: the admin as npm run build wrote it, and types that change only through git
+// The production server: the admin as sorlo build wrote it, and types that change only through git
 async function start(db: Kysely<Database>) {
   const { createAdaptorServer } = await import('@hono/node-server')
-  const admin = builtAdmin()
+  const built = builtAdmin(process.cwd(), plugins)
+  if ('problem' in built) {
+    console.error(built.problem)
+    process.exit(1)
+  }
+  const admin = built.dir
 
   const { types, groups } = await loadProjectSchema()
   if (config.url === undefined) {
@@ -617,6 +616,15 @@ if (config.ai && typeof config.ai.reply !== 'function') {
   )
   process.exit(1)
 }
+
+// Before any command, since migrate, make:migration, the types and imports check type files with the plugins' fields
+const plugins = config.plugins ?? []
+const problems = registerPlugins(plugins)
+if (problems.length) {
+  console.error(["The plugins in sorlo.config.ts can't be loaded:", ...problems.map((line) => `  ${line}`)].join('\n'))
+  process.exit(1)
+}
+
 const db = createDb(config.database.url)
 await command.run(db, process.argv.slice(3))
 

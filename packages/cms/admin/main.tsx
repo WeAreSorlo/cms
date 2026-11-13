@@ -1,5 +1,14 @@
 import './admin.scss'
-import { ContentType, GroupsContext, PreviewsContext, SharedGroup, TypesContext, api, pathOf } from './api'
+import {
+  ContentType,
+  GroupsContext,
+  PreviewsContext,
+  SharedGroup,
+  TypesContext,
+  api,
+  pathOf,
+  pluginInputs,
+} from './api'
 import { AutomationList, AutomationPage, NewAutomation, Runs } from './automations'
 import { BulkEditor } from './bulk'
 import { EntryEditor, EntryList, EntryPage, SingletonPage, TypeGone } from './entries'
@@ -27,12 +36,14 @@ import {
 } from './users'
 import { VersionPage } from './versions'
 import '@sorlo/field-markdown/styles.css'
+import type { Input } from '@sorlo/forms'
 import '@sorlo/forms/styles/base.scss'
 import '@sorlo/forms/styles/layout.scss'
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// The design system's reference page, at #/design. Only sorlo dev has it, so the built admin leaves it out.
+// The design system's reference page, at #/design. Only this workspace's sorlo dev has it, from the admin's source, so
+// the built admin leaves it out.
 const Design = import.meta.env.DEV ? lazy(() => import('./design')) : undefined
 
 // The Chat page, in the assistant's own chunk
@@ -274,4 +285,9 @@ for (const type of ['dragover', 'drop'] as const) {
   })
 }
 
-createRoot(document.getElementById('root')!).render(<App />)
+// Renders the admin into #root, with the plugins' field types and their components. The entry sorlo build and
+// sorlo dev write calls it, and nothing else should.
+export function mount({ inputs }: { inputs: Record<string, Input> }) {
+  Object.assign(pluginInputs, inputs)
+  createRoot(document.getElementById('root')!).render(<App />)
+}

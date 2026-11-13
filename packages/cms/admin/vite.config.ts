@@ -2,16 +2,18 @@ import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
+// The admin as a library, @sorlo/cms/admin, which a site's sorlo build bundles with its plugins. Its styles are
+// compiled in, so sites need no Sass.
 export default defineConfig({
-  // sorlo dev runs from the site project, so pin the root to this folder
   root: fileURLToPath(new URL('.', import.meta.url)),
-  base: '/admin/',
   plugins: [react()],
-  resolve: {
-    // The linked core has its own node_modules, and a second copy of React breaks hooks
-    dedupe: ['react', 'react-dom'],
+  build: {
+    lib: { entry: 'main.tsx', formats: ['es'], fileName: 'index', cssFileName: 'admin' },
+    rolldownOptions: {
+      // Left for the site's build, so the admin and every plugin share one React and one Sorlo Forms
+      external: [/^react(-dom)?(\/|$)/, '@sorlo/forms'],
+      // The entry brings its styles, so the site's build bundles them
+      output: { banner: (chunk) => (chunk.isEntry ? "import './admin.css'" : '') },
+    },
   },
-  // Vite serves the files in these folders at /admin/@fs/ to anyone, and by default that's the workspace around the
-  // admin, which can hold the site's config and uploads. What the admin imports from elsewhere is still served.
-  server: { fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] } },
 })

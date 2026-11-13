@@ -1,6 +1,6 @@
 import { expandedType, form, media, relationship, shared } from '../src/fields'
 import { chatMessageSchema, chatTitleSchema, maxAttached, mediaSchema } from '../src/schemas'
-import { ContentType, GroupsContext, PageView, TypesContext, api, errorMessage, shortDate } from './api'
+import { ContentType, GroupsContext, PageView, TypesContext, api, errorMessage, pluginInputs, shortDate } from './api'
 import { Chat, ChatFile, ChatMessage, Proposal, SharedChat, editing, useAssistant } from './chat'
 import { compare, compareParent, compareTypes, linksOf } from './compare'
 import { useLinkNames } from './fields'
@@ -141,9 +141,10 @@ function useTypeOf(proposal: Proposal) {
   return useMemo(() => typeOf(proposal), [typeOf, proposal])
 }
 
-// A field type's name, as the type editor's palette shows it, such as Long text for textarea
+// A field type's name, as the type editor's palette shows it, such as Long text for textarea. Plugins' are looked up
+// each time, since mount adds them after this module loads
 const fieldTypes: Record<string, { name?: () => string }> = { ...inputs, relationship, media, form, shared, markdown }
-const typeName = (type: string) => fieldTypes[type]?.name?.() ?? type
+const typeName = (type: string) => (fieldTypes[type] ?? pluginInputs[type])?.name?.() ?? type
 
 // What a proposal is called, such as New event: Kubecon stall, or Changes to Launch day
 function useProposalName(proposal: Proposal) {
