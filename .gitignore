@@ -3,5 +3,7 @@ dist
 .env
 examples/*/storage
 examples/*/src/sorlo-types.d.ts
+# The admin sorlo build and sorlo dev write, which ignores itself in git, listed here for Prettier, which reads only this file
+examples/*/.sorlo
 # The repo's docs, which the CMS's build copies into its package
 packages/cms/docs

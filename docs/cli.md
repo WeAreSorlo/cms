@@ -60,7 +60,7 @@ Port 4100 is in use, by another Sorlo server or something else. Stop it, or choo
 
 ## The admin's build
 
-`sorlo build` bundles the site's admin into `.sorlo/admin`, with Vite: the CMS's admin, which `@sorlo/cms` carries built, and each [plugin](plugins.md)'s components, sharing one React and one Sorlo Forms. It writes `.sorlo/.gitignore` too, holding `*`, so git leaves the folder alone and no site has to ignore it. It reads `sorlo.config.ts` but connects to nothing, so it runs without the database, as in an image's build.
+`sorlo build` bundles the site's admin into `.sorlo/admin`, with Vite: the CMS's admin, which `@sorlo/cms` carries built, and each [plugin](plugins.md)'s components, sharing one React and one Sorlo Forms. It writes `.sorlo/.gitignore` too, holding `*`, so git leaves the folder alone and no site has to ignore it. Tools that read only the project's own ignore files, such as Prettier, still need `.sorlo` in one. It reads `sorlo.config.ts` but connects to nothing, so it runs without the database, as in an image's build.
 
 `sorlo start` serves that folder, and stops with what to do when it can't:
 
