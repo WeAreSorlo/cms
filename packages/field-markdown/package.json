@@ -49,7 +49,7 @@
   },
   "dependencies": {
     "i18next": "^26.7.1",
-    "lucide-react": "^1.68.0",
+    "lucide-react": "^1.72.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },
