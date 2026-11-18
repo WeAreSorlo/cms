@@ -62,7 +62,7 @@
     "@lexical/utils": "0.53.0",
     "i18next": "^26.7.1",
     "lexical": "0.53.0",
-    "lucide-react": "^1.68.0"
+    "lucide-react": "^1.72.0"
   },
   "peerDependencies": {
     "@sorlo/forms": "^0.1.0",
