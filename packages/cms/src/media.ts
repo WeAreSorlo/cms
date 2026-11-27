@@ -1,9 +1,10 @@
 import { MediaOptions, Storage, defaultMediaTypes } from '.'
 import { inputs, pickValues, validateServerValues } from './core'
-import { Database, isUuid, uuidv7 } from './db'
+import { Database, isUuid, transaction, uuidv7 } from './db'
 import type { AdminEnv } from './entries'
 import { addEvents } from './events'
 import { allows } from './fields'
+import { Refusal, type SiteHooks, Write, refusedReport } from './hooks'
 import { MediaRow, listMedia, parseMediaQuery, toAdminEntry, usedBy } from './query'
 import { mediaSchema } from './schemas'
 import { fileTypeFromBuffer, supportedMimeTypes } from 'file-type'
@@ -98,6 +99,8 @@ export const toMedia = (row: MediaRow, origin: string) => ({
 
 export const toAdminMedia = (row: MediaRow, origin: string) => ({ ...toMedia(row, origin), createdBy: row.created_by })
 
+export type AdminMedia = ReturnType<typeof toAdminMedia>
+
 // A file's name, alt text and caption as they're saved: the name kept to an extension of the type the file was stored
 // as, and empty alt text or caption as none
 export const detailsOf = (
@@ -114,32 +117,68 @@ export interface MediaSaveOptions {
   guard?: (current: MediaRow) => void
   // Runs in the save's transaction once it's written, such as to claim the proposal it applies
   during?: (trx: Kysely<Database>) => Promise<void>
+  // The site's media hooks for the save, who it's by and where it came from
+  write?: Write
 }
+
+// The media hooks' core check of what beforeSave returns: the details as the media library's form checks them
+export const checkDetails = async (values: Record<string, any>) => {
+  const picked = pickValues(mediaSchema, values, inputs)
+  return { values: picked, report: await validateServerValues(mediaSchema, picked, inputs) }
+}
+
+const detailValues = (row: { name: string; alt: string | null; caption: string | null }) => ({
+  name: row.name,
+  alt: row.alt,
+  caption: row.caption,
+})
 
 // Saves a file's checked name, alt text and caption, as the media library's details do, with the event automations
 // take, keeping any of the three that values leaves out. Files have no drafts, so the change shows on the site at once.
-export const saveMediaDetails = (
+// With a write, the media hooks run around it, and a refusal throws a Refusal.
+export async function saveMediaDetails(
   db: Kysely<Database>,
   id: string,
   values: Partial<{ name: string; alt: string | null; caption: string | null }>,
   origin: string,
-  { guard, during }: MediaSaveOptions = {},
-) =>
-  db.transaction().execute(async (trx) => {
-    const row = await trx.selectFrom('media').selectAll().where('id', '=', id).forUpdate().executeTakeFirst()
-    if (!row) throw new HTTPException(404)
-    guard?.(row)
-    const merged = { name: row.name, alt: row.alt, caption: row.caption, ...values }
-    const updated = await trx
-      .updateTable('media')
-      .set({ ...detailsOf(row, merged), updated_at: sql`now()` })
-      .where('id', '=', row.id)
-      .returningAll()
-      .executeTakeFirstOrThrow()
-    await addEvents(trx, 'media.updated', [{ media: toAdminMedia(updated, origin) }])
-    await during?.(trx)
-    return updated
-  })
+  { guard, during, write }: MediaSaveOptions = {},
+) {
+  try {
+    // Inside the transaction of a write whose before hook makes this one through sorlo, as a savepoint
+    const saved = await transaction(db, async (trx) => {
+      const row = await trx.selectFrom('media').selectAll().where('id', '=', id).forUpdate().executeTakeFirst()
+      if (!row) throw new HTTPException(404)
+      guard?.(row)
+      let merged = { ...detailValues(row), ...values }
+      const original = detailValues(row)
+      if (write) {
+        const base = { operation: 'update' as const, values: merged, original, entry: toAdminMedia(row, origin) }
+        const saving = await write.before('media', undefined, 'beforeSave', base, {
+          check: checkDetails,
+          id: row.id,
+          trx,
+        })
+        if (saving.refused) throw new Refusal(refusedReport(saving.refused))
+        merged = saving.values as typeof merged
+      }
+      const updated = await trx
+        .updateTable('media')
+        .set({ ...detailsOf(row, merged), updated_at: sql`now()` })
+        .where('id', '=', row.id)
+        .returningAll()
+        .executeTakeFirstOrThrow()
+      await addEvents(trx, 'media.updated', [{ media: toAdminMedia(updated, origin) }])
+      await during?.(trx)
+      const after = { operation: 'update' as const, values: detailValues(updated), original }
+      write?.after('media', undefined, 'afterSave', { ...after, entry: toAdminMedia(updated, origin) })
+      return updated
+    })
+    await write?.flush()
+    return saved
+  } finally {
+    write?.drop()
+  }
+}
 
 // An image as a model takes it: turned upright and scaled to fit 512 pixels, with an SVG drawn at that size, as a PNG
 // where something in it is transparent and otherwise a JPEG, which is far smaller, an alpha channel that's opaque
@@ -204,6 +243,8 @@ export function mediaRoutes(
     maxFileSize = 50 * 1024 ** 2,
     cacheControl = 'public, max-age=3600',
   }: MediaOptions = {},
+  // The site's hooks, which uploads and changes to files' details run
+  hooks?: SiteHooks,
 ) {
   // A type the content can't show would turn away every upload of it
   const unknown = types.filter((type) => ![...supportedMimeTypes, 'image/svg+xml'].some((mime) => allows([type], mime)))
@@ -216,6 +257,7 @@ export function mediaRoutes(
   const app = new Hono<AdminEnv>()
   const drive = new DriveManager(storage)
   const tooLarge = `The file must be at most ${formatSize(maxFileSize)}.`
+  const writeOf = (c: Context<AdminEnv>) => new Write(hooks, { user: c.var.user, source: 'admin', origin: origin(c) })
 
   app.get('/api/media', async (c) => {
     const { data, pagination } = await listMedia(db, parseMediaQuery(c.req.query()))
@@ -243,19 +285,45 @@ export function mediaRoutes(
       const disk = String(storage.default)
       const path = `${id}.${ext}`
 
-      // A file that can't be stored rolls its row back
+      const write = writeOf(c)
+      const base = { operation: 'create' as const, original: null, entry: null }
+
+      // A file that can't be stored rolls its row back, and a refusal what the hooks wrote through sorlo
       const row = await db.transaction().execute(async (trx) => {
+        // The media hooks get its name, alt text and caption, which an upload leaves empty
+        const values = { name: details.name, alt: null, caption: null }
+        const saving = await write.before(
+          'media',
+          undefined,
+          'beforeSave',
+          { ...base, values },
+          { check: checkDetails, trx },
+        )
+        if (saving.refused) throw new Refusal(refusedReport(saving.refused))
         const row = await trx
           .insertInto('media')
-          .values({ id, disk, path, ...details, created_by: c.var.user.id })
+          .values({
+            id,
+            disk,
+            path,
+            ...details,
+            ...detailsOf({ path }, saving.values as any),
+            created_by: c.var.user.id,
+          })
           .returningAll()
           .executeTakeFirstOrThrow()
         await addEvents(trx, 'media.created', [{ media: toAdminMedia(row, origin(c)) }])
         await drive.use(disk).put(path, bytes)
         return row
       })
+      write.after('media', undefined, 'afterSave', {
+        ...base,
+        values: detailValues(row),
+        entry: toAdminMedia(row, origin(c)),
+      })
+      await write.flush()
 
-      return c.json({ data: toAdminMedia(row, origin(c)) }, 201)
+      return c.json({ data: toAdminMedia(row, origin(c)), ...write.reply }, 201)
     },
   )
 
@@ -267,8 +335,9 @@ export function mediaRoutes(
     const report = await validateServerValues(mediaSchema, values, inputs)
     if (!report.isValid) return c.json(report, 422)
 
-    const updated = await saveMediaDetails(db, row.id, values, origin(c))
-    return c.json({ data: toAdminMedia(updated, origin(c)) })
+    const write = writeOf(c)
+    const updated = await saveMediaDetails(db, row.id, values, origin(c), { write })
+    return c.json({ data: toAdminMedia(updated, origin(c)), ...write.reply })
   })
 
   // The entries that link to the file

@@ -1,7 +1,7 @@
 import type { AiPart } from './ai'
 import type { EventName } from './schemas'
 import type { ConditionGroup, FieldSchema } from '@sorlo/forms'
-import { ColumnType, Generated, Kysely, PostgresDialect } from 'kysely'
+import { ColumnType, Generated, Kysely, PostgresDialect, sql } from 'kysely'
 import { randomBytes } from 'node:crypto'
 import { Pool } from 'pg'
 
@@ -313,6 +313,25 @@ export function createDb(url: string) {
   // An idle connection's error comes here too, once the client's own listener has logged it
   pool.on('error', () => {})
   return new Kysely<Database>({ dialect: new PostgresDialect({ pool }) })
+}
+
+let savepoints = 0
+
+// Runs work in a transaction of its own, or, given a transaction already, as a savepoint inside it, as a write that a
+// hook makes inside another's does, so it sees what that write has done so far and goes with it, and its own failure
+// takes back only its own changes
+export async function transaction<T>(db: Kysely<Database>, work: (trx: Kysely<Database>) => Promise<T>): Promise<T> {
+  if (!db.isTransaction) return db.transaction().execute(work)
+  const name = sql.raw(`nested_${++savepoints}`)
+  await sql`savepoint ${name}`.execute(db)
+  try {
+    const result = await work(db)
+    await sql`release savepoint ${name}`.execute(db)
+    return result
+  } catch (error) {
+    await sql`rollback to savepoint ${name}`.execute(db)
+    throw error
+  }
 }
 
 // Every row's ID. A UUIDv7 (RFC 9562) starts with a millisecond timestamp, so IDs sort by creation time.

@@ -1,9 +1,11 @@
 import type { Preview, VersionOptions } from '.'
 import { ContentMigrationFile, appliedMigrations, catchUp } from './content'
 import { inputs, isEmptyValue, pickValues, validateServerValues, validationError } from './core'
-import { Database, isUuid, uuidv7 } from './db'
+import { Database, isUuid, transaction, uuidv7 } from './db'
 import { page } from './embed'
 import { addEvents } from './events'
+import { type HookArgs, type HookSource, Refusal, type SiteHooks, Write, refusedReport } from './hooks'
+import { origin } from './media'
 import {
   EntryRow,
   StatusRow,
@@ -69,6 +71,51 @@ async function addEntryEvents(trx: Kysely<Database>, name: EventName, rows: Arra
   )
 }
 
+type Operation = HookArgs<unknown>['operation']
+type Values = Record<string, any>
+
+// Runs the before hook named for each entry an action takes, refusing the whole action with a 422 if one refuses. Each
+// gets the draft's values, or for unpublishing, the live copy's, which live gives by ID.
+async function beforeEach(
+  trx: Kysely<Database>,
+  write: Write | undefined,
+  name: 'beforeUnpublish' | 'beforeArchive' | 'beforeRestore',
+  operation: Operation,
+  ids: Array<string>,
+  live?: Map<string, Values>,
+) {
+  if (!write?.hooks?.has('content', name) || !ids.length) return
+  const rows = await withStatus(trx).selectAll().where('id', 'in', ids).orderBy('id').execute()
+  for (const row of rows) {
+    const values = live?.get(row.id) ?? row.values
+    const base = { operation, values, original: values, entry: toAdminEntry(row) }
+    const result = await write.before('content', row.type, name, base, { trx })
+    if (result.refused) throw new Refusal(refusedReport(result.refused))
+  }
+}
+
+// Queues the after hooks named for the entries a write took, each with the entry as the write left it, read in its
+// transaction. original is the values before a save, which other actions leave as they were. Unpublishing gives the
+// values of the live copies it took down, by ID, in live.
+async function queueAfter(
+  trx: Kysely<Database>,
+  write: Write | undefined,
+  ids: Array<string>,
+  hooks: Array<[name: 'afterSave' | 'afterPublish' | 'afterUnpublish' | 'afterArchive' | 'afterRestore', Operation]>,
+  original?: Values | null,
+  live?: Map<string, Values>,
+) {
+  if (!write || !hooks.some(([name]) => write.hooks?.has('content', name)) || !ids.length) return
+  const rows = await withStatus(trx).selectAll().where('id', 'in', ids).orderBy('id').execute()
+  for (const row of rows) {
+    const values = live?.get(row.id) ?? row.values
+    for (const [name, operation] of hooks) {
+      const base = { operation, values, original: original === undefined ? values : original }
+      write.after('content', row.type, name, { ...base, entry: toAdminEntry(row) })
+    }
+  }
+}
+
 // Gives the pages under an entry the uris its own gives them, among the drafts or the live copies, returning the pages
 // whose uri changed
 async function followUri(trx: Kysely<Database>, table: 'entries' | 'published_entries', id: string) {
@@ -91,7 +138,8 @@ async function followUri(trx: Kysely<Database>, table: 'entries' | 'published_en
 // publish under way finishes first, and one waiting behind this finds the mark.
 // shortcut: a page published under one of them at that same moment goes down with it unmarked, until this takes the
 // type's publish lock too
-async function unpublish(trx: Kysely<Database>, ids: Array<string>) {
+// With a write, its unpublish hooks run for each entry it takes down. Archiving takes entries down with its own hooks.
+export async function unpublish(trx: Kysely<Database>, ids: Array<string>, write?: Write) {
   if (!ids.length) return
   const live = sql`
     with recursive live as (
@@ -99,42 +147,74 @@ async function unpublish(trx: Kysely<Database>, ids: Array<string>) {
       union
       select page.id from published_entries page join live on page.parent_id = live.id
     )`
+  // The live copies' values, which the unpublish hooks get
+  const copies = (rows: Array<{ id: string; values: Values }>) => new Map(rows.map((row) => [row.id, row.values]))
+  if (write) {
+    const { rows: taking } = await sql<{ id: string; values: Values }>`${live}
+      select page.id, page.values from published_entries page join live on live.id = page.id
+    `.execute(trx)
+    const taken = taking.map((row) => row.id)
+    await beforeEach(trx, write, 'beforeUnpublish', 'unpublish', taken, copies(taking))
+  }
   await sql`${live} update entries set taken_down_at = now() from live where entries.id = live.id`.execute(trx)
-  const { rows } = await sql<{ id: string }>`${live}
-    delete from published_entries using live where published_entries.id = live.id returning published_entries.id
+  const { rows } = await sql<{ id: string; values: Values }>`${live}
+    delete from published_entries using live where published_entries.id = live.id
+    returning published_entries.id, published_entries.values
   `.execute(trx)
   await addEntryEvents(trx, 'entry.unpublished', rows)
+  const taken = rows.map((row) => row.id)
+  await queueAfter(trx, write, taken, [['afterUnpublish', 'unpublish']], undefined, copies(rows))
 }
 
 // Archives entries with their descendants that aren't archived, all stamped with the transaction's time, so restoring
 // one of them brings back just what was archived along with it. It takes them off the live site, with the live pages
-// under them.
-async function archive(trx: Kysely<Database>, ids: Array<string>) {
+// under them. With a write, its archive hooks run for each entry it archives.
+export async function archive(trx: Kysely<Database>, ids: Array<string>, write?: Write) {
+  if (write) {
+    const { rows: taking } = await sql<{ id: string }>`${tree(ids)}
+      select entries.id from entries join tree on entries.id = tree.id where entries.archived_at is null
+    `.execute(trx)
+    const taken = taking.map((row) => row.id)
+    await beforeEach(trx, write, 'beforeArchive', 'archive', taken)
+  }
   const { rows } = await sql<{ id: string }>`${tree(ids)}
     update entries set archived_at = now() from tree where entries.id = tree.id and entries.archived_at is null
     returning entries.id
   `.execute(trx)
-  await unpublish(
-    trx,
-    rows.map((row) => row.id),
-  )
+  const archived = rows.map((row) => row.id)
+  await unpublish(trx, archived)
   await addEntryEvents(trx, 'entry.archived', rows)
+  await queueAfter(trx, write, archived, [['afterArchive', 'archive']])
 }
 
 // Restores an entry with what was archived along with it, as drafts to publish again, or throws a 409 while its
-// parent is archived
-async function restore(trx: Kysely<Database>, row: { id: string; parent_id: string | null }) {
+// parent is archived. With a write, its restore hooks run for each entry it restores.
+export async function restore(trx: Kysely<Database>, row: { id: string; parent_id: string | null }, write?: Write) {
   const parent = row.parent_id
     ? await trx.selectFrom('entries').select('archived_at').where('id', '=', row.parent_id).executeTakeFirst()
     : undefined
   if (parent?.archived_at) throw new HTTPException(409, { message: parentArchived })
 
+  const along = sql`
+    where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})`
+  if (write) {
+    const { rows: taking } = await sql<{ id: string }>`${tree([row.id])}
+      select entries.id from entries, tree ${along}
+    `.execute(trx)
+    const taken = taking.map((each) => each.id)
+    await beforeEach(trx, write, 'beforeRestore', 'restore', taken)
+  }
   const { rows } = await sql<{ id: string }>`${tree([row.id])}
-    update entries set archived_at = null from tree
-    where entries.id = tree.id and entries.archived_at = (select archived_at from entries where id = ${row.id})
+    update entries set archived_at = null from tree ${along}
     returning entries.id
   `.execute(trx)
   await addEntryEvents(trx, 'entry.restored', rows)
+  await queueAfter(
+    trx,
+    write,
+    rows.map((each) => each.id),
+    [['afterRestore', 'restore']],
+  )
 }
 
 // Makes what was just saved the entry's live copy, and has the live pages under it follow its live uri, which comes
@@ -144,7 +224,7 @@ async function goLive(
   type: ContentType,
   row: EntryRow,
   version: number,
-  user: string,
+  user: string | null,
   via?: Via,
 ) {
   let uri = row.uri
@@ -337,12 +417,21 @@ export interface SaveOptions {
   // Runs in the save's transaction once it's written, with the version it wrote, or the current one when nothing
   // changed, such as to claim the proposal it applies
   during?: (trx: Kysely<Database>, version: number) => Promise<void>
+  // The site's hooks for the save, who it's by and where it came from. Without one, as for a dry run, none run.
+  write?: Write
 }
 
 // What a dry run would have saved, thrown so its transaction takes every write back
 class DryRun extends Error {
   constructor(readonly saved: { id: string; version: number }) {
     super('Dry run')
+  }
+}
+
+// A hook's refusal, thrown so the save's transaction takes back what the hooks before it wrote through sorlo
+class Refused extends Error {
+  constructor(readonly report: ValidationReport) {
+    super('Refused')
   }
 }
 
@@ -463,20 +552,23 @@ export function entrySaver(
   // publish, it runs the checks a publish needs too and makes what it saves the live copy, or does neither. A failed
   // check comes back as core's report, and whatever else stops the save throws. The checks query through the
   // transaction, so a save never waits for a second connection while it holds one. It replies the version it wrote, or
-  // the current one when nothing changed.
+  // the current one when nothing changed. With a write, the site's hooks run around it: the before hooks on values
+  // that passed, with core checking what beforeSave returns again in the save's own mode, and the after hooks once it
+  // commits. A dry run runs none, since a hook's own writes would escape its taking back.
   const saveEntry = async (
     type: ContentType,
-    user: string,
+    user: string | null,
     applied: Array<string>,
     publish: boolean,
     sent: (saved?: EntryRow) => { values: unknown; parentId: string | null },
     id?: string,
-    { via, newId, pendingForms, dryRun, before, during }: SaveOptions = {},
+    { via, newId, pendingForms, dryRun, before, during, write: hooked }: SaveOptions = {},
   ): Promise<
     | { id: string; version: number; report?: undefined }
     | { id?: undefined; version?: undefined; report: ValidationReport }
   > => {
     let report: ValidationReport | undefined
+    const write = dryRun ? undefined : hooked
     // What was saved, after the hooks that run in its transaction
     const done = async (trx: Kysely<Database>, saved: { id: string; version: number }) => {
       await during?.(trx, saved.version)
@@ -484,7 +576,8 @@ export function entrySaver(
       return saved
     }
     try {
-      return await db.transaction().execute(async (trx) => {
+      // Inside the transaction of a write whose before hook makes this one through sorlo, as a savepoint
+      const saved = await transaction(db, async (trx) => {
         const existing =
           id !== undefined && isUuid(id)
             ? await trx.selectFrom('entries').selectAll().where('id', '=', id).forUpdate().executeTakeFirst()
@@ -497,30 +590,60 @@ export function entrySaver(
         const parent = parentId === null ? undefined : await checkParent(trx, type, parentId, existing?.id)
 
         // A draft can be unfinished, with required fields left empty, but a publish runs every check
-        const values = pickValues(type.fields, (posted as Record<string, any>) ?? {}, cmsInputs)
+        let values = pickValues(type.fields, (posted as Record<string, any>) ?? {}, cmsInputs)
         const inputs = checkInputs(trx, type, existing?.id ?? null, parentId, publish, pendingForms)
-        report = await validateServerValues(type.fields, values, inputs, { allowIncomplete: !publish })
+        const mode = { allowIncomplete: !publish }
+        report = await validateServerValues(type.fields, values, inputs, mode)
         if (!report.isValid) return { report }
+
+        const status =
+          existing && (await withStatus(trx).selectAll().where('id', '=', existing.id).executeTakeFirstOrThrow())
+        const base = { original: existing?.values ?? null, entry: status ? toAdminEntry(status) : null }
+        // A hook's refusal, merged into core's report
+        const refuse = (messages: Record<string, Array<string>>) => {
+          throw new Refused((report = refusedReport(messages, report)))
+        }
+        if (write) {
+          const check = async (next: Values) => {
+            const picked = pickValues(type.fields, next, cmsInputs)
+            return { values: picked, report: await validateServerValues(type.fields, picked, inputs, mode) }
+          }
+          const operation = existing ? 'update' : 'create'
+          const saving = await write.before(
+            'content',
+            type.name,
+            'beforeSave',
+            { ...base, operation, values },
+            { check, id: existing?.id, trx },
+          )
+          if (saving.refused) return refuse(saving.refused)
+          values = saving.values
+        }
 
         // A save that changes nothing does nothing once the entry has a version: no version, relations or events, and
         // its updated_at stays. Values compare as stored, so their keys' order doesn't count. A publish still makes the
         // newest version live while the live copy is older or missing.
-        const status =
-          existing &&
-          (await withStatus(trx)
-            .select(['version', 'published_version'])
-            .where('id', '=', existing.id)
-            .executeTakeFirstOrThrow())
-        if (
-          existing &&
-          status?.version &&
-          existing.parent_id === parentId &&
-          isDeepStrictEqual(JSON.parse(JSON.stringify(values)), existing.values)
-        ) {
-          if (publish && (status.published_version ?? 0) < status.version) {
-            await goLive(trx, type, existing, status.version, user, via)
+        const unchanged =
+          !!status?.version &&
+          existing!.parent_id === parentId &&
+          isDeepStrictEqual(JSON.parse(JSON.stringify(values)), existing!.values)
+        const goesLive = publish && (!unchanged || (status!.published_version ?? 0) < status!.version!)
+        if (write && goesLive) {
+          const publishing = await write.before(
+            'content',
+            type.name,
+            'beforePublish',
+            { ...base, operation: 'publish', values },
+            { id: existing?.id, trx },
+          )
+          if (publishing.refused) return refuse(publishing.refused)
+        }
+        if (unchanged) {
+          if (goesLive) {
+            await goLive(trx, type, existing!, status!.version!, user, via)
+            await queueAfter(trx, write, [existing!.id], [['afterPublish', 'publish']], base.original)
           }
-          return done(trx, { id: existing.id, version: status.version })
+          return done(trx, { id: existing!.id, version: status!.version! })
         }
 
         const slug: string | null = (type.slugField && values[type.slugField]) || null
@@ -580,6 +703,14 @@ export function entrySaver(
         }
 
         if (publish) await goLive(trx, type, row, number, user, via)
+        const saving: ['afterSave', Operation] = ['afterSave', existing ? 'update' : 'create']
+        await queueAfter(
+          trx,
+          write,
+          [row.id],
+          publish ? [saving, ['afterPublish', 'publish']] : [saving],
+          base.original,
+        )
 
         // The newest versions up to the cap, so the current one stays, besides the named ones and the live one. The
         // name is checked again on each row as it's deleted, so a version named meanwhile stays.
@@ -595,8 +726,13 @@ export function entrySaver(
         }
         return done(trx, { id: row.id, version: number })
       })
+      if ('report' in saved) write?.drop()
+      else await write?.flush()
+      return saved
     } catch (error) {
+      write?.drop()
       if (error instanceof DryRun) return error.saved
+      if (error instanceof Refused) return { report: error.report }
       const constraint = (error as { constraint?: string }).constraint
       // Its live parent was unpublished while it was being published
       if (constraint === 'published_entries_parent_id_fkey')
@@ -641,6 +777,8 @@ export function entryRoutes(
   { keep }: Partial<VersionOptions> = {},
   // The editor's Preview button for each type, from sorlo.config.ts
   previews: Record<string, Preview | null | undefined> = {},
+  // The site's hooks, which every write here runs
+  hooks?: SiteHooks,
 ) {
   if (keep !== undefined && (!Number.isInteger(keep) || keep < 1)) {
     throw new Error('versions.keep in sorlo.config.ts needs a whole number from 1.')
@@ -685,6 +823,7 @@ export function entryRoutes(
     type: ContentType,
     ids: Array<string>,
     refused = new Map<string, HTTPException>(),
+    writes = new Map<string, Write>(),
   ) => {
     const uuids = ids.filter(isUuid)
     const rows = uuids.length
@@ -693,16 +832,23 @@ export function entryRoutes(
     const found = new Map(rows.map((row) => [row.id, row]))
     return ids.map((id) => {
       const error = refused.get(id.toLowerCase())
+      if (error instanceof Refusal) return { id, status: 422, report: error.report }
       if (error) return { id, status: error.status, message: error.message }
       const row = found.get(id.toLowerCase())
-      return row ? { id, status: 200, data: toAdminEntry(row) } : { id, status: 404, message: notOfType }
+      const warnings = writes.get(id.toLowerCase())?.reply
+      return row ? { id, status: 200, data: toAdminEntry(row), ...warnings } : { id, status: 404, message: notOfType }
     })
   }
 
   const find = (id: string) => findEntry(db, types, id)
 
-  const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200) =>
-    c.json({ data: toAdminEntry((await find(id)).row) }, status)
+  // The entry as it is now, with the warnings the write's hooks added
+  const reply = async (c: Context<AdminEnv>, id: string, status: 200 | 201 = 200, write?: Write) =>
+    c.json({ data: toAdminEntry((await find(id)).row), ...write?.reply }, status)
+
+  // A write by the signed-in person, for the site's hooks
+  const writeOf = (c: Context<AdminEnv>, source: HookSource = 'admin') =>
+    new Write(hooks, { user: c.var.user, source, origin: origin(c) })
 
   const { migrated, saveEntry } = entrySaver(db, types, migrations, { keep })
 
@@ -712,8 +858,10 @@ export function entryRoutes(
     const body = await c.req.json().catch(() => ({}))
     const publish = type.drafts === false || body?.publish === true
     const parentId: string | null = type.structure === 'hierarchical' ? (body?.parentId ?? null) : null
-    const saved = await saveEntry(type, c.var.user.id, applied, publish, () => ({ values: body?.values, parentId }), id)
-    return saved.report ? c.json(saved.report, 422) : reply(c, saved.id, id ? 200 : 201)
+    const write = writeOf(c)
+    const sent = () => ({ values: body?.values, parentId })
+    const saved = await saveEntry(type, c.var.user.id, applied, publish, sent, id, { write })
+    return saved.report ? c.json(saved.report, 422) : reply(c, saved.id, id ? 200 : 201, write)
   }
 
   app.get('/types/:type/entries', async (c) => {
@@ -772,11 +920,12 @@ export function entryRoutes(
           values: merge(type.fields, saved!.values, values),
           parentId: saved!.parent_id,
         })
-        const saved = await saveEntry(type, c.var.user.id, applied, publish, merged, id)
+        const write = writeOf(c, 'bulk')
+        const saved = await saveEntry(type, c.var.user.id, applied, publish, merged, id, { write })
         data.push(
           saved.report
             ? { id, status: 422, report: saved.report }
-            : { id, status: 200, data: toAdminEntry((await find(id)).row) },
+            : { id, status: 200, data: toAdminEntry((await find(id)).row), ...write.reply },
         )
       } catch (error) {
         if (!(error instanceof HTTPException)) throw error
@@ -794,16 +943,27 @@ export function entryRoutes(
     const type = listNamed(c.req.param('type'))
     const ids = await idsSent(c)
     const uuids = ids.filter(isUuid)
+    const writes = new Map<string, Write>()
     const data = await db.transaction().execute(async (trx) => {
       const found = uuids.length
         ? await trx.selectFrom('entries').select('id').where('type', '=', type.name).where('id', 'in', uuids).execute()
         : []
-      await archive(
-        trx,
-        found.map((row) => row.id),
-      )
-      return results(trx, type, ids)
+      // One at a time, each as a savepoint, so a hook that refuses one takes back only what that one's hooks wrote, and
+      // leaves the others to archive
+      const refused = new Map<string, HTTPException>()
+      for (const { id } of found) {
+        const write = writeOf(c, 'bulk')
+        try {
+          await transaction(trx, (each) => archive(each, [id], write))
+          writes.set(id, write)
+        } catch (error) {
+          if (!(error instanceof Refusal)) throw error
+          refused.set(id, error)
+        }
+      }
+      return results(trx, type, ids, refused, writes)
     })
+    for (const write of writes.values()) await write.flush()
     return c.json({ data })
   })
 
@@ -814,6 +974,7 @@ export function entryRoutes(
     const type = listNamed(c.req.param('type'))
     const ids = await idsSent(c)
     const uuids = ids.filter(isUuid)
+    const writes = new Map<string, Write>()
     const data = await db.transaction().execute(async (trx) => {
       // How many ancestors each has, at any depth, since a page's parent may not be among those sent
       const { rows } = await sql<{ id: string; parent_id: string | null }>`
@@ -829,15 +990,18 @@ export function entryRoutes(
 
       const refused = new Map<string, HTTPException>()
       for (const row of rows) {
+        const write = writeOf(c, 'bulk')
         try {
-          await restore(trx, row)
+          await transaction(trx, (each) => restore(each, row, write))
+          writes.set(row.id, write)
         } catch (error) {
           if (!(error instanceof HTTPException)) throw error
           refused.set(row.id, error)
         }
       }
-      return results(trx, type, ids, refused)
+      return results(trx, type, ids, refused, writes)
     })
+    for (const write of writes.values()) await write.flush()
     return c.json({ data })
   })
 
@@ -936,8 +1100,10 @@ export function entryRoutes(
         message: `${type.label} has no drafts, so its entries are live until they're archived.`,
       })
     }
-    await db.transaction().execute((trx) => unpublish(trx, [row.id]))
-    return reply(c, row.id)
+    const write = writeOf(c)
+    await db.transaction().execute((trx) => unpublish(trx, [row.id], write))
+    await write.flush()
+    return reply(c, row.id, 200, write)
   })
 
   // Move an entry among its siblings, numbering them from 0 in their new order. The live order changes at once.
@@ -991,15 +1157,19 @@ export function entryRoutes(
   // just those. It takes them off the live site, with the live pages under them.
   app.post('/entries/:id/archive', async (c) => {
     const { row } = await find(c.req.param('id'))
-    await db.transaction().execute((trx) => archive(trx, [row.id]))
-    return reply(c, row.id)
+    const write = writeOf(c)
+    await db.transaction().execute((trx) => archive(trx, [row.id], write))
+    await write.flush()
+    return reply(c, row.id, 200, write)
   })
 
   // Restoring gives back drafts, to publish again
   app.post('/entries/:id/restore', async (c) => {
     const { row } = await find(c.req.param('id'))
-    await db.transaction().execute((trx) => restore(trx, row))
-    return reply(c, row.id)
+    const write = writeOf(c)
+    await db.transaction().execute((trx) => restore(trx, row, write))
+    await write.flush()
+    return reply(c, row.id, 200, write)
   })
 
   // The entries that link to this one, archived ones included

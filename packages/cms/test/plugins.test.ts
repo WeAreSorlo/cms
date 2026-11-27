@@ -29,7 +29,7 @@ test('a field type that a built-in field or another plugin has stops them all, l
   const problems = registerPlugins([
     { name: 'stars', fields: { rating, text: rating, markdown: rating }, admin: './fields/stars.tsx' },
     { name: 'sorlo-field-rating', fields: { rating, relationship: rating }, admin: 'sorlo-field-rating' },
-    { name: 'broken' } as Plugin,
+    { name: 'broken', fields: { stars: rating } } as Plugin,
   ])
 
   expect(problems).toEqual([
@@ -37,7 +37,7 @@ test('a field type that a built-in field or another plugin has stops them all, l
     'markdown, from stars, is a built-in field type.',
     'rating, from sorlo-field-rating, is from stars too.',
     'relationship, from sorlo-field-rating, is a built-in field type.',
-    'Plugin 3 needs a name, its fields and admin, the module with their components.',
+    'Plugin 3 needs a name, and with fields, admin, the module with their components.',
   ])
   expect(cmsInputs.rating).toBeUndefined()
   expect(checkType(reviews, 'reviews')).toEqual(['Field "score" has an unknown type, rating.'])

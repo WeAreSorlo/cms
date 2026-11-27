@@ -1,4 +1,5 @@
 import type { AiProvider } from './ai'
+import type { ContentHooks, FormHooks, MediaHooks } from './hooks'
 import type { Input, InputSchema, InputTypeValue } from '@sorlo/forms'
 import type { DriveManagerOptions, DriverContract } from 'flydrive/types'
 
@@ -41,6 +42,13 @@ export interface Config {
   // What the site adds to Sorlo, such as field types for content types and shared groups. sorlo build builds the admin
   // with them, which sorlo start serves.
   plugins?: Array<Plugin>
+  // The site's own code around every write to entries, by content type name, with '*' for every type: before hooks
+  // that can change what a save writes or refuse a write, which core checks again, and after hooks once it commits
+  contentHooks?: ContentHooks
+  // Hooks around every upload and change to a file's details in the media library
+  mediaHooks?: MediaHooks
+  // Hooks around form submissions, by form name, with '*' for every form
+  formHooks?: FormHooks
 }
 
 // What a plugin package's plugin entry makes, or a site makes for its own fields. Plugins are trusted code: they run
@@ -50,11 +58,15 @@ export interface Plugin {
   name: string
   // Field types by their names, each a Sorlo Forms input without its default component, which the server checks and
   // types values with. A built-in field type or another plugin's can't be taken.
-  fields: Record<string, PluginField>
+  fields?: Record<string, PluginField>
   // The module the admin's build imports each field's full input from, as a named export under its field type: a
   // package, such as sorlo-field-rating, or a path from sorlo.config.ts, such as ./fields/rating.tsx. The server
-  // never imports it.
-  admin: string
+  // never imports it. Needed with fields.
+  admin?: string
+  // Lifecycle hooks, as sorlo.config.ts takes them, which run before the site's own
+  contentHooks?: ContentHooks
+  mediaHooks?: MediaHooks
+  formHooks?: FormHooks
 }
 
 // A Sorlo Forms input without its component, and optionally what the CMS needs of a field that links within its value,
@@ -212,3 +224,23 @@ export const defineConfig = (config: Config) => config
 export type { AiContent, AiMessage, AiPart, AiProvider, AiReply, AiRequest } from './ai'
 export { AiError } from './ai'
 export type { ContentMigration, EntryChanges } from './content'
+export type {
+  ContentHooks,
+  EntryChange,
+  EntryHooks,
+  EntryListQuery,
+  FormHooks,
+  HookArgs,
+  HookSource,
+  HookUser,
+  MediaHooks,
+  Sorlo,
+  SubmissionHooks,
+  Warnings,
+  WriteOptions,
+  Written,
+} from './hooks'
+export { ValidationError } from './hooks'
+export type { AdminEntry } from './query'
+export type { AdminMedia } from './media'
+export type { AdminSubmission } from './forms'

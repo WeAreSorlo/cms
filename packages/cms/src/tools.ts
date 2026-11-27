@@ -14,6 +14,7 @@ import {
   someField,
 } from './fields'
 import { checkForm, opening, saveForm, toForm } from './forms'
+import { type SiteHooks, Write } from './hooks'
 import { detailsOf, findMedia, imageOf, toAdminMedia } from './media'
 import { EntryChange, MediaChange, changedEntry, messagesOf, proposals, sameForm, unchanged } from './proposals'
 import {
@@ -69,6 +70,8 @@ export interface ToolContext {
   writes?: { chat: string; call: string } | { token: string; publish?: boolean }
   // The type editor's saves, where content types can change, as in sorlo dev
   editor?: TypeSaver
+  // The site's hooks, which saves and publishes through a token run
+  hooks?: SiteHooks
 }
 
 export interface Tool<Input extends z.ZodObject = z.ZodObject> {
@@ -267,6 +270,7 @@ async function commitEntry(
   // Through a token, the entry as this save left it, read in its transaction, so a save that lands after it never shows
   // in the reply, nor its version, which publish_entries would then put live
   let entry: ReturnType<typeof toAdminEntry> | undefined
+  const write = mcpWrite(context)
   const saved = await changes.saver.saveEntry(
     type,
     context.user.id,
@@ -283,6 +287,7 @@ async function commitEntry(
       newId: row ? undefined : id,
       pendingForms,
       dryRun: !!chat,
+      write,
       via: 'token' in writes ? writes : undefined,
       during: async (trx) => {
         if (!chat)
@@ -292,7 +297,8 @@ async function commitEntry(
   )
   if (saved.report) throw refused(`It doesn't pass its checks:\n${messagesOf(saved.report, 'values.')}`)
 
-  const values = pickValues(type.fields, changedEntry(after, row).values, cmsInputs)
+  // What was saved through a token, after the site's hooks, or what a proposal would save
+  const values = entry?.values ?? pickValues(type.fields, changedEntry(after, row).values, cmsInputs)
   const full = live
     ? undefined
     : await validateServerValues(type.fields, values, serverInputs(context.db, context.types, pendingForms))
@@ -302,7 +308,7 @@ async function commitEntry(
       ? undefined
       : `A publish would still need:\n${messagesOf(full!, 'values.')}`
   const title = titleOf(type, values)
-  if (!chat) return { id, title, unfinished, entry: entry! }
+  if (!chat) return { id, title, unfinished, entry: entry!, warned: warnedOf(write) }
 
   const proposal = await changes.propose(chat.chat, chat.call, {
     kind: 'entry',
@@ -318,9 +324,19 @@ async function commitEntry(
 
 const notes = (...notes: Array<string | undefined>) => notes.filter(Boolean).join('\n\n')
 
+// A write through an MCP token, for the site's hooks
+const mcpWrite = (context: ToolContext) =>
+  new Write(context.hooks, { user: context.user, source: 'mcp', origin: context.origin })
+
+// What a reply tells the model of the warnings the site's hooks added to a save
+const warnedOf = (write: Write) =>
+  write.warned.length
+    ? `The site's hooks warned:\n${write.warned.map(([path, message]) => `values.${path}: ${message}`).join('\n')}`
+    : undefined
+
 // What a reply says of a saved or proposed entry
 const committed = (
-  { id, title, unfinished, entry, proposal }: Awaited<ReturnType<typeof commitEntry>>,
+  { id, title, unfinished, entry, proposal, warned }: Awaited<ReturnType<typeof commitEntry>>,
   writes: ToolContext['writes'],
 ) =>
   proposal
@@ -332,6 +348,7 @@ const committed = (
             ? `Saved as a draft, version ${entry!.version}. publish_entries publishes it, if the person asks.`
             : 'Saved as a draft. Only a person publishes it, in the admin.',
           unfinished,
+          warned,
         ),
       }
 
@@ -1364,6 +1381,7 @@ export const tools = [
       const failed: Array<{ id: string; title?: string | null; message: string }> = []
       // The forms each published entry shows, which refuse sign-ups while they're closed
       const shown: Array<{ entry: string; title: string | null; form: string }> = []
+      const warned: Array<string> = []
       for (const { id, version, values } of entries) {
         let title: string | null | undefined
         try {
@@ -1374,6 +1392,7 @@ export const tools = [
           if (row.archived_at) throw refused("It's archived. A person can restore it in the admin, to publish it.")
           if (values) picker(type, Object.keys(values))
           let live: Record<string, any> = row.values
+          const write = mcpWrite(context)
           const saved = await saver.saveEntry(
             type,
             context.user.id,
@@ -1384,9 +1403,21 @@ export const tools = [
               return { values: live, parentId: current!.parent_id }
             },
             row.id,
-            { via: { token }, before: (trx, locked) => asRead(trx, locked, version) },
+            {
+              via: { token },
+              write,
+              before: (trx, locked) => asRead(trx, locked, version),
+              // What it saved, after the site's hooks, for its title and the forms it shows
+              during: async (trx) => {
+                live = (
+                  await trx.selectFrom('entries').select('values').where('id', '=', row.id).executeTakeFirstOrThrow()
+                ).values
+              },
+            },
           )
           if (saved.report) throw refused(`It doesn't pass its checks:\n${messagesOf(saved.report, 'values.')}`)
+          const warning = warnedOf(write)
+          if (warning) warned.push(`${id}: ${warning}`)
           title = titleOf(type, live)
           published.push({ id: row.id, title, version: saved.version })
           for (const form of formsOf(type, live)) shown.push({ entry: row.id, title, form })
@@ -1412,6 +1443,7 @@ export const tools = [
             ? `Published ${published.length} of ${entries.length}. What's published is live on the site now.`
             : undefined,
           failed.length ? `Not published: ${JSON.stringify(failed)}` : undefined,
+          ...warned,
           ...shown.flatMap(({ title, form }) => {
             const found = closed.find((each) => each.id === form)
             return found

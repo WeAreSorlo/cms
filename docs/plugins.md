@@ -1,6 +1,6 @@
 # Plugins
 
-A plugin adds field types to a site, for its content types and shared groups. A site lists its plugins in `sorlo.config.ts`, and builds its admin with them, with `sorlo build`, which `sorlo start` serves. A plugin can come from a package or from the site's own folder. Plugins only add fields for now.
+A plugin adds field types to a site, for its content types and shared groups, and [hooks](hooks.md) around its writes. A site lists its plugins in `sorlo.config.ts`, and builds its admin with them, with `sorlo build`, which `sorlo start` serves. A plugin can come from a package or from the site's own folder.
 
 ```ts
 import { defineConfig } from '@sorlo/cms'
@@ -20,13 +20,14 @@ export default defineConfig({
 
 ## A plugin's shape
 
-A plugin is `{ name, fields, admin }`, and `@sorlo/cms` exports its type, `Plugin`:
+A plugin is `{ name, fields, admin }`, and `@sorlo/cms` exports its type, `Plugin`. `fields` and `admin` go together, and a plugin of hooks alone has neither:
 
-| Key      | What it holds                                                                                                                                                                                                        |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`   | What messages call it                                                                                                                                                                                                |
-| `fields` | Field types by name, each a [Sorlo Forms input](https://github.com/WeAreSorlo/forms#readme) without its `default` component: its name, description, category, options, checks and `typeValue`                        |
-| `admin`  | The module the admin's build imports each field's full input from, as an export named after its field type: a package, such as `sorlo-field-rating`, or a path from `sorlo.config.ts`, such as `./fields/rating.tsx` |
+| Key                                       | What it holds                                                                                                                                                                                                        |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                                    | What messages call it                                                                                                                                                                                                |
+| `fields`                                  | Field types by name, each a [Sorlo Forms input](https://github.com/WeAreSorlo/forms#readme) without its `default` component: its name, description, category, options, checks and `typeValue`                        |
+| `admin`                                   | The module the admin's build imports each field's full input from, as an export named after its field type: a package, such as `sorlo-field-rating`, or a path from `sorlo.config.ts`, such as `./fields/rating.tsx` |
+| `contentHooks`, `mediaHooks`, `formHooks` | [Hooks](hooks.md), as `sorlo.config.ts` takes them, which run before the site's own                                                                                                                                  |
 
 A field can also say what the CMS needs of a value that links within it, or that the delivery API returns as something else, as the [rich text fields](content-types.md#rich-text-fields) do. Each is optional:
 

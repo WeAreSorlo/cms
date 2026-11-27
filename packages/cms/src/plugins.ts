@@ -13,14 +13,19 @@ export function registerPlugins(plugins: Array<Plugin>) {
   const problems: Array<string> = []
   const owners = new Map<string, string>()
   plugins.forEach((plugin, index) => {
-    if (typeof plugin?.name !== 'string' || typeof plugin.admin !== 'string' || typeof plugin.fields !== 'object') {
-      problems.push(`Plugin ${index + 1} needs a name, its fields and admin, the module with their components.`)
+    const fields = plugin?.fields ?? {}
+    if (
+      typeof plugin?.name !== 'string' ||
+      typeof fields !== 'object' ||
+      (Object.keys(fields).length > 0 && typeof plugin.admin !== 'string')
+    ) {
+      problems.push(`Plugin ${index + 1} needs a name, and with fields, admin, the module with their components.`)
       return
     }
     const builtIn = builtInPlugins.find((each) => each.name === plugin.name)
-    for (const type of Object.keys(plugin.fields ?? {})) {
+    for (const type of Object.keys(fields)) {
       const owner = owners.get(type)
-      if (builtIn && !Object.hasOwn(builtIn.fields, type)) {
+      if (builtIn && !Object.hasOwn(builtIn.fields ?? {}, type)) {
         problems.push(`${type}, from ${plugin.name}, isn't one of the fields the CMS includes from it.`)
       } else if (!builtIn && Object.hasOwn(cmsInputs, type)) {
         problems.push(`${type}, from ${plugin.name}, is a built-in field type.`)

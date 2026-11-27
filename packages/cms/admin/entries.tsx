@@ -14,6 +14,7 @@ import {
   formatValue,
   listView,
   matchingOf,
+  messageLines,
   personOf,
   shortDate,
   titleOf,
@@ -207,6 +208,8 @@ interface Result {
   id: string
   status: number
   message?: string
+  // Why the site's hooks refused it, with a 422
+  report?: ValidationReport
 }
 
 // A type's entries in its list columns: pages for a collection, the whole tree for a hierarchical, or the archive,
@@ -427,6 +430,8 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
       setTicks((now) => ({ ...now, run: { action, done: 0, total } }))
       let left = ids
       let refused: Array<Result> = []
+      // Those the site's hooks refused, which stay ticked
+      const held: Array<Result> = []
       while (left.length) {
         refused = []
         for (let at = 0; at < left.length; at += 100) {
@@ -435,8 +440,9 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
           })
           const results: Array<Result> = body.data
           // Those archived or deleted since untick too, and leave the last Select all, since they've left the list
-          const finished = results.filter((result) => result.status !== 409)
+          const finished = results.filter((result) => result.status !== 409 && result.status !== 422)
           refused.push(...results.filter((result) => result.status === 409))
+          held.push(...results.filter((result) => result.status === 422))
           const gone = new Set(finished.map((result) => result.id))
           done.count += finished.length
           done.changed += finished.filter((result) => result.status === 200).length
@@ -456,6 +462,11 @@ export function EntryList({ type, archived = false, query }: { type: ContentType
       else if (refused.length) {
         const pages = refused.length.toLocaleString()
         stopped = `${pages} pages weren't restored, since their parents are archived. They're still ticked.`
+      }
+      if (held.length) {
+        const [first] = messageLines(type.fields, held[0].report)
+        const which = held.length === 1 ? "An entry wasn't" : `${held.length.toLocaleString()} entries weren't`
+        stopped = `${which} ${verb.toLowerCase()}d, since the site refused: ${first} ${held.length === 1 ? "It's" : "They're"} still ticked.`
       }
     } catch (error) {
       const message = errorMessage(error).replace(/\.$/, '')
@@ -800,6 +811,8 @@ export function Versions({
 
 // A version to put in the form when its entry's editor opens next, from Restore on the version's page
 let restoreNext: { entryId: string; version: Version } | undefined
+// The warnings a new entry's first save came back with, which its editor shows once it opens
+let warnedNext: { entryId: string; lines: Array<string> } | undefined
 export const restoreOnOpen = (entryId: string, version: Version) => (restoreNext = { entryId, version })
 
 // Create, edit and publish an entry with its type's fields, see the entries that link to it, and see and restore its
@@ -834,6 +847,12 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   // The version in the form, and whether the page kept its own parent, since the version's can't take it back
   const [restoring, setRestoring] = useState<{ number: number; parentKept: boolean }>()
   const [problem, setProblem] = useState('')
+  // The site's hooks' warnings from the last action, which saved anyway
+  const [warned, setWarned] = useState<Array<string>>(() => {
+    const next = loaded && warnedNext?.entryId === loaded.id ? warnedNext.lines : []
+    warnedNext = undefined
+    return next
+  })
   // The action under way, such as save
   const [busy, setBusy] = useState<string>()
   const hierarchical = type.structure === 'hierarchical'
@@ -917,6 +936,7 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
     if (busy) return
     setBusy(name)
     setProblem('')
+    setWarned([])
     try {
       await action()
     } catch (error) {
@@ -944,12 +964,25 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
       if (status === 422) {
         form.current!.applyReport(reply)
-        return showInvalid(publish, reply)
+        // A hook's refusal of the whole entry, which no field shows
+        const whole: Array<string> = reply.fields?._entry?.messages ?? []
+        const failing = Object.entries(reply.fields ?? {}).some(
+          ([name, field]: [string, any]) => name !== '_entry' && !field.isValid,
+        )
+        if (!failing) return setProblem(whole.join(' '))
+        await showInvalid(publish, reply)
+        if (whole.length) setProblem((shown) => `${whole.join(' ')} ${shown}`)
+        return
       }
+      const lines = messageLines(type.fields, reply.warnings)
+      setWarned(lines)
       // A save that changes nothing leaves the entry as it was, and a publish of what's live publishes nothing
       const changed = !entry || reply.data.updatedAt !== entry.updatedAt || reply.data.publishedAt !== entry.publishedAt
       toast(!changed ? 'No changes' : publish ? 'Published' : 'Saved')
-      if (!entry) return void (location.hash = `#/entries/${reply.data.id}`)
+      if (!entry) {
+        warnedNext = { entryId: reply.data.id, lines }
+        return void (location.hash = `#/entries/${reply.data.id}`)
+      }
 
       setEntry(reply.data)
       setRestoring(undefined)
@@ -961,7 +994,11 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
   const unpublish = () =>
     act('unpublish', async () => {
-      setEntry((await api('POST', `/entries/${entry!.id}/unpublish`)).body.data)
+      const { status, body } = await api('POST', `/entries/${entry!.id}/unpublish`)
+      // The site's hooks refused it
+      if (status === 422) throw new Error(messageLines(type.fields, body).join(' '))
+      setEntry(body.data)
+      setWarned(messageLines(type.fields, body.warnings))
       toast('Unpublished')
       primaryButton.current?.focus()
     })
@@ -997,8 +1034,12 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
   // shows the result, focus moves to the primary button: Restore, or Publish, or Save for a type without drafts
   const archiveOrRestore = (action: 'archive' | 'restore') =>
     act(action, async () => {
-      const { body } = await api('POST', `/entries/${entry!.id}/${action}`)
-      flushSync(() => setEntry(body.data))
+      const { status, body } = await api('POST', `/entries/${entry!.id}/${action}`)
+      if (status === 422) throw new Error(messageLines(type.fields, body).join(' '))
+      flushSync(() => {
+        setEntry(body.data)
+        setWarned(messageLines(type.fields, body.warnings))
+      })
       primaryButton.current?.focus()
     })
 
@@ -1052,6 +1093,11 @@ export function EntryEditor({ type, entry: loaded }: { type: ContentType; entry?
 
       <div ref={fields} onKeyDown={() => (interacted.current = true)} onPointerDown={() => (interacted.current = true)}>
         {archived && <Notice tone='warning'>Archived on {date(entry.archivedAt!)}. Restore it to edit it.</Notice>}
+        {warned.map((line, index) => (
+          <Notice key={index} tone='warning'>
+            {line}
+          </Notice>
+        ))}
         {restoring && (
           <Notice>
             Version {restoring.number} is in the form. Save to restore it.

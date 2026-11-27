@@ -5,6 +5,7 @@ import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import type { AdminEnv } from './entries'
 import { idsOf } from './fields'
+import type { SiteHooks } from './hooks'
 import { imageOf, origin, toAdminMedia } from './media'
 import { Proposal, proposals } from './proposals'
 import { StatusRow, listEntries, parseQuery, withStatus } from './query'
@@ -346,9 +347,11 @@ export function chatRoutes(
   storage?: Storage,
   // The type editor's saves, as in sorlo dev, with which the assistant also proposes content types
   editor?: TypeSaver,
+  // The site's hooks, which applying proposals runs
+  hooks?: SiteHooks,
 ) {
   const app = new Hono<AdminEnv>()
-  const changes = proposals(db, types, migrations, versions, editor)
+  const changes = proposals(db, types, migrations, versions, editor, hooks)
   const offered = offeredTools(!!editor)
   const specs = offered.map(specOf)
   const drive = storage && new DriveManager(storage)
@@ -651,7 +654,9 @@ export function chatRoutes(
   app.post('/chats/:id/proposals/apply', async (c) => {
     const chat = await own(c)
     const { ids, publish } = await named(c)
-    return c.json({ data: await changes.apply(chat.id, ids, c.var.user.id, { publish, origin: origin(c) }) })
+    return c.json({
+      data: await changes.apply(chat.id, ids, c.var.user.id, { publish, origin: origin(c), person: c.var.user }),
+    })
   })
 
   // Skip proposals, with the entries proposed to show a form that's skipped, replying those skipped
@@ -753,6 +758,7 @@ export function chatRoutes(
       versions,
       storage,
       editor,
+      hooks,
     }
     return streamSSE(c, async (stream) => {
       const stop = new AbortController()

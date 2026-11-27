@@ -60,6 +60,7 @@ export const down: ContentMigration = ({ entries }) => {
 - The server loads each migration file as it is now, so one finished or fixed while `sorlo dev` runs needs no restart, and a file that changes between being read and being loaded doesn't run, so what was checked of it is what runs. A file the migration imports, such as a helper of the site's, still loads once.
 - Content migrations change values that the links between entries in `entry_relations` are built from, so each records, in its own transaction, that the links are due a rebuild. `sorlo migrate`, the admin's Run and the servers as they start rebuild them once none waits, since until then the types are ahead of the values, and a rebuild would drop the links of every field a waiting migration renames. A rebuild that a restart or a failure cuts short stays due, and one goes a batch of 500 entries at a time, so saves carry on meanwhile.
 - `sorlo migrate --check` leaves out entries that were never saved, such as a singleton that has only been opened.
+- A migration runs no [hooks](hooks.md), so it stays a pure transform of values. One that should, such as to work out a new field's value, opts in with `export const hooks = true` in its file, as [Every write path](hooks.md#every-write-path) describes.
 
 ## Running migrations from the admin
 

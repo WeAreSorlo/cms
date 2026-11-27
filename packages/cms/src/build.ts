@@ -20,7 +20,7 @@ const source = join(cms, 'admin/main.tsx')
 // What build.json records, which sorlo start compares with sorlo.config.ts
 const stampOf = (plugins: Array<Plugin>) => ({
   cms: version,
-  plugins: plugins.map(({ name, admin, fields }) => ({ name, admin, fields: Object.keys(fields) })),
+  plugins: plugins.map(({ name, admin, fields = {} }) => ({ name, admin, fields: Object.keys(fields) })),
 })
 
 const page = `<!doctype html>
@@ -54,7 +54,7 @@ function writeEntry(site: string, plugins: Array<Plugin>) {
   writeFileSync(join(dir, 'index.html'), page)
 
   const inputs: Array<string> = []
-  const imports = plugins.map(({ admin, fields }) => {
+  const imports = plugins.map(({ admin = '', fields = {} }) => {
     // A path from sorlo.config.ts, or else a package
     const local = /^\.\.?\//.test(admin) || isAbsolute(admin)
     const from = local ? relative(dir, resolve(site, admin)).replaceAll('\\', '/') : admin

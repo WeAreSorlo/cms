@@ -76,6 +76,8 @@ export const toAdminEntry = (row: StatusRow) => ({
   publishedVersion: row.published_version,
 })
 
+export type AdminEntry = ReturnType<typeof toAdminEntry>
+
 type Kind = 'uuid' | 'text' | 'integer' | 'timestamp'
 
 // What filters and sorts can name: properties, with their columns and the values they hold, and for entries, the

@@ -5,6 +5,7 @@ import { Database, uuidv7 } from './db'
 import { entrySaver } from './entries'
 import { expandedType } from './fields'
 import { FormRow, FormValues, checkForm, opening, saveForm } from './forms'
+import { type HookUser, Refusal, type SiteHooks, type Warnings, Write, linesOf } from './hooks'
 import { findMedia, saveMediaDetails } from './media'
 import { EntryRow, toAdminEntry, withStatus } from './query'
 import { formsOf } from './relations'
@@ -96,6 +97,8 @@ export const sameMedia = (current: Record<string, unknown>, before: MediaChange,
 export interface ApplyOptions {
   publish?: boolean
   origin: string
+  // The person applying, whom the site's hooks get
+  person?: HookUser
 }
 
 // The proposal of the new type an entry proposal was made for, by the type's id it carries
@@ -133,6 +136,8 @@ export function proposals(
   versions?: VersionOptions,
   // The type editor's saves, where content types can change, as in sorlo dev
   editor?: TypeSaver,
+  // The site's hooks, which applying an entry or a file's details runs
+  hooks?: SiteHooks,
 ) {
   const saver = entrySaver(db, types, migrations, versions)
   const rowsOf = (chat: string) =>
@@ -293,7 +298,7 @@ export function proposals(
   // Saves an entry proposal's draft as the person, through the editor's own save, linked to the chat, and with publish
   // makes it live with every check a publish runs, as the editor's Publish does. A type without drafts publishes every
   // save. Going live opens the forms the page shows that Apply made closed.
-  const applyEntry = async (row: ProposalRow, user: string, publish: boolean) => {
+  const applyEntry = async (row: ProposalRow, user: string, publish: boolean, write: Write) => {
     const type = types.get(row.type!)
     if (!type) throw new HTTPException(409, { message: 'Its content type has been removed.' })
     // An entry proposed with a new type goes only into that type, never another that took its name since
@@ -319,6 +324,7 @@ export function proposals(
       row.is_new ? undefined : row.target_id,
       {
         via: { chat: row.chat_id },
+        write,
         newId: row.is_new ? row.target_id : undefined,
         during: async (trx, version) => {
           await claim(row.id, user, live)(trx, version)
@@ -350,7 +356,7 @@ export function proposals(
 
   // Changes a file's details as the person, through the media library's own save. Files have no drafts, so it shows on
   // the site at once.
-  const applyMedia = async (row: ProposalRow, user: string, origin: string) => {
+  const applyMedia = async (row: ProposalRow, user: string, origin: string, write: Write) => {
     const after = row.after as MediaChange
     const file = await findMedia(db, row.target_id)
     const values = pickValues(mediaSchema, { name: file.name, alt: file.alt, caption: file.caption, ...after }, inputs)
@@ -363,6 +369,7 @@ export function proposals(
         if (!sameMedia(current, row.before as MediaChange, after)) throw new Stale()
       },
       during: (trx) => claim(row.id, user, true)(trx, null),
+      write,
     })
   }
 
@@ -400,30 +407,39 @@ export function proposals(
   }
 
   // Each proposal's result, with the proposal as it ends up, which a failure leaves pending or makes stale
-  type Result = { id: string; status: number; data?: Proposal; message?: string; report?: ValidationReport }
+  type Result = {
+    id: string
+    status: number
+    data?: Proposal
+    message?: string
+    report?: ValidationReport
+    warnings?: Warnings
+  }
 
   // What stopped a proposal applying, or nothing once it's applied
   const tryApply = async (
     row: ProposalRow,
     user: string,
-    { publish = false, origin }: ApplyOptions,
-  ): Promise<Omit<Result, 'id'> | undefined> => {
+    { publish = false, origin, person }: ApplyOptions,
+  ): Promise<Partial<Omit<Result, 'id'>>> => {
+    const write = new Write(hooks, { user: person ?? null, source: 'assistant', origin })
+    const refused = (report: ValidationReport) => ({
+      status: 422,
+      message: `Not applied, since it doesn't pass its checks now:\n${linesOf(report).join('\n')}`,
+      report,
+    })
     try {
       const report =
         row.kind === 'form'
           ? await applyForm(row, user, publish)
           : row.kind === 'media'
-            ? await applyMedia(row, user, origin)
+            ? await applyMedia(row, user, origin, write)
             : row.kind === 'type'
               ? await applyType(row, user)
-              : await applyEntry(row, user, publish)
-      if (report)
-        return {
-          status: 422,
-          message: `Not applied, since it doesn't pass its checks now:\n${messagesOf(report)}`,
-          report,
-        }
+              : await applyEntry(row, user, publish, write)
+      return report ? refused(report) : write.reply
     } catch (error) {
+      if (error instanceof Refusal) return refused(error.report)
       if (error instanceof Stale) {
         await markStale(row.id, user)
         return { status: 409, message: staleMessage }

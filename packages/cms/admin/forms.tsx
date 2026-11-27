@@ -1,6 +1,6 @@
 import { isEmpty, showValue } from '../src/fields'
 import { formSchema } from '../src/schemas'
-import { api, date, errorMessage, usePageView } from './api'
+import { api, date, errorMessage, messageLines, usePageView } from './api'
 import { FormAutomations } from './automations'
 import { useBeside } from './chat'
 import {
@@ -421,9 +421,11 @@ export function Inbox({ id, view }: { id: string; view: View }) {
     if (busy || !open) return
     setBusy(true)
     try {
-      await api('POST', `/submissions/${open.id}/${action}`)
+      const { status, body } = await api('POST', `/submissions/${open.id}/${action}`)
+      // The site's hooks refused it
+      if (status === 422) return setError(messageLines(fields ?? [], body).join(' '))
       setOpen(undefined)
-      toast(done[action])
+      toast([done[action], ...messageLines(fields ?? [], body.warnings)].join('. '))
       await load()
       listArea.current?.querySelector('button')?.focus()
     } catch (error) {

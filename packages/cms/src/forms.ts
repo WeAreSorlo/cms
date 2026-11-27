@@ -6,12 +6,13 @@ import { keyOf } from './delivery'
 import { embedHtml, escapeHtml, honeypot, page } from './embed'
 import type { AdminEnv } from './entries'
 import { addEvents } from './events'
+import { Refusal, type SiteHooks, Write, refusedReport } from './hooks'
 import { origin } from './media'
 import { SubmissionRow, listSubmissions, parseSubmissionQuery } from './query'
 import { formSchema } from './schemas'
 import { checkFormFields } from './types'
 import type { HttpBindings } from '@hono/node-server'
-import type { FieldSchema } from '@sorlo/forms'
+import type { FieldSchema, ValidationReport } from '@sorlo/forms'
 import { Context, Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
@@ -46,7 +47,7 @@ const toAdminForm = (row: FormRow, origin: string) => ({
   updatedAt: row.updated_at,
 })
 
-const toAdminSubmission = (row: SubmissionRow) => ({
+export const toAdminSubmission = (row: SubmissionRow) => ({
   id: row.id,
   formId: row.form_id,
   version: row.form_version,
@@ -58,6 +59,8 @@ const toAdminSubmission = (row: SubmissionRow) => ({
   createdAt: row.created_at,
   archivedAt: row.archived_at,
 })
+
+export type AdminSubmission = ReturnType<typeof toAdminSubmission>
 
 const nameTaken = 'Another form has this name.'
 
@@ -174,7 +177,7 @@ export async function saveForm(
 }
 
 // The admin API for forms and their submissions. Every route needs a session, which createApp checks.
-export function formRoutes(db: Kysely<Database>) {
+export function formRoutes(db: Kysely<Database>, hooks?: SiteHooks) {
   const app = new Hono<AdminEnv>()
 
   const find = async (id: string) => {
@@ -251,18 +254,49 @@ export function formRoutes(db: Kysely<Database>) {
     return c.json({ data: data.map(toAdminSubmission), pagination })
   })
 
-  // Archive or restore a submission, or mark it as spam or not, which moves it between the inbox and spam
-  const change = (set: { archived_at?: RawBuilder<Date> | null; spam?: boolean }) => async (c: Context<AdminEnv>) => {
-    const id = c.req.param('id')!
-    const row = isUuid(id)
-      ? await db.updateTable('submissions').set(set).where('id', '=', id).returningAll().executeTakeFirst()
-      : undefined
-    if (!row) throw new HTTPException(404)
-    return c.json({ data: toAdminSubmission(row) })
-  }
+  // Archive or restore a submission, or mark it as spam or not, which moves it between the inbox and spam. Archiving
+  // and restoring run the form's hooks, when they change it.
+  const change =
+    (set: { archived_at?: RawBuilder<Date> | null; spam?: boolean }, action?: 'archive' | 'restore') =>
+    async (c: Context<AdminEnv>) => {
+      const id = c.req.param('id')!
+      const write = new Write(hooks, { user: c.var.user, source: 'admin', origin: origin(c) })
+      const row = await db.transaction().execute(async (trx) => {
+        const found = isUuid(id)
+          ? await trx
+              .selectFrom('submissions')
+              .innerJoin('forms', 'forms.id', 'submissions.form_id')
+              .selectAll('submissions')
+              .select('forms.name as form')
+              .where('submissions.id', '=', id)
+              .forUpdate()
+              .executeTakeFirst()
+          : undefined
+        if (!found) throw new HTTPException(404)
+        const { form, ...current } = found
+        const changes = action !== undefined && (action === 'archive') === !current.archived_at
+        const Action = action === 'archive' ? 'Archive' : 'Restore'
+        const base = { operation: action!, values: current.values, original: current.values }
+        if (changes) {
+          const entry = toAdminSubmission(current)
+          const done = await write.before('forms', form, `before${Action}`, { ...base, entry }, { trx })
+          if (done.refused) throw new Refusal(refusedReport(done.refused))
+        }
+        const row = await trx
+          .updateTable('submissions')
+          .set(set)
+          .where('id', '=', current.id)
+          .returningAll()
+          .executeTakeFirstOrThrow()
+        if (changes) write.after('forms', form, `after${Action}`, { ...base, entry: toAdminSubmission(row) })
+        return row
+      })
+      await write.flush()
+      return c.json({ data: toAdminSubmission(row), ...write.reply })
+    }
 
-  app.post('/submissions/:id/archive', change({ archived_at: sql<Date>`coalesce(archived_at, now())` }))
-  app.post('/submissions/:id/restore', change({ archived_at: null }))
+  app.post('/submissions/:id/archive', change({ archived_at: sql<Date>`coalesce(archived_at, now())` }, 'archive'))
+  app.post('/submissions/:id/restore', change({ archived_at: null }, 'restore'))
   app.post('/submissions/:id/spam', change({ spam: true }))
   app.post('/submissions/:id/not-spam', change({ spam: false }))
 
@@ -449,6 +483,8 @@ export function publicFormRoutes(
   db: Kysely<Database>,
   { origins, rateLimit = {}, maxItems = 1000 }: FormOptions = {},
   proxies: BlockList,
+  // The site's hooks, which each submission runs, except one a bot sent
+  hooks?: SiteHooks,
 ) {
   const { posts = 10, minutes = 10 } = rateLimit
   if (!Number.isInteger(posts) || posts < 1 || !(minutes > 0)) {
@@ -502,38 +538,63 @@ export function publicFormRoutes(
       if (itemsIn(posted, maxItems) > maxItems) return tooLarge(c)
 
       const values = pickValues(form.fields, posted, inputs)
-      const report = await validateServerValues(form.fields, values, inputs)
-      if (!report.isValid) {
-        const problems = Object.entries(flattenValidationReport(report).messages).map(
+      const problems = (report: ValidationReport) => {
+        const items = Object.entries(flattenValidationReport(report).messages).map(
           ([path, messages]) => `<li>${escapeHtml(labelOf(form.fields, path))}: ${escapeHtml(messages.join(' '))}</li>`,
         )
-        return reply(c, 422, report, 'Your submission has problems', `<ul>${problems.join('')}</ul>`)
+        return reply(c, 422, report, 'Your submission has problems', `<ul>${items.join('')}</ul>`)
       }
+      const report = await validateServerValues(form.fields, values, inputs)
+      if (!report.isValid) return problems(report)
 
-      const row = await db.transaction().execute(async (trx) => {
-        const row = await trx
-          .insertInto('submissions')
-          .values({
-            id: uuidv7(),
-            form_id: form.id,
-            form_version: form.version,
-            values,
-            ip,
-            user_agent: c.req.header('user-agent') ?? null,
-            referer: c.req.header('referer') ?? null,
-            // A bot that fills in the honeypot gets the reply anyone gets, so it can't tell
-            spam: !isEmptyValue(posted[honeypot]),
-          })
-          .returningAll()
-          .executeTakeFirstOrThrow()
-        // Spam triggers automations too, with spam in its data for their conditions to skip
-        const event = { form: { id: form.id, name: form.name, label: form.label }, submission: toAdminSubmission(row) }
-        await addEvents(trx, 'submission.created', [event])
-        return row
-      })
+      // A bot that fills in the honeypot gets the reply anyone gets, so it can't tell, and never reaches the hooks
+      const spam = !isEmptyValue(posted[honeypot])
+      const write = new Write(spam ? undefined : hooks, { user: null, source: 'api', origin: origin(c) })
+      const check = async (next: Record<string, any>) => {
+        const picked = pickValues(form.fields, next, inputs)
+        return { values: picked, report: await validateServerValues(form.fields, picked, inputs) }
+      }
+      const base = { operation: 'create' as const, original: null, entry: null }
+
+      // A refusal takes back what the hooks before it wrote through sorlo
+      const row = await db
+        .transaction()
+        .execute(async (trx) => {
+          const saving = await write.before('forms', form.name, 'beforeSave', { ...base, values }, { check, trx })
+          if (saving.refused) throw new Refusal(refusedReport(saving.refused, report))
+          const row = await trx
+            .insertInto('submissions')
+            .values({
+              id: uuidv7(),
+              form_id: form.id,
+              form_version: form.version,
+              values: saving.values,
+              ip,
+              user_agent: c.req.header('user-agent') ?? null,
+              referer: c.req.header('referer') ?? null,
+              spam,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow()
+          // Spam triggers automations too, with spam in its data for their conditions to skip
+          const event = {
+            form: { id: form.id, name: form.name, label: form.label },
+            submission: toAdminSubmission(row),
+          }
+          await addEvents(trx, 'submission.created', [event])
+          return row
+        })
+        .catch((error) => {
+          if (error instanceof Refusal) return error
+          throw error
+        })
+      if (row instanceof Refusal) return problems(row.report)
+
+      write.after('forms', form.name, 'afterSave', { ...base, values: row.values, entry: toAdminSubmission(row) })
+      await write.flush()
 
       const data = { id: row.id, version: row.form_version, values: row.values, createdAt: row.created_at }
-      return reply(c, 201, { data }, 'Thank you', '<p>Your submission has been received.</p>')
+      return reply(c, 201, { data, ...write.reply }, 'Thank you', '<p>Your submission has been received.</p>')
     },
   )
 

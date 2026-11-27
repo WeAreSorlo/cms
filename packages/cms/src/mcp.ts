@@ -4,6 +4,7 @@ import { inputs, pickValues, validateServerValues } from './core'
 import { Database, isUuid, uuidv7 } from './db'
 import { bearerOf, markUsed } from './delivery'
 import type { AdminEnv } from './entries'
+import type { SiteHooks } from './hooks'
 import { origin } from './media'
 import { hashToken } from './passwords'
 import { tokenSchema, tokenScopes, tokenScopesField } from './schemas'
@@ -143,6 +144,8 @@ export function mcpRoutes(
   versions?: VersionOptions,
   storage?: Storage,
   publish = false,
+  // The site's hooks, which tokens' saves and publishes run
+  hooks?: SiteHooks,
 ) {
   const app = new Hono()
 
@@ -183,6 +186,7 @@ export function mcpRoutes(
       origin: origin(c),
       versions,
       storage,
+      hooks,
       ...(writes && { writes: { token, ...(publishes && { publish: true }) } }),
     }
     const access = publishes ? 'publish' : writes ? 'drafts' : 'read'

@@ -1,5 +1,5 @@
 import { mediaSchema } from '../src/schemas'
-import { ContentType, Entry, TypesContext, api, date, errorMessage, titleOf, usePageView } from './api'
+import { ContentType, Entry, TypesContext, api, date, errorMessage, messageLines, titleOf, usePageView } from './api'
 import { useBeside } from './chat'
 import { fieldChoicesOf, filterOf, whereOf } from './lists'
 import {
@@ -235,7 +235,7 @@ export function MediaLibrary({ pick, query }: { pick?: Pick; query?: string }) {
       body.append('file', file)
       try {
         const { status, body: reply } = await api('POST', '/media', body)
-        if (status === 422) failed.push(`${file.name}: ${reply.fields.file.messages.join(' ')}`)
+        if (status === 422) failed.push(`${file.name}: ${messageLines(mediaSchema, reply).join(' ')}`)
       } catch (error) {
         failed.push(`${file.name}: ${errorMessage(error)}`)
       }
@@ -444,10 +444,15 @@ function MediaEditor({ media: loaded, onClose }: { media: Media; onClose: () => 
     act('save', async () => {
       if (!form.current?.validate().isValid) return
       const { status, body } = await api('PUT', `/media/${media.id}`, values)
-      if (status === 422) return form.current.applyReport(body)
+      if (status === 422) {
+        form.current.applyReport(body)
+        // A hook's refusal of the whole file, which no field shows
+        const whole = body.fields?._entry?.messages
+        return whole && setProblem(whole.join(' '))
+      }
       setMedia(body.data)
       setShown(valuesOf(body.data))
-      toast('Saved')
+      toast(['Saved', ...messageLines(mediaSchema, body.warnings)].join('. '))
     })
 
   // It asks before the action starts, so the question's dialog hands focus back to Delete

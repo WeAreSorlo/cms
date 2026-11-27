@@ -16,10 +16,12 @@ import { Database } from './db'
 import { apiKey, deliveryRoutes, keyRoutes } from './delivery'
 import { AdminEnv, checkPreviews, entryRoutes } from './entries'
 import { formRoutes, proxyList, publicFormRoutes } from './forms'
+import { type HookSettings, Refusal } from './hooks'
 import { mcpRoutes, tokenRoutes } from './mcp'
 import { mediaRoutes } from './media'
 import { hashToken } from './passwords'
 import { migrationRoutes } from './runMigrations'
+import { hookRuntime } from './sorlo'
 import { EditorDirs, typeRoutes, typeSaver } from './typeEditor'
 import type { ContentType, SharedGroup } from './types'
 import { typesFile } from './typescript'
@@ -79,6 +81,8 @@ export interface AppOptions {
   previews?: Record<string, Preview | null | undefined>
   // Whether to log each request, as the servers do
   log?: boolean
+  // The site's lifecycle hooks, contentHooks, mediaHooks and formHooks from sorlo.config.ts, with its plugins'
+  hooks?: HookSettings
 }
 
 export function createApp(
@@ -104,11 +108,13 @@ export function createApp(
     firstAccount,
     previews = {},
     log = false,
+    hooks: hookSettings,
   }: AppOptions = {},
 ) {
   const { depth = 2, maxDepth = 5, maxLinks = 2000 } = delivery ?? {}
   const publish = typeof mcp === 'object' && mcp.publish === true
   checkPreviews(previews, types)
+  const hooks = hookRuntime(hookSettings, { db, types, migrations, versions })
   const app = new Hono<AdminEnv>()
   // The type editor's saves, which its routes and the assistant's Apply share, so they take turns
   const saver = editor && typeSaver(db, types, groups, editor)
@@ -140,6 +146,8 @@ export function createApp(
   // Every error except a failed validation replies { message }, as Laravel does
   app.notFound((c) => c.json({ message: 'Not Found' }, 404))
   app.onError((error, c) => {
+    // A hook's refusal of an action that isn't a save, which replies its report as a refused save does
+    if (error instanceof Refusal) return c.json(error.report, 422)
     if (error instanceof HTTPException) {
       return c.json({ message: error.message || STATUS_CODES[error.status] }, error.status)
     }
@@ -244,29 +252,35 @@ export function createApp(
       previews: Object.keys(previews).filter((name) => previews[name] != null),
     }),
   )
-  app.route('/api', entryRoutes(db, types, migrations, versions, previews))
+  app.route('/api', entryRoutes(db, types, migrations, versions, previews, hooks))
   // Migrations run from the admin only where the type editor is, in sorlo dev
   app.route(
     '/api',
-    migrationRoutes(db, types, { dir: siteMigrations, runnable: !!editor, queued: saver?.queued, finish: finishLinks }),
+    migrationRoutes(db, types, {
+      dir: siteMigrations,
+      runnable: !!editor,
+      queued: saver?.queued,
+      finish: finishLinks,
+      hooks,
+    }),
   )
-  app.route('/api', formRoutes(db))
+  app.route('/api', formRoutes(db, hooks))
   app.route('/api', automationRoutes(db, types))
   app.route('/api', keyRoutes(db))
   app.route('/api', userRoutes(db, people))
-  if (storage) app.route('/', mediaRoutes(db, storage, media))
+  if (storage) app.route('/', mediaRoutes(db, storage, media, hooks))
 
   // AI clients read the site's content as a person, with a token that person made
   if (mcp) {
     app.route('/api', tokenRoutes(db, publish))
-    app.route('/', mcpRoutes(db, types, migrations, versions, storage, publish))
+    app.route('/', mcpRoutes(db, types, migrations, versions, storage, publish, hooks))
   }
 
   // The admin's assistant reads the same way, with the site's own model
-  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage, saver))
+  if (ai) app.route('/api', chatRoutes(db, types, migrations, ai, versions, storage, saver, hooks))
 
   app.route('/v1', deliveryRoutes(db, types, { depth, maxDepth, maxLinks, origins: delivery?.origins }))
-  app.route('/v1', publicFormRoutes(db, forms, trusted))
+  app.route('/v1', publicFormRoutes(db, forms, trusted, hooks))
 
   // What the delivery API returns and the forms take, as TypeScript, for `npx sorlo types pull`, to keys with the types
   // scope. Made for each request, since the type editor can change the types, and the admin the forms.

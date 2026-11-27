@@ -17,7 +17,9 @@ export const builtInPlugins: Array<Plugin> = [lexical()]
 
 // A plugin's fields as the server has them, with a component that renders nothing
 export const serverFields = (plugin: Plugin) =>
-  Object.fromEntries(Object.entries(plugin.fields).map(([type, field]) => [type, { ...field, default: () => null }]))
+  Object.fromEntries(
+    Object.entries(plugin.fields ?? {}).map(([type, field]) => [type, { ...field, default: () => null }]),
+  )
 
 // Core's inputs, the CMS's own and the fields it includes, such as Markdown and rich text, which the server never
 // renders. The admin adds their pickers and editors. Types have no Shared group fields once they load, so only their

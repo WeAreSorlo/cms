@@ -14,6 +14,7 @@ import { hashPassword } from './passwords'
 import { isBuiltIn, registerPlugins } from './plugins'
 import { rebuildLinks, runMigrations, todosIn } from './runMigrations'
 import { apiKeySchema, apiKeyScopes, resetSchema, userSchema } from './schemas'
+import { hookRuntime } from './sorlo'
 import { Refused, exportContent, importContent, summary } from './transfer'
 import { loadSchema } from './types'
 import { firstAccount } from './users'
@@ -133,15 +134,20 @@ const commands: Record<string, Command> = {
       }),
   },
   import: {
-    description: 'Load an export, from content unless named, into a site with no content yet',
-    run: (db, [folder = 'content']) =>
+    description:
+      "Load an export, from content unless named, into a site with no content yet, and with --no-hooks, skip the site's hooks",
+    run: (db, args) =>
       transfer('imported', async () => {
+        const [folder = 'content'] = args.filter((arg) => !arg.startsWith('--'))
         const { content } = await loadAllMigrations()
+        const types = await loadProjectTypes()
+        const sources = { db, types, migrations: async () => content, versions: config.versions }
         const moved = await importContent(db, resolve(folder), {
-          types: await loadProjectTypes(),
+          types,
           migrations: content,
           storage: config.storage,
           media: config.media,
+          hooks: args.includes('--no-hooks') ? undefined : hookRuntime(config, sources),
         })
         console.log(`Imported ${summary(moved)} from ${folder.replace(/\/+$/, '')}/.`)
       }),
@@ -205,7 +211,16 @@ async function migrateAll(db: Kysely<Database>, next: string) {
     return 'refused'
   }
 
-  const { ran: names, failed, links } = await runMigrations(db, { cms, content, links: projectLinks })
+  // The site's hooks, for content migrations that opt into them
+  const hooks = Object.values(content).some((file) => file.hooks === true)
+    ? hookRuntime(config, {
+        db,
+        types: await loadProjectTypes(),
+        migrations: async () => content,
+        versions: config.versions,
+      })
+    : undefined
+  const { ran: names, failed, links } = await runMigrations(db, { cms, content, links: projectLinks, hooks })
   if (names.length) console.log(names.map((name) => `Migrated ${name}`).join('\n'))
   if (links === 'rebuilt') console.log('Rebuilt the links between entries.')
   if (failed) {
@@ -329,6 +344,7 @@ async function dev(db: Kysely<Database>) {
     proxies: config.proxies,
     firstAccount: setup,
     previews: config.previews,
+    hooks: config,
     log: true,
   })
   const api = getRequestListener(app.fetch)
@@ -403,6 +419,7 @@ async function start(db: Kysely<Database>) {
     proxies: config.proxies,
     firstAccount: setup,
     previews: config.previews,
+    hooks: config,
     log: true,
   })
 
@@ -653,7 +670,7 @@ if (problems.length) {
   process.exit(1)
 }
 // The admin has the plugins the CMS includes, such as lexical(), so its build takes only the others
-const adminPlugins = plugins.filter((plugin) => !isBuiltIn(plugin))
+const adminPlugins = plugins.filter((plugin) => !isBuiltIn(plugin) && Object.keys(plugin.fields ?? {}).length)
 
 const db = createDb(config.database.url)
 await command.run(db, process.argv.slice(3))

@@ -10,6 +10,8 @@ npx sorlo export samples    # or a folder you name
 
 Both print what they moved, such as `Exported 12 entries, 3 files, 1 form and 1 automation to content/.`, or why they changed nothing, exiting 1.
 
+An import runs the site's [hooks](hooks.md#every-write-path) on each entry and file, as saving them would, and `npx sorlo import --no-hooks` skips them.
+
 ## What's in it
 
 - **Every saved entry,** archived ones included, each with its draft and its live copy.

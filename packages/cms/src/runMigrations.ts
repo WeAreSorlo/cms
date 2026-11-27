@@ -1,6 +1,7 @@
 import { type ContentMigrationFile, callsOf, checkEntries, contentMigrations } from './content'
 import type { Database } from './db'
 import type { AdminEnv } from './entries'
+import type { SiteHooks, Write } from './hooks'
 import { notesOf } from './makeMigration'
 import {
   type MigrationFile,
@@ -105,10 +106,13 @@ export async function runMigrations(
     cms,
     content,
     links,
+    hooks,
   }: {
     cms: Migrations
     content: Record<string, ContentMigrationFile>
     links: LinkSources
+    // The site's hooks, which content migrations that opt in run, as the site's types have them
+    hooks?: SiteHooks
   },
   report: (progress: { ran: Array<string>; step: RunStep | null }) => void = () => {},
 ): Promise<RunResult> {
@@ -122,9 +126,12 @@ export async function runMigrations(
   const show = (next: RunStep | null) => report({ ran: [...ran], step: (step = next) })
   const rows = (done: number, total: number) => show({ kind: 'migration', name: running!, done, total })
 
+  const hooked = hooks && { hooks, types: links.types, writes: new Map<string, Write>() }
+  // The writes of migrations that ran hooks and committed, whose after hooks run once the batch is done
+  const committed: Array<Write> = []
   let failed: RunResult['failed']
   try {
-    await migrateWith(db, [cms, contentMigrations(content, rows)], {
+    await migrateWith(db, [cms, contentMigrations(content, rows, hooked)], {
       starting: (name) => {
         running = name
         show({ kind: 'migration', name, done: null, total: null })
@@ -133,12 +140,15 @@ export async function runMigrations(
       ran: (name) => {
         running = undefined
         ran.push(name)
+        const write = hooked?.writes.get(name)
+        if (write) committed.push(write)
         show(step)
       },
     })
   } catch (error) {
     failed = { name: running ?? null, message: failureOf(running, error), error, during: 'migrations' }
   }
+  for (const write of committed) await write.flush()
 
   let rebuilt: RunResult['links']
   try {
@@ -206,6 +216,7 @@ export function migrationRoutes(
     queued,
     finish = false,
     cmsDir = migrationsDir,
+    hooks,
   }: {
     // The site project's migrations folder
     dir?: string
@@ -217,6 +228,8 @@ export function migrationRoutes(
     finish?: boolean
     // Where the CMS's own migrations are
     cmsDir?: string
+    // The site's hooks, which content migrations that opt in run
+    hooks?: SiteHooks
   },
 ) {
   const app = new Hono<AdminEnv>()
@@ -387,7 +400,7 @@ export function migrationRoutes(
       run = started
       void (async () => {
         try {
-          const result = await runMigrations(db, { cms: await cmsMigrations(), content, links }, (progress) =>
+          const result = await runMigrations(db, { cms: await cmsMigrations(), content, links, hooks }, (progress) =>
             Object.assign(started, progress),
           )
           started.ran = result.ran

@@ -3,7 +3,7 @@ import { maxNamed } from '../src/schemas'
 import type { ContentType, SharedGroup } from '../src/types'
 import { lexical } from '@sorlo/field-lexical'
 import { markdown } from '@sorlo/field-markdown'
-import { FieldSchema, Input, inputs } from '@sorlo/forms'
+import { FieldSchema, Input, ValidationReport, flattenValidationReport, inputs } from '@sorlo/forms'
 import { createContext, useContext, useEffect } from 'react'
 
 export type { ContentType, SharedGroup }
@@ -152,6 +152,18 @@ export const count = (length: number, one: string, many: string) =>
   `${length.toLocaleString()} ${length === 1 ? one : many}`
 
 export const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))
+
+// The messages of a report, or of the warnings beside a successful save, which the site's hooks add, a line each: one
+// about the whole entry as it is, and one about a field after its label, such as Title: Titles get cut past 60.
+export function messageLines(fields: Array<FieldSchema>, report?: { fields: Record<string, unknown> }) {
+  if (!report) return []
+  return Object.entries(flattenValidationReport(report as ValidationReport).messages).flatMap(([path, messages]) => {
+    const [name, ...rest] = path.split('.')
+    const label = fields.find((field) => field.name === name)?.label ?? name
+    const about = path === '_entry' ? '' : `${label}${rest.length ? ` (${rest.join('.')})` : ''}: `
+    return messages.map((message) => `${about}${message}`)
+  })
+}
 
 // Call the admin API with JSON, or with FormData for an upload. A validation report comes back with its 422, and any
 // other failure throws its message.

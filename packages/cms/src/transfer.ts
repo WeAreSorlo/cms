@@ -1,12 +1,13 @@
 import { type MediaOptions, type Storage, defaultMediaTypes } from '.'
 import { checkAutomation } from './automations'
 import { type ContentMigrationFile, appliedMigrations, catchUpFrom, checkEntries } from './content'
-import { flattenValidationReport } from './core'
+import { flattenValidationReport, pickValues, validateServerValues } from './core'
 import { Database, isUuid } from './db'
 import { checkForm } from './forms'
-import { checkFile } from './media'
-import { type EntryRow, type PublishedRow, isSaved } from './query'
-import { saveRelations } from './relations'
+import { type SiteHooks, Write, linesOf, refusedReport } from './hooks'
+import { checkDetails, checkFile, detailsOf, toAdminMedia } from './media'
+import { type EntryRow, type PublishedRow, isSaved, toAdminEntry, withStatus } from './query'
+import { cmsInputs, saveRelations, serverInputs } from './relations'
 import type { ContentType } from './types'
 import type { ValidationReport } from '@sorlo/forms'
 import { DriveManager } from 'flydrive'
@@ -260,6 +261,8 @@ export interface ImportSources {
   migrations: Record<string, ContentMigrationFile>
   storage: Storage
   media?: MediaOptions
+  // The site's hooks, which each entry and file runs as it's imported, unless left out
+  hooks?: SiteHooks
 }
 
 // Loads an export into a site with no entries, media, forms or automations, all or nothing. Values from before the
@@ -271,7 +274,7 @@ export interface ImportSources {
 export async function importContent(
   db: Kysely<Database>,
   dir: string,
-  { types, migrations, storage, media = {} }: ImportSources,
+  { types, migrations, storage, media = {}, hooks }: ImportSources,
 ): Promise<Moved> {
   const text = await readFile(join(dir, 'export.json'), 'utf8').catch((error) => {
     throw new Refused(
@@ -487,11 +490,37 @@ export async function importContent(
   }
   if (problems.length) throw new Refused(problems.join('\n'))
 
+  // The site's hooks, as for a save by no one, each refusal or failure a problem with the record's file
+  const write = hooks && new Write(hooks, { user: null, source: 'import' })
+  const hooked = async (file: string, run: () => ReturnType<Write['before']>) => {
+    try {
+      const result = await run()
+      if (!result.refused) return result.values
+      problems.push(...linesOf(refusedReport(result.refused)).map((line) => `${file}: ${line}`))
+    } catch (error) {
+      problems.push(`${file}: ${error instanceof Error ? error.message : error}`)
+    }
+  }
+  const created = { operation: 'create' as const, original: null, entry: null }
+
   const drive = new DriveManager(storage)
   const disk = String(storage.default)
   const stored: Array<string> = []
   try {
+    // The hooks run in the import's transaction too, so what they write through sorlo goes with it
     await db.transaction().execute(async (trx) => {
+      if (write) {
+        for (const upload of uploads) {
+          const values = { name: upload.name, alt: upload.data.alt || null, caption: upload.data.caption || null }
+          const saved = await hooked(`media/${upload.data.id}.json`, () =>
+            write.before('media', undefined, 'beforeSave', { ...created, values }, { check: checkDetails, trx }),
+          )
+          if (!saved) continue
+          const { name, alt, caption } = detailsOf({ path: `${upload.data.id}.${upload.ext}` }, saved as typeof values)
+          Object.assign(upload, { name, data: { ...upload.data, alt, caption } })
+        }
+      }
+
       // Forms first, which entries' form fields and automations' rules name
       for (const { file, data } of forms) {
         const checked = await checkForm(trx, { name: data.name, label: data.label, fields: data.fields })
@@ -626,6 +655,58 @@ export async function importContent(
           .execute()
       }
 
+      // The hooks' beforeSave on each draft, and on a live copy that differs, and beforePublish on each live copy, once
+      // everything is in, so links check as they would in a save. A version holds what its values became.
+      if (write) {
+        const inputs = serverInputs(trx, types)
+        const save = async (entry: Imported, values: Record<string, any>, live: boolean) => {
+          const type = types.get(entry.type)!
+          const check = async (next: Record<string, any>) => {
+            const picked = pickValues(type.fields, next, cmsInputs)
+            const report = await validateServerValues(type.fields, picked, inputs, { allowIncomplete: !live })
+            return { values: picked, report }
+          }
+          const base = { ...created, values }
+          return (
+            (await hooked(entry.file, () => write.before('content', type.name, 'beforeSave', base, { check, trx }))) ??
+            values
+          )
+        }
+        const store = (
+          table: 'entries' | 'published_entries',
+          entry: Imported,
+          values: Record<string, any>,
+          number: number,
+        ) =>
+          Promise.all([
+            trx.updateTable(table).set({ values }).where('id', '=', entry.id).execute(),
+            trx
+              .updateTable('entry_versions')
+              .set({ values })
+              .where('entry_id', '=', entry.id)
+              .where('number', '=', number)
+              .execute(),
+          ])
+        for (const entry of drafts) {
+          const values = await save(entry, entry.values, false)
+          const live = entry.live && (entry.differs ? await save(entry, entry.live.values, true) : values)
+          if (live) {
+            const base = { ...created, operation: 'publish' as const, values: live }
+            await hooked(`${entry.file} live`, () =>
+              write.before('content', entry.type, 'beforePublish', base, { trx }),
+            )
+          }
+          if (!isDeepStrictEqual(values, entry.values)) {
+            await store('entries', entry, values, entry.differs ? 2 : 1)
+            if (live && !entry.differs)
+              await trx.updateTable('published_entries').set({ values }).where('id', '=', entry.id).execute()
+            await saveRelations(trx, types.get(entry.type)!, entry.id, values)
+          }
+          if (live && entry.differs && !isDeepStrictEqual(live, entry.live!.values))
+            await store('published_entries', entry, live, 1)
+        }
+      }
+
       // What migrate --check checks, in the transaction, so it sees what's imported
       const files = new Map(entries.map((entry) => [entry.id.toLowerCase(), entry.file]))
       for (const { entry, published, messages } of await checkEntries(trx, types)) {
@@ -639,7 +720,43 @@ export async function importContent(
         await drive.use(disk).put(path, await readFile(join(dir, 'media', source)))
         stored.push(path)
       }
+
+      // The after hooks, with each record as the import left it, to run once it commits
+      if (write) {
+        const rows = drafts.length
+          ? await withStatus(trx)
+              .selectAll()
+              .where(
+                'id',
+                'in',
+                drafts.map((entry) => entry.id),
+              )
+              .execute()
+          : []
+        for (const row of rows) {
+          const after = { ...created, values: row.values, entry: toAdminEntry(row) }
+          write.after('content', row.type, 'afterSave', after)
+          if (row.published_version)
+            write.after('content', row.type, 'afterPublish', { ...after, operation: 'publish' })
+        }
+        const files = uploads.length
+          ? await trx
+              .selectFrom('media')
+              .selectAll()
+              .where(
+                'id',
+                'in',
+                uploads.map((upload) => upload.data.id),
+              )
+              .execute()
+          : []
+        for (const row of files) {
+          const values = { name: row.name, alt: row.alt, caption: row.caption }
+          write.after('media', undefined, 'afterSave', { ...created, values, entry: toAdminMedia(row, '') })
+        }
+      }
     })
+    await write?.flush()
   } catch (error) {
     await Promise.all(
       stored.map((path) =>

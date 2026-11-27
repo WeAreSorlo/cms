@@ -1,10 +1,12 @@
-import { flattenValidationReport, validateServerValues } from './core'
+import { flattenValidationReport, pickValues, validateServerValues } from './core'
 import type { Database } from './db'
+import { type SiteHooks, Write, linesOf, refusedReport } from './hooks'
 import { type MigrationFile, type Migrations, readMigrations } from './migrator'
-import { type EntryRow, type PublishedRow, isSaved } from './query'
-import { serverInputs } from './relations'
+import { type EntryRow, type PublishedRow, isSaved, toAdminEntry, withStatus } from './query'
+import { cmsInputs, serverInputs } from './relations'
 import type { ContentType } from './types'
 import { Kysely, sql } from 'kysely'
+import { isDeepStrictEqual } from 'node:util'
 
 // Content migrations change the values inside entries when a content type changes. An up or down
 // only declares changes to one entry at a time, so they can run on every entry in the database, or on an old version's
@@ -32,6 +34,17 @@ export type ContentMigration = (context: { entries: EntryChanges }) => void | Pr
 export interface ContentMigrationFile {
   up: ContentMigration
   down: ContentMigration
+  // Runs the site's beforeSave and afterSave hooks on the entries it changes, as export const hooks = true in its file.
+  // Off unless true, so a migration is a pure transform of values.
+  hooks?: boolean
+}
+
+// What content migrations that opt into hooks run them with: the site's hooks and types, and each migration's write,
+// whose after hooks run once its transaction commits
+export interface MigrationHooks {
+  hooks: SiteHooks
+  types: () => Promise<Map<string, ContentType>>
+  writes: Map<string, Write>
 }
 
 // A change a migration declares to the entries of one type: a new name for the type, or new values for each entry
@@ -274,6 +287,82 @@ async function run(db: Kysely<Database>, migration: ContentMigration, rows?: (do
   }
 }
 
+// Runs a content migration that opts into hooks, then the site's beforeSave on each draft and live copy it changed, with
+// the values it had before as original, checked again as a save of each would be, and queues afterSave for each draft.
+// A refusal fails the migration. A version can't run hooks as it catches up, so the version a draft or live copy whose
+// values a hook changed comes from takes its values, as of the migration at, which the entry records once it's done.
+// Hooks read through sorlo in the migration's transaction, and can't write through it until it commits.
+// shortcut: it holds the values of the types the migration changes in memory, and reads each changed row on its own;
+// stream them when a site's content outgrows that
+async function runWithHooks(
+  db: Kysely<Database>,
+  migration: ContentMigration,
+  ran: () => Promise<void>,
+  write: Write,
+  types: Map<string, ContentType>,
+  at: string | null,
+) {
+  const touched = [...new Set((await stepsOf(migration)).map((step) => step.type))]
+  const before = new Map<(typeof tables)[number], Map<string, Values>>()
+  for (const table of tables) {
+    const rows = touched.length
+      ? await db.selectFrom(table).select(['id', 'values']).where('type', 'in', touched).execute()
+      : []
+    before.set(table, new Map(rows.map((row) => [row.id, row.values])))
+  }
+  await ran()
+
+  const inputs = serverInputs(db, types)
+  for (const table of tables) {
+    const draft = table === 'entries'
+    for (const [id, original] of before.get(table)!) {
+      const row = await db.selectFrom(table).select(['type', 'values']).where('id', '=', id).executeTakeFirst()
+      const type = row && types.get(row.type)
+      if (!type || isDeepStrictEqual(row.values, original)) continue
+      const entry = async () => {
+        const status = await withStatus(db).selectAll().where('id', '=', id).executeTakeFirst()
+        return status ? toAdminEntry(status) : null
+      }
+      const mode = { allowIncomplete: draft }
+      const check = async (next: Values) => {
+        const picked = pickValues(type.fields, next, cmsInputs)
+        return { values: picked, report: await validateServerValues(type.fields, picked, inputs, mode) }
+      }
+      const base = { operation: 'update' as const, original }
+      const saving = await write.before(
+        'content',
+        type.name,
+        'beforeSave',
+        { ...base, values: row.values, entry: await entry() },
+        { check, trx: db },
+      )
+      if (saving.refused) {
+        const lines = linesOf(refusedReport(saving.refused)).join('\n  ')
+        throw new Error(
+          `A hook refused the ${draft ? 'draft' : 'live copy'} of the ${type.name} entry ${id}:\n  ${lines}`,
+        )
+      }
+      if (!isDeepStrictEqual(JSON.parse(JSON.stringify(saving.values)), row.values)) {
+        await db.updateTable(table).set({ values: saving.values }).where('id', '=', id).execute()
+        // The draft's newest version, or the live copy's own
+        const number = draft
+          ? sql<number>`(select max(number) from entry_versions where entry_id = ${id})`
+          : sql<number>`(select version from published_entries where id = ${id})`
+        await db
+          .updateTable('entry_versions')
+          .set({ values: saving.values, migration: at })
+          .where('entry_id', '=', id)
+          .where('number', '=', number)
+          .execute()
+      }
+      if (draft && write.wants('content', type.name, 'afterSave')) {
+        const after = await entry()
+        write.after('content', type.name, 'afterSave', { ...base, values: after!.values, entry: after })
+      }
+    }
+  }
+}
+
 // The content migrations that have run, in the order they ran
 export async function appliedMigrations(db: Kysely<Database>, files: Record<string, ContentMigrationFile>) {
   const names = Object.keys(files)
@@ -311,18 +400,31 @@ const linksDue = (trx: Kysely<Database>) =>
 export function contentMigrations(
   files: Record<string, ContentMigrationFile>,
   rows?: (done: number, total: number) => void,
+  // The site's hooks, for the migrations that opt into them
+  hooked?: MigrationHooks,
 ): Migrations {
+  // Runs a migration's up or down, and with hooks, the site's hooks on what it changed
+  const step = async (trx: Kysely<Database>, name: string, file: ContentMigrationFile, migration: ContentMigration) => {
+    const ran = () => run(trx, migration, migration === file.up ? rows : undefined)
+    if (file.hooks !== true || !hooked) return ran()
+    const write = new Write(hooked.hooks, { user: null, source: 'migration' })
+    hooked.writes.set(name, write)
+    // The migration the entries' values have been through once this one is done
+    const applied = migration === file.up ? [] : await appliedMigrations(trx, files)
+    const at = migration === file.up ? name : (applied[applied.indexOf(name) - 1] ?? null)
+    await runWithHooks(trx, migration, ran, write, await hooked.types(), at)
+  }
   return Object.fromEntries(
     Object.entries(files).map(([name, file]) => [
       name,
       {
         up: async (trx) => {
-          await run(trx, file.up, rows)
+          await step(trx, name, file, file.up)
           for (const table of tables) await trx.updateTable(table).set({ migration: name }).execute()
           await linksDue(trx)
         },
         down: async (trx) => {
-          await run(trx, file.down)
+          await step(trx, name, file, file.down)
           const applied = await appliedMigrations(trx, files)
           const before = applied[applied.indexOf(name) - 1] ?? null
           for (const table of tables) await trx.updateTable(table).set({ migration: before }).execute()
